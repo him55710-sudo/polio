@@ -162,3 +162,120 @@ async def search_semantic_scholar_papers(query: str, limit: int = 5) -> ScholarS
         total=total,
         papers=papers,
     )
+
+
+async def search_kci_papers(query: str, limit: int = 5) -> ScholarSearchResult:
+    import xml.etree.ElementTree as ET
+
+    settings = get_settings()
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise ScholarServiceError(status_code=400, detail="Query must not be empty.")
+
+    capped_limit = max(1, min(limit, settings.semantic_scholar_max_limit))
+    timeout = httpx.Timeout(
+        timeout=settings.semantic_scholar_timeout_seconds,
+        connect=min(5.0, settings.semantic_scholar_timeout_seconds),
+    )
+
+    kci_api_key = getattr(settings, "kci_api_key", "16578589")
+    params = {
+        "apiCode": "articleSearch",
+        "key": kci_api_key,
+        "title": normalized_query,
+        "displayCount": str(capped_limit),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                "https://open.kci.go.kr/po/openapi/openApiSearch.kci",
+                params=params,
+            )
+    except httpx.TimeoutException as exc:
+        raise ScholarServiceError(
+            status_code=504,
+            detail="KCI API request timed out. Please try again.",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise ScholarServiceError(
+            status_code=503,
+            detail="KCI API is temporarily unreachable. Please retry shortly.",
+        ) from exc
+
+    if response.status_code >= 400:
+        raise ScholarServiceError(
+            status_code=502,
+            detail=f"KCI returned an unexpected status ({response.status_code}).",
+        )
+
+    try:
+        root = ET.fromstring(response.content)
+    except ET.ParseError as exc:
+        raise ScholarServiceError(
+            status_code=502,
+            detail="KCI returned malformed XML.",
+        ) from exc
+
+    papers: list[ScholarPaper] = []
+    
+    records = root.findall(".//record")
+    for record in records[:capped_limit]:
+        article_info = record.find("articleInfo")
+        if article_info is None:
+            continue
+            
+        title_ko_elem = article_info.find("title-group/article-title[@lang='original']")
+        title_en_elem = article_info.find("title-group/article-title[@lang='english']")
+        
+        title = ""
+        if title_ko_elem is not None and title_ko_elem.text:
+            title = title_ko_elem.text.strip()
+        elif title_en_elem is not None and title_en_elem.text:
+            title = title_en_elem.text.strip()
+            
+        if not title:
+            continue
+            
+        abstract_ko_elem = article_info.find("abstract-group/abstract[@lang='original']")
+        abstract_en_elem = article_info.find("abstract-group/abstract[@lang='english']")
+        
+        abstract = None
+        if abstract_ko_elem is not None and abstract_ko_elem.text:
+            abstract = abstract_ko_elem.text.strip()
+        elif abstract_en_elem is not None and abstract_en_elem.text:
+            abstract = abstract_en_elem.text.strip()
+            
+        year_elem = article_info.find("pub-year")
+        year = None
+        if year_elem is not None and year_elem.text and year_elem.text.isdigit():
+            year = int(year_elem.text)
+            
+        url_elem = article_info.find("url")
+        url = url_elem.text.strip() if url_elem is not None and url_elem.text else None
+        
+        authors = []
+        author_group = article_info.find("author-group")
+        if author_group is not None:
+            for author_node in author_group.findall("author/name"):
+                if author_node.text:
+                    authors.append(author_node.text.strip())
+                    
+        citation_count = 0
+        
+        papers.append(
+            ScholarPaper(
+                title=title,
+                abstract=abstract,
+                authors=authors,
+                year=year,
+                citationCount=citation_count,
+                url=url,
+            )
+        )
+
+    return ScholarSearchResult(
+        query=normalized_query,
+        total=len(papers),
+        papers=papers,
+    )

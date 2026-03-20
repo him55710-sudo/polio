@@ -14,6 +14,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { useParams, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
@@ -144,7 +147,7 @@ function renderMessageContent(content: string) {
   while ((match = chartRegex.exec(content)) !== null) {
     const textBefore = content.substring(lastIndex, match.index);
     if (textBefore) {
-      parts.push(<ReactMarkdown key={`text-${lastIndex}`}>{textBefore}</ReactMarkdown>);
+      parts.push(<ReactMarkdown key={`text-${lastIndex}`} remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{textBefore}</ReactMarkdown>);
     }
 
     const chartJson = match[1];
@@ -155,10 +158,10 @@ function renderMessageContent(content: string) {
 
   const textAfter = content.substring(lastIndex);
   if (textAfter) {
-    parts.push(<ReactMarkdown key={`text-end`}>{textAfter}</ReactMarkdown>);
+    parts.push(<ReactMarkdown key={`text-end`} remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{textAfter}</ReactMarkdown>);
   }
 
-  return <>{parts.length > 0 ? parts : <ReactMarkdown>{content}</ReactMarkdown>}</>;
+  return <>{parts.length > 0 ? parts : <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>}</>;
 }
 
 export function Workshop() {
@@ -184,6 +187,7 @@ export function Workshop() {
   const [isSearchingPapers, setIsSearchingPapers] = useState(false);
   const [expandedPapers, setExpandedPapers] = useState<Record<string, boolean>>({});
   const [lastPaperQuery, setLastPaperQuery] = useState('');
+  const [searchSource, setSearchSource] = useState<'semantic' | 'kci'>('semantic');
   const [documentContent, setDocumentContent] = useState<string>(
     [
       `# ${initialMajor} 탐구 보고서`,
@@ -343,7 +347,7 @@ export function Workshop() {
 
     try {
       const response = await api.get<ScholarSearchResponse>('/api/v1/research/papers', {
-        params: { query: keyword, limit: 6 },
+        params: { query: keyword, limit: 6, source: searchSource },
       });
       setPapers(response.papers);
       setLastPaperQuery(response.query);
@@ -508,7 +512,7 @@ export function Workshop() {
           <div className="hide-scrollbar relative flex min-h-0 flex-1 justify-center overflow-y-auto p-4 sm:p-8">
             <div className="relative z-0 min-h-[297mm] w-full max-w-[210mm] rounded-sm bg-white p-8 font-serif text-slate-800 shadow-2xl sm:p-12 md:p-16">
               <div className="prose prose-sm max-w-none prose-headings:font-extrabold prose-headings:text-slate-900 prose-p:leading-loose prose-p:text-slate-700 sm:prose-base">
-                <ReactMarkdown>{documentContent}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{documentContent}</ReactMarkdown>
               </div>
             </div>
 
@@ -531,9 +535,46 @@ export function Workshop() {
 
           <aside className="flex h-[320px] min-h-0 flex-col border-t border-slate-700/80 bg-slate-900/40 p-4 sm:h-[360px] sm:p-5 lg:h-auto lg:w-[360px] lg:border-l lg:border-t-0 lg:p-6">
             <div className="mb-3">
-              <h3 className="text-sm font-extrabold text-white sm:text-base">논문/선행연구 검색</h3>
-              <p className="mt-1 text-xs font-medium text-slate-300">
-                Semantic Scholar 기반으로 실제 학술 논문을 찾아보세요.
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-extrabold text-white sm:text-base">논문 검색</h3>
+                
+                <div className="flex bg-slate-800/80 rounded-xl p-1 shadow-inner border border-slate-700/50">
+                  <button
+                    className={`relative px-3 py-1.5 text-xs font-bold rounded-lg z-10 transition-colors ${
+                      searchSource === 'semantic' ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    onClick={() => setSearchSource('semantic')}
+                  >
+                    {searchSource === 'semantic' && (
+                      <motion.div
+                        layoutId="activeSource"
+                        className="absolute inset-0 bg-blue-500 rounded-lg shadow-sm"
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{ zIndex: -1 }}
+                      />
+                    )}
+                    오픈소스(해외)
+                  </button>
+                  <button
+                    className={`relative px-3 py-1.5 text-xs font-bold rounded-lg z-10 transition-colors ${
+                      searchSource === 'kci' ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    onClick={() => setSearchSource('kci')}
+                  >
+                    {searchSource === 'kci' && (
+                      <motion.div
+                        layoutId="activeSource"
+                        className="absolute inset-0 bg-blue-500 rounded-lg shadow-sm"
+                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                        style={{ zIndex: -1 }}
+                      />
+                    )}
+                    KCI(국내)
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs font-medium text-slate-300">
+                실제 학술 논문을 찾아보고 연구에 활용하세요.
               </p>
             </div>
 
