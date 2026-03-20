@@ -76,6 +76,14 @@ def _build_system_instruction(target_major: str | None, reference_materials: lis
         "[CHART]\n"
         '{ "title": "그래프 제목", "type": "bar", "data": [{"name": "항목1", "value": 10}, {"name": "항목2", "value": 20}] }\n'
         "[/CHART]\n"
+        "6. 학생이 복잡한 수치 계산, 확률 시뮬레이션, 데이터 전처리를 요구할 경우, 분석 결과를 말로만 설명하지 말고 파이썬 코드를 작성해라.\n"
+        "코드는 반드시 [PYTHON] 태그와 [/PYTHON] 태그 사이에 작성해야 한다.\n"
+        "예:\n"
+        "[PYTHON]\n"
+        "def simulate():\n"
+        "    return '분석 완료'\n"
+        "print(simulate())\n"
+        "[/PYTHON]\n"
     )
 
     if reference_context:

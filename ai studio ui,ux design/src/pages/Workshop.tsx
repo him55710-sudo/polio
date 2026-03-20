@@ -24,6 +24,7 @@ import { auth } from '../lib/firebase';
 import { api } from '../lib/api';
 import { saveArchiveItem } from '../lib/archiveStore';
 import { ChartComponent } from '../components/ChartComponent';
+import { CodeRunner } from '../components/CodeRunner';
 
 interface Message {
   id: string;
@@ -139,29 +140,39 @@ function summarizeAbstract(abstract: string | null, maxLength = 200): string {
 function renderMessageContent(content: string) {
   if (!content) return <ReactMarkdown>...</ReactMarkdown>;
 
-  const chartRegex = /\[CHART\]([\s\S]*?)\[\/CHART\]/ig;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
+  const chartSegments = content.split(/(\[CHART\][\s\S]*?\[\/CHART\])/g);
 
-  while ((match = chartRegex.exec(content)) !== null) {
-    const textBefore = content.substring(lastIndex, match.index);
-    if (textBefore) {
-      parts.push(<ReactMarkdown key={`text-${lastIndex}`} remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{textBefore}</ReactMarkdown>);
-    }
+  return (
+    <>
+      {chartSegments.map((segment, idx) => {
+        if (segment.startsWith('[CHART]') && segment.endsWith('[/CHART]')) {
+          const json = segment.replace(/^\[CHART\]|\[\/CHART\]$/g, '');
+          return <ChartComponent key={`chart-${idx}`} jsonString={json} />;
+        }
 
-    const chartJson = match[1];
-    parts.push(<ChartComponent key={`chart-${match.index}`} jsonString={chartJson} />);
+        const pythonSegments = segment.split(/(\[PYTHON\][\s\S]*?\[\/PYTHON\])/g);
+        return pythonSegments.map((pSeg, pIdx) => {
+          if (pSeg.startsWith('[PYTHON]') && pSeg.endsWith('[/PYTHON]')) {
+            const code = pSeg.replace(/^\[PYTHON\]|\[\/PYTHON\]$/g, '').trim();
+            return <CodeRunner key={`code-${idx}-${pIdx}`} code={code} />;
+          }
 
-    lastIndex = chartRegex.lastIndex;
-  }
-
-  const textAfter = content.substring(lastIndex);
-  if (textAfter) {
-    parts.push(<ReactMarkdown key={`text-end`} remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{textAfter}</ReactMarkdown>);
-  }
-
-  return <>{parts.length > 0 ? parts : <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>}</>;
+          if (pSeg.trim()) {
+            return (
+              <ReactMarkdown
+                key={`text-${idx}-${pIdx}`}
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
+                {pSeg}
+              </ReactMarkdown>
+            );
+          }
+          return null;
+        });
+      })}
+    </>
+  );
 }
 
 export function Workshop() {
