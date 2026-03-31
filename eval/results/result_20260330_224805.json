@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-03-30T22:48:05.354134",
+  "target": "Polio v1 (Placeholder)",
+  "results": [
+    {
+      "case_id": "STU-001-CS-INT-01",
+      "case_name": "Initial CS Major Interest",
+      "model_output_placeholder": "MOCK_RESULT_FOR_STU-001-CS-INT-01",
+      "scores": {
+        "groundedness": 0,
+        "actionability": 0,
+        "safety": "PENDING",
+        "usefulness": 0
+      },
+      "status": "READY_FOR_HUMAN_REVIEW"
+    }
+  ]
+}

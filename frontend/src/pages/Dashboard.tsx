@@ -16,73 +16,19 @@ import {
 import toast from 'react-hot-toast';
 import { OnboardingModal } from '../components/OnboardingModal';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  type BlueprintQuest,
+  type CurrentBlueprintResponse,
+  type UserProfile,
+  type UserStats,
+  type UserTargetsUpdateRequest,
+  type UserTargetsUpdateResponse,
+} from '@shared-contracts';
 import { api } from '../lib/api';
+import { DIAGNOSIS_STORAGE_KEY, type DiagnosisResultPayload, type StoredDiagnosis } from '../lib/diagnosis';
 import { type QuestStartPayload, saveQuestStart } from '../lib/questStart';
 
-const DIAGNOSIS_STORAGE_KEY = 'folia_last_diagnosis';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-interface UserStats {
-  report_count: number;
-  level: string;
-  completion_rate: number;
-}
-
-interface UserProfile {
-  id: string;
-  email: string | null;
-  name: string | null;
-  target_university: string | null;
-  target_major: string | null;
-  interest_universities: string[] | null;
-}
-
-interface DiagnosisResultPayload {
-  headline: string;
-  strengths: string[];
-  gaps: string[];
-  risk_level: 'safe' | 'warning' | 'danger';
-  recommended_focus: string;
-}
-
-interface StoredDiagnosis {
-  major: string;
-  projectId?: string;
-  savedAt: string;
-  diagnosis: DiagnosisResultPayload;
-}
-
-interface BlueprintQuest {
-  id: string;
-  subject: string;
-  title: string;
-  summary: string;
-  difficulty: string;
-  why_this_matters: string;
-  expected_record_impact: string;
-  recommended_output_type: string;
-  status: string;
-}
-
-interface BlueprintGroup {
-  name: string;
-  quests: BlueprintQuest[];
-}
-
-interface CurrentBlueprintResponse {
-  id: string;
-  project_id: string;
-  project_title: string;
-  target_major: string | null;
-  headline: string;
-  recommended_focus: string;
-  semester_priority_message: string;
-  priority_quests: BlueprintQuest[];
-  subject_groups: BlueprintGroup[];
-  activity_groups: BlueprintGroup[];
-  expected_record_effects: string[];
-  created_at: string;
-}
 
 type WorkflowStatus = 'done' | 'active' | 'pending';
 
@@ -336,11 +282,12 @@ export function Dashboard() {
     const loadingId = toast.loading('목표 정보를 저장하고 있습니다...');
 
     try {
-      const data = await api.patch<UserProfile>('/api/v1/users/me/targets', {
+      const request: UserTargetsUpdateRequest = {
         target_university: payload.targetUniversity,
         target_major: payload.targetMajor,
         interest_universities: payload.interestUniversities,
-      });
+      };
+      const data = await api.patch<UserTargetsUpdateResponse>('/api/v1/users/me/targets', request);
       setProfile(data);
       setIsOnboardingOpen(false);
       toast.success('목표 대학과 전공을 저장했습니다.', { id: loadingId });

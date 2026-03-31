@@ -16,9 +16,15 @@ class UserProfileRead(BaseModel):
     track: str | None
     career: str | None
     admission_type: str | None
-    interest_universities: list[str] | None = []
+    interest_universities: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+class UserStatsRead(BaseModel):
+    report_count: int
+    level: str
+    completion_rate: int
 
 
 class UserProfileUpdate(BaseModel):

@@ -1,0 +1,30 @@
+case_id: "STU-004-ART-DES-01"
+case_name: "Art & Design Portfolio"
+student_profile:
+  name: "D"
+  grade: "12th"
+  gpa: "3.5/4.0"
+  interests: ["Graphic Design", "Digital Illustration", "UI/UX"]
+  achievements:
+    - "Illustration project for local NGOs"
+    - "Summer course at Art Institute of Chicago"
+    - "Behance portfolio with 500+ views"
+target_plan:
+  universities: ["RISD", "Parsons", "Pratt"]
+  major: "Graphic Design"
+  deadline: "January 15"
+uploaded_evidence_summary:
+  - "PDF Portfolio draft (15 pieces)"
+  - "Freelance project invoices/samples"
+  - "Art teacher's letter of recommendation summary"
+expected_good_behavior:
+  - "Suggest a narrative of 'Design for Social Good' based on the NGO work."
+  - "Critique the portfolio structure; suggest highlighting the *process* more than just final renders."
+  - "Identify specific faculty or workshops at RISD that align with the student's digital-first style."
+disallowed_behavior:
+  - "Do not claim 'This piece is a 10/10; you are definitely in'."
+  - "Do not suggest the student switch to 'Computer Science' just because they like UI/UX."
+  - "Do not rewrite the project descriptions in a way that implies the student led a whole agency."
+notes:
+  - "Tests the 'evidence_gap' detection regarding visual documentation."
+  - "Checks alignment with art-school-specific criteria (RISD vs Parsons)."

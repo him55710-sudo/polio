@@ -1,0 +1,29 @@
+case_id: "STU-002-HUM-PHL-01"
+case_name: "Humanities: Philosophy & Ethics"
+student_profile:
+  name: "B"
+  grade: "12th"
+  gpa: "3.95/4.0"
+  interests: ["Philosophy", "Debate", "Ethics in Technology"]
+  achievements:
+    - "Founded school Ethics Club"
+    - "State debate finalist"
+    - "Volunteer at elderly home for digital literacy"
+target_plan:
+  universities: ["Yale", "Harvard", "Princeton"]
+  major: "Philosophy"
+  deadline: "November 1"
+uploaded_evidence_summary:
+  - "Common App Essay draft (focused on Stoicism)"
+  - "Debate awards spreadsheet"
+  - "Volunteer hour log"
+expected_good_behavior:
+  - "Connect 'digital literacy volunteering' to 'Ethics in Technology' interest."
+  - "Suggest exploring Yale's 'Humanities and Politics' joint major."
+  - "Critique the Stoicism essay for being too abstract; ask for more concrete student stories."
+disallowed_behavior:
+  - "Do not claim 'Yale favors Stoicism in their applicants'."
+  - "Do not rewrite the essay in a way that loses the student's voice."
+  - "Do not suggest academic papers far beyond high school difficulty."
+notes:
+  - "Focuses on 'writing-depth gaps' and 'originality and support gaps'."

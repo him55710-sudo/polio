@@ -1,7 +1,4 @@
-import json
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -11,6 +8,12 @@ from polio_api.db.models.diagnosis_run import DiagnosisRun
 from polio_api.db.models.project import Project
 from polio_api.db.models.response_trace import ResponseTrace
 from polio_api.db.models.user import User
+from polio_api.schemas.diagnosis import (
+    DiagnosisPolicyFlagRead,
+    DiagnosisResultPayload,
+    DiagnosisRunRequest,
+    DiagnosisRunResponse,
+)
 from polio_api.services.async_job_service import (
     create_async_job,
     dispatch_job_if_enabled,
@@ -18,6 +21,7 @@ from polio_api.services.async_job_service import (
 )
 from polio_api.services.diagnosis_runtime_service import build_policy_scan_text, combine_project_text
 from polio_api.services.diagnosis_service import (
+    DiagnosisCitation,
     attach_policy_flags_to_run,
     detect_policy_flags,
     ensure_review_task_for_flags,
@@ -29,24 +33,6 @@ from polio_api.services.project_service import get_project
 from polio_domain.enums import AsyncJobType
 
 router = APIRouter()
-
-
-class DiagnosisRunRequest(BaseModel):
-    project_id: str
-
-
-class DiagnosisRunResponse(BaseModel):
-    id: str
-    project_id: str
-    status: str
-    result_payload: dict[str, object] | None = None
-    error_message: str | None = None
-    review_required: bool = False
-    policy_flags: list[dict[str, object]] = Field(default_factory=list)
-    citations: list[dict[str, object]] = Field(default_factory=list)
-    response_trace_id: str | None = None
-    async_job_id: str | None = None
-    async_job_status: str | None = None
 
 
 def _get_run_for_user(db: Session, diagnosis_id: str, user_id: str) -> DiagnosisRun | None:
@@ -63,9 +49,9 @@ def _get_run_for_user(db: Session, diagnosis_id: str, user_id: str) -> Diagnosis
 
 
 def _build_run_response(db: Session, run: DiagnosisRun) -> DiagnosisRunResponse:
-    payload = json.loads(run.result_payload) if run.result_payload else None
+    payload = DiagnosisResultPayload.model_validate_json(run.result_payload) if run.result_payload else None
     trace = latest_response_trace(run)
-    citations = [serialize_citation(item) for item in (trace.citations if trace else [])]
+    citations = [DiagnosisCitation.model_validate(serialize_citation(item)) for item in (trace.citations if trace else [])]
     async_job = get_latest_job_for_resource(db, resource_type="diagnosis_run", resource_id=run.id)
     return DiagnosisRunResponse(
         id=run.id,
@@ -74,7 +60,7 @@ def _build_run_response(db: Session, run: DiagnosisRun) -> DiagnosisRunResponse:
         result_payload=payload,
         error_message=run.error_message,
         review_required=bool(run.review_tasks or run.policy_flags),
-        policy_flags=[serialize_policy_flag(item) for item in run.policy_flags],
+        policy_flags=[DiagnosisPolicyFlagRead.model_validate(serialize_policy_flag(item)) for item in run.policy_flags],
         citations=citations,
         response_trace_id=trace.id if trace else None,
         async_job_id=async_job.id if async_job else None,
@@ -128,7 +114,7 @@ async def trigger_diagnosis(
         project_id=run.project_id,
         status=run.status,
         review_required=review_task is not None,
-        policy_flags=[serialize_policy_flag(item) for item in flag_records],
+        policy_flags=[DiagnosisPolicyFlagRead.model_validate(serialize_policy_flag(item)) for item in flag_records],
         async_job_id=async_job.id,
         async_job_status=async_job.status,
     )

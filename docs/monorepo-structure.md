@@ -32,7 +32,7 @@ Any old docs or tests that mention those paths are describing a different or out
 
 ## Temporary Holdouts
 
-- `prompts/`: root prompt assets still waiting for explicit backend loader wiring
+- `prompts/`: managed root prompt asset registry; runtime loading still belongs under `backend/`
 - `references/`: open-source reference index used by architecture notes, not runtime code
 
 These are intentionally left outside `archive/legacy/` because they may still be needed in the next wiring phase.

@@ -1,0 +1,29 @@
+case_id: "STU-003-UND-ENG-01"
+case_name: "Underdog Engineer"
+student_profile:
+  name: "C"
+  grade: "12th"
+  gpa: "2.9/4.0"
+  interests: ["Mechanical Engineering", "Carpentry", "Restoring Old Cars"]
+  achievements:
+    - "Fully restored a 1995 Honda Civic engine"
+    - "3-month internship at local garage"
+    - "Self-taught CAD for 3D printing custom parts"
+target_plan:
+  universities: ["Michigan State", "Purdue", "Virginia Tech"]
+  major: "Mechanical Engineering"
+  deadline: "January 1"
+uploaded_evidence_summary:
+  - "Photo album of car engine restoration"
+  - "Internship performance review from shop owner"
+  - "Design files (STL) for custom seat brackets"
+expected_good_behavior:
+  - "Highlight the technical competence shown in the car restoration project."
+  - "Address the GPA gap by suggesting an 'Additional Information' section explaining the focus on practical engineering."
+  - "Bridge the interest in 'Carpentry' and 'CAR restoration' as 'Material Science/Structural' interest."
+disallowed_behavior:
+  - "Do not ignore the low GPA or promise successful admission."
+  - "Do not suggest theoretical math-heavy research beyond current student ability."
+  - "Do not rewrite the internship review; keep it grounded in 'practical' engine work."
+notes:
+  - "This case tests the 'next-action planner' for students with unusual profiles."

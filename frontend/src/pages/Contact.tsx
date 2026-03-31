@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Building2, Bug, Headset, Mail, Phone, Send, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type {
+  BugReportInquiryCategory,
+  InstitutionType,
+  OneToOneInquiryCategory,
+} from '@shared-contracts';
 import { submitInquiry, type InquiryErrors, type InquiryPayload, validateInquiry } from '../lib/inquiries';
 
 type ContactTab = 'one_to_one' | 'partnership' | 'bug_report';
@@ -39,6 +44,24 @@ const tabConfigs: Record<
   },
 };
 
+const oneToOneCategoryOptions: Array<{ value: OneToOneInquiryCategory; label: string }> = [
+  { value: 'product_usage', label: '서비스 사용 방법' },
+  { value: 'account_login', label: '계정/로그인' },
+  { value: 'record_upload', label: '기록 업로드' },
+  { value: 'other', label: '기타' },
+];
+
+const institutionTypeOptions: Array<{ value: InstitutionType; label: string }> = [
+  { value: 'school', label: '학교' },
+  { value: 'academy', label: '학원' },
+  { value: 'other', label: '기타' },
+];
+
+const bugReportCategoryOptions: Array<{ value: BugReportInquiryCategory; label: string }> = [
+  { value: 'bug', label: '버그' },
+  { value: 'feature_request', label: '기능 제안' },
+];
+
 const oneToOneInitial: InquiryPayload = {
   inquiry_type: 'one_to_one',
   name: '',
@@ -55,6 +78,7 @@ const oneToOneInitial: InquiryPayload = {
 
 const partnershipInitial: InquiryPayload = {
   inquiry_type: 'partnership',
+  inquiry_category: 'partnership_request',
   institution_name: '',
   name: '',
   phone: '',
@@ -400,14 +424,13 @@ function OneToOneForm({
         <select
           id="support-type"
           value={payload.inquiry_category ?? 'product_usage'}
-          onChange={event => onChange({ ...payload, inquiry_category: event.target.value as InquiryPayload['inquiry_category'] })}
+          onChange={event => onChange({ ...payload, inquiry_category: event.target.value as OneToOneInquiryCategory })}
           className={inputClass(errors.inquiry_category)}
           aria-invalid={Boolean(errors.inquiry_category)}
         >
-          <option value="product_usage">서비스 사용 방법</option>
-          <option value="account_login">계정/로그인</option>
-          <option value="record_upload">기록 업로드</option>
-          <option value="other">기타</option>
+          {oneToOneCategoryOptions.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
         </select>
       </FieldShell>
 
@@ -507,13 +530,13 @@ function PartnershipForm({
         <select
           id="partner-type"
           value={payload.institution_type ?? 'school'}
-          onChange={event => onChange({ ...payload, institution_type: event.target.value as InquiryPayload['institution_type'] })}
+          onChange={event => onChange({ ...payload, institution_type: event.target.value as InstitutionType })}
           className={inputClass(errors.institution_type)}
           aria-invalid={Boolean(errors.institution_type)}
         >
-          <option value="school">학교</option>
-          <option value="academy">학원</option>
-          <option value="other">기타</option>
+          {institutionTypeOptions.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
         </select>
       </FieldShell>
 
@@ -584,12 +607,13 @@ function BugReportForm({
           <select
             id="bug-type"
             value={payload.inquiry_category ?? 'bug'}
-            onChange={event => onChange({ ...payload, inquiry_category: event.target.value as InquiryPayload['inquiry_category'] })}
+            onChange={event => onChange({ ...payload, inquiry_category: event.target.value as BugReportInquiryCategory })}
             className={inputClass(errors.inquiry_category)}
             aria-invalid={Boolean(errors.inquiry_category)}
           >
-            <option value="bug">버그</option>
-            <option value="feature_request">기능 제안</option>
+            {bugReportCategoryOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
           </select>
         </FieldShell>
         <FieldShell id="bug-location" label="발생 위치" required error={errors.context_location}>

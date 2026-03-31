@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Building2, CheckCircle2, MessageSquare, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type { InstitutionType } from '@shared-contracts';
 import { useAuth } from '../contexts/AuthContext';
 import { useAuthStore } from '../store/authStore';
 import { submitInquiry, type InquiryErrors, type InquiryPayload, validateInquiry } from '../lib/inquiries';
@@ -14,6 +15,7 @@ interface B2BPartnershipModalProps {
 
 const initialForm: InquiryPayload = {
   inquiry_type: 'partnership',
+  inquiry_category: 'partnership_request',
   institution_name: '',
   name: '',
   phone: '',
@@ -163,7 +165,7 @@ export function B2BPartnershipModal({ isOpen, onClose }: B2BPartnershipModalProp
                         onChange={event =>
                           setForm(prev => ({
                             ...prev,
-                            institution_type: event.target.value as InquiryPayload['institution_type'],
+                            institution_type: event.target.value as InstitutionType,
                           }))
                         }
                         className={`w-full rounded-2xl border bg-slate-50 px-4 py-3.5 text-sm font-medium text-slate-700 outline-none ${

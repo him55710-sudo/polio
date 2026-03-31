@@ -4,6 +4,7 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
+    "baseUrl": ".",
     "lib": [
       "ES2022",
       "DOM",
@@ -19,6 +20,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@shared-contracts": [
+        "../packages/shared-contracts/src/index.ts"
+      ],
+      "@shared-contracts/*": [
+        "../packages/shared-contracts/src/*"
       ]
     },
     "allowImportingTsExtensions": true,

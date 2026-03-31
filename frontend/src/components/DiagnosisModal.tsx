@@ -17,29 +17,17 @@ import {
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import {
+  DIAGNOSIS_STORAGE_KEY,
+  type DiagnosisResultPayload,
+  type DiagnosisRunResponse,
+  type StoredDiagnosis,
+} from '../lib/diagnosis';
 
 interface DiagnosisModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-interface DiagnosisResultPayload {
-  headline: string;
-  strengths: string[];
-  gaps: string[];
-  risk_level: 'safe' | 'warning' | 'danger';
-  recommended_focus: string;
-}
-
-interface DiagnosisRunResponse {
-  id: string;
-  project_id: string;
-  status: string;
-  result_payload: DiagnosisResultPayload | null;
-  error_message: string | null;
-}
-
-const DIAGNOSIS_STORAGE_KEY = 'folia_last_diagnosis';
 
 export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
   const [step, setStep] = useState(1);
@@ -93,14 +81,15 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
         setDiagnosis(res.result_payload);
         
         // Save to cache for roadmap usage
+        const storedDiagnosis: StoredDiagnosis = {
+          major: major.trim(),
+          projectId: projectId ?? undefined,
+          diagnosis: res.result_payload,
+          savedAt: new Date().toISOString(),
+        };
         localStorage.setItem(
           DIAGNOSIS_STORAGE_KEY,
-          JSON.stringify({
-            major: major.trim(),
-            projectId,
-            diagnosis: res.result_payload,
-            savedAt: new Date().toISOString(),
-          }),
+          JSON.stringify(storedDiagnosis),
         );
         
         const elapsed = Date.now() - minStartMs;

@@ -8,6 +8,7 @@ from polio_api.api.deps import get_db, get_current_user
 from polio_api.core.rate_limit import rate_limit
 from polio_api.db.models.user import User
 from polio_api.schemas.project import ProjectCreate, ProjectRead
+from polio_api.schemas.user import UserStatsRead
 from polio_api.services.blueprint_service import create_blueprint_from_project_diagnosis
 from polio_api.services.document_service import list_documents_for_project
 from polio_api.services.project_service import create_project, get_project, list_project_discussion_log, list_projects
@@ -216,22 +217,17 @@ def diagnose_project_route(
     )
     return diagnosis_response
 
-class UserStats(BaseModel):
-    report_count: int
-    level: str
-    completion_rate: int
-
-@router.get("/user/stats", response_model=UserStats)
+@router.get("/user/stats", response_model=UserStatsRead)
 def get_user_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
-) -> UserStats:
+) -> UserStatsRead:
     projects = list_projects(db, owner_user_id=current_user.id)
     report_count = len(projects)
     level_map = ["탐구의 시작 🐣", "성장하는 잎새 🌱", "열매 맺는 나무 🌳"]
     level_index = min(report_count, len(level_map) - 1)
     
-    return UserStats(
+    return UserStatsRead(
         report_count=report_count,
         level=level_map[level_index],
         completion_rate=min(100, report_count * 33)

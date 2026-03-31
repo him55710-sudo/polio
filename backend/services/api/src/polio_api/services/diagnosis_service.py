@@ -18,6 +18,7 @@ from polio_api.db.models.response_trace import ResponseTrace
 from polio_api.db.models.review_task import ReviewTask
 from polio_api.db.models.user import User
 from polio_api.services.llm_cache_service import CacheRequest, fetch_cached_response, store_cached_response
+from polio_api.services.prompt_registry import get_prompt_registry
 from polio_ingest.masking import MaskingPipeline
 from polio_domain.enums import EvidenceProvenance
 
@@ -180,15 +181,7 @@ async def evaluate_student_record(
 ) -> DiagnosisResult:
     from polio_api.core.config import get_settings
 
-    system_instruction = (
-        "You are 'Uni Folia', a rigorous admissions-oriented school record analyst and mentor. "
-        "Your expertise is strictly limited to high school student records (생기부), university admissions, "
-        "and academic portfolio development. If a user asks about topics unrelated to these areas, "
-        "you MUST politely decline saying exactly: '죄송합니다. 저는 학업에 관련된 대화만 진행할 수 있습니다.' "
-        "Read the student's grounded record and explain the real gaps between the current evidence "
-        "and the stated target major. Do not predict admission. Focus on what is missing and what "
-        "the next action should be. Output all text fields in Korean (한국어)."
-    )
+    system_instruction = _build_diagnosis_system_instruction()
     target_context = (
         f"Target University: {target_university or 'Not set'}\n"
         f"Target Major: {target_major or user_major}"
@@ -216,7 +209,11 @@ async def evaluate_student_record(
     )
 
     try:
-        prompt = f"{target_context}\nPrimary Major Context: {user_major}\n\n[Masked Record]\n{masked_text}"
+        prompt = _build_diagnosis_prompt(
+            target_context=target_context,
+            user_major=user_major,
+            masked_text=masked_text,
+        )
         from polio_api.core.database import SessionLocal
 
         with SessionLocal() as cache_db:
@@ -465,6 +462,7 @@ def serialize_citation(citation: Citation) -> dict[str, object]:
         "id": citation.id,
         "document_id": citation.document_id,
         "document_chunk_id": citation.document_chunk_id,
+        "provenance_type": EvidenceProvenance.STUDENT_RECORD.value,
         "source_label": citation.source_label,
         "page_number": citation.page_number,
         "excerpt": citation.excerpt,
@@ -485,3 +483,20 @@ def _current_model_name() -> str:
     if settings.llm_provider == "ollama":
         return settings.ollama_model
     return "gemini-1.5-pro"
+
+
+def _build_diagnosis_system_instruction() -> str:
+    return get_prompt_registry().compose_prompt("diagnosis.grounded-analysis")
+
+
+def _build_diagnosis_prompt(
+    *,
+    target_context: str,
+    user_major: str,
+    masked_text: str,
+) -> str:
+    return (
+        f"[Target Context]\n{target_context}\n\n"
+        f"[Primary Major Context]\n{user_major}\n\n"
+        f"[Masked Student Record]\n{masked_text}"
+    )

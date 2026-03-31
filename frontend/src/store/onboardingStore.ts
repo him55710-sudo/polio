@@ -1,4 +1,8 @@
 import { create } from 'zustand';
+import type {
+  OnboardingGoalsUpdateResponse,
+  OnboardingProfileUpdateResponse,
+} from '@shared-contracts';
 import { api } from '../lib/api';
 import { useAuthStore } from './authStore';
 
@@ -21,7 +25,7 @@ interface OnboardingState {
   goals: GoalsData;
   isLoading: boolean;
   error: string | null;
-  
+
   setStep: (step: number) => void;
   setProfile: (data: Partial<ProfileData>) => void;
   setGoals: (data: Partial<GoalsData>) => void;
@@ -30,8 +34,8 @@ interface OnboardingState {
   reset: () => void;
 }
 
-const initialProfile = { grade: '', track: '', career: '' };
-const initialGoals = {
+const initialProfile: ProfileData = { grade: '', track: '', career: '' };
+const initialGoals: GoalsData = {
   target_university: '',
   target_major: '',
   admission_type: '',
@@ -46,21 +50,21 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   error: null,
 
   setStep: (step) => set({ step, error: null }),
-  
+
   setProfile: (data) => set((state) => ({ profile: { ...state.profile, ...data } })),
-  
+
   setGoals: (data) => set((state) => ({ goals: { ...state.goals, ...data } })),
-  
+
   submitProfile: async () => {
     set({ isLoading: true, error: null });
     try {
       const { profile } = get();
-      const updatedUser = await api.post('/api/v1/users/onboarding/profile', profile);
+      const updatedUser = await api.post<OnboardingProfileUpdateResponse>('/api/v1/users/onboarding/profile', profile);
       useAuthStore.getState().setUser(updatedUser);
       set({ step: 2, isLoading: false });
       return true;
     } catch (err: any) {
-      set({ error: err.response?.data?.detail || '프로필 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
+      set({ error: err.response?.data?.detail || '?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.', isLoading: false });
       return false;
     }
   },
@@ -69,12 +73,12 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const { goals } = get();
-      const updatedUser = await api.post('/api/v1/users/onboarding/goals', goals);
+      const updatedUser = await api.post<OnboardingGoalsUpdateResponse>('/api/v1/users/onboarding/goals', goals);
       useAuthStore.getState().setUser(updatedUser);
       set({ isLoading: false });
       return true;
     } catch (err: any) {
-      set({ error: err.response?.data?.detail || '목표 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
+      set({ error: err.response?.data?.detail || '紐⑺몴 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.', isLoading: false });
       return false;
     }
   },

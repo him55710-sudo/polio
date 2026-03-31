@@ -37,6 +37,10 @@ def test_public_inquiry_submission_persists_record() -> None:
         assert inquiry.email == "school@example.com"
         assert inquiry.inquiry_category == "partnership_request"
         assert inquiry.extra_fields["metadata"]["entry_point"] == "contact_hub"
+        assert inquiry.extra_fields["triage"]["prompt_asset"]["name"] == "inquiry-support.contact-triage"
+        assert inquiry.extra_fields["triage"]["category"] == "partnership_request"
+        assert inquiry.extra_fields["triage"]["priority"] == "medium"
+        assert inquiry.extra_fields["triage"]["follow_up_questions"]
 
 
 def test_inquiry_validation_rejects_missing_fields() -> None:

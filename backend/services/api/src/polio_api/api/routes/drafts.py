@@ -13,19 +13,11 @@ from polio_api.db.models.user import User
 from polio_api.core.llm import get_llm_client
 from polio_api.schemas.draft import DraftCreate, DraftRead
 from polio_api.services.draft_service import create_draft, get_draft, list_drafts_for_project
+from polio_api.services.prompt_registry import get_prompt_registry
 from polio_api.services.project_service import append_project_discussion_log, get_project
 
 router = APIRouter()
 chat_router = APIRouter()
-
-BASE_DRAFT_CHAT_INSTRUCTION = """
-당신은 uni folia의 초안 도우미다.
-- 학생이 실제로 했다고 확인되지 않은 활동, 성과, 수치, 인터뷰, 실험 결과를 만들어내지 마라.
-- 학생 작성 내용과 AI 제안을 혼동시키지 말고, 제안은 항상 수정 가능한 후보안으로 제시하라.
-- 근거가 약하면 단정하지 말고 불확실성을 밝히며 다음으로 확인할 안전한 행동을 제안하라.
-- 외부 참고자료는 맥락 설명에만 사용하고 학생 행동의 증거처럼 말하지 마라.
-- 답변은 간결하고 학생이 직접 다듬을 수 있는 문장 중심으로 작성하라.
-""".strip()
 
 
 class ReferenceMaterial(BaseModel):
@@ -70,11 +62,14 @@ def _build_system_instruction(
         f"학생의 목표 대학은 '{target_university or '미정'}'이고, 목표 전공은 '{target_major or '미정'}'이다."
     )
     reference_context = _format_reference_materials(reference_materials)
+    base_instruction = _build_chat_base_instruction()
 
-
+    sections = []
     if reference_context:
-        return f"{reference_context}\n\n[학생 맥락]\n{profile_context}\n\n{BASE_DRAFT_CHAT_INSTRUCTION}"
-    return f"[학생 맥락]\n{profile_context}\n\n{BASE_DRAFT_CHAT_INSTRUCTION}"
+        sections.append(reference_context)
+    sections.append(f"[학생 맥락]\n{profile_context}")
+    sections.append(base_instruction)
+    return "\n\n".join(sections)
 
 
 
@@ -115,7 +110,7 @@ def _build_streaming_response(
         full_response = ""
         try:
             async for token in llm.stream_chat(
-                prompt=f"Student says: {payload.message}",
+                prompt=f"[학생 메시지]\n{payload.message}",
                 system_instruction=system_instruction,
                 temperature=0.5,
             ):
@@ -132,6 +127,10 @@ def _build_streaming_response(
             yield f"data: {error_data}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _build_chat_base_instruction() -> str:
+    return get_prompt_registry().compose_prompt("chat.coaching-orchestration")
 
 
 @router.post(

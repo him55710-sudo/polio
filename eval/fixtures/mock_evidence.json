@@ -1,0 +1,51 @@
+{
+  "STU-001-CS-INT-01": {
+    "official_criteria": {
+      "CMU": "Rigorous technical foundation; Evidence of sustained interest in computation; Community impact through code.",
+      "Berkeley": "Leadership in STEM; Problem-solving skills; Depth of technical exploration.",
+      "Stanford": "Deep intellectual vitality; Unique perspective; Transformative potential in CS."
+    },
+    "student_proof": {
+      "github_link": "https://github.com/stu001/hacky-py",
+      "repo_stars": 5,
+      "commits_last_6_months": 15,
+      "hackathon_rank": "Top 10 out of 80 teams"
+    }
+  },
+  "STU-002-HUM-PHL-01": {
+    "official_criteria": {
+      "Yale": "Commitment to humanities; Thinking across disciplines; Intellectual courage in writing and debate.",
+      "Harvard": "Evidence of critical thinking; Contribution to the common good; Global perspective on ethics.",
+      "Princeton": "Original research potential; Exceptional writing ability; Focus on philosophical inquiry."
+    },
+    "student_proof": {
+      "debate_awards": ["State Top 10 Speaker", "Regional Winner"],
+      "writing_sample": "Stoicism in the Digital Age (800 words)",
+      "volunteer_hours": 120
+    }
+  },
+  "STU-003-UND-ENG-01": {
+    "official_criteria": {
+      "Michigan State": "Resilience and grit; Practical engineering skills; Readiness for rigorous curriculum despite hardships.",
+      "Purdue": "Dedication to hands-on learning; Strong preparation in algebra/calculus; STEM impact through making.",
+      "Virginia Tech": "Creative problem solving; Hands-on engineering portfolio; Community service record."
+    },
+    "student_proof": {
+      "car_restoration_album_id": "ALB-001-HOD-CIV",
+      "internship_hours": 240,
+      "cad_projects": ["Seat Bracket v2.1", "Custom Fan Shroud"]
+    }
+  },
+  "STU-004-ART-DES-01": {
+    "official_criteria": {
+      "RISD": "Evidence of obsessive experimentation; Personal voice over pure technical polish; Risk-taking in portfolio.",
+      "Parsons": "Design for social change; Sustainable practices; Global relevance and urban focus.",
+      "Pratt": "Technical precision in design; Strong foundations in traditional art; Future-thinking career goals."
+    },
+    "student_proof": {
+      "behance_views": 520,
+      "portfolio_count": 15,
+      "ngo_projects": ["Local Food Bank Branding", "River Cleanup Infographic"]
+    }
+  }
+}

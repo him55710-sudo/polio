@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+BlueprintQuestDifficulty = Literal["low", "medium", "high"]
+BlueprintQuestStatus = Literal["PENDING", "IN_PROGRESS", "COMPLETED"]
 
 
 class QuestRead(BaseModel):
@@ -8,11 +12,11 @@ class QuestRead(BaseModel):
     subject: str
     title: str
     summary: str
-    difficulty: str
+    difficulty: BlueprintQuestDifficulty
     why_this_matters: str
     expected_record_impact: str
     recommended_output_type: str
-    status: str
+    status: BlueprintQuestStatus
 
 
 class QuestGroupRead(BaseModel):
@@ -53,7 +57,7 @@ class QuestStartResponse(BaseModel):
     why_this_matters: str
     expected_record_impact: str
     recommended_output_type: str
-    status: str
+    status: BlueprintQuestStatus
     workshop_intro: str
     document_seed_markdown: str
     starter_choices_seed: list[StarterChoiceRead]

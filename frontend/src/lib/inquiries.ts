@@ -1,39 +1,31 @@
+import {
+  isInquiryCategoryAllowedForType,
+  type InquiryPayload,
+  type InquiryResponse,
+} from '@shared-contracts';
 import { api } from './api';
 
-export type InquiryType = 'one_to_one' | 'partnership' | 'bug_report';
-export type InquiryMetadataValue = string | number | boolean | null;
-export type InquiryCategory =
-  | 'product_usage'
-  | 'account_login'
-  | 'record_upload'
-  | 'partnership_request'
-  | 'bug'
-  | 'feature_request'
-  | 'other';
-export type InstitutionType = 'school' | 'academy' | 'other';
-
-export interface InquiryPayload {
-  inquiry_type: InquiryType;
-  name?: string;
-  email: string;
-  phone?: string;
-  subject?: string;
-  message: string;
-  inquiry_category?: InquiryCategory;
-  institution_name?: string;
-  institution_type?: InstitutionType;
-  source_path?: string;
-  context_location?: string;
-  metadata?: Record<string, InquiryMetadataValue>;
-}
-
-export interface InquiryResponse {
-  id: string;
-  inquiry_type: InquiryType;
-  status: string;
-  created_at: string;
-  message: string;
-}
+export {
+  BUG_REPORT_INQUIRY_CATEGORY_VALUES,
+  INQUIRY_ALLOWED_CATEGORIES_BY_TYPE,
+  INQUIRY_CATEGORY_VALUES,
+  INQUIRY_TYPE_VALUES,
+  INSTITUTION_TYPE_VALUES,
+  ONE_TO_ONE_INQUIRY_CATEGORY_VALUES,
+  PARTNERSHIP_INQUIRY_CATEGORY_VALUES,
+  isInquiryCategoryAllowedForType,
+} from '@shared-contracts';
+export type {
+  BugReportInquiryCategory,
+  InquiryCategory,
+  InquiryMetadataValue,
+  InquiryPayload,
+  InquiryResponse,
+  InquiryType,
+  InstitutionType,
+  OneToOneInquiryCategory,
+  PartnershipInquiryCategory,
+} from '@shared-contracts';
 
 export type InquiryErrors = Partial<Record<keyof InquiryPayload, string>>;
 
@@ -47,42 +39,45 @@ export function validateInquiry(payload: InquiryPayload): InquiryErrors {
   const errors: InquiryErrors = {};
 
   if (isBlank(payload.name)) {
-    errors.name = payload.inquiry_type === 'bug_report' ? '이름 또는 닉네임을 입력해 주세요.' : '이름을 입력해 주세요.';
+    errors.name = payload.inquiry_type === 'bug_report' ? '?대쫫 ?먮뒗 ?됰꽕?꾩쓣 ?낅젰??二쇱꽭??' : '?대쫫???낅젰??二쇱꽭??';
   }
   if (isBlank(payload.email) || !emailPattern.test(payload.email.trim())) {
-    errors.email = '올바른 이메일 주소를 입력해 주세요.';
+    errors.email = '?щ컮瑜??대찓??二쇱냼瑜??낅젰??二쇱꽭??';
   }
   if (isBlank(payload.message) || payload.message.trim().length < 10) {
-    errors.message = '내용은 10자 이상 입력해 주세요.';
+    errors.message = '?댁슜? 10???댁긽 ?낅젰??二쇱꽭??';
   }
 
   if (payload.inquiry_type === 'one_to_one') {
     if (isBlank(payload.subject)) {
-      errors.subject = '문의 제목을 입력해 주세요.';
+      errors.subject = '臾몄쓽 ?쒕ぉ???낅젰??二쇱꽭??';
     }
-    if (!payload.inquiry_category || !['product_usage', 'account_login', 'record_upload', 'other'].includes(payload.inquiry_category)) {
-      errors.inquiry_category = '문의 유형을 선택해 주세요.';
+    if (!isInquiryCategoryAllowedForType('one_to_one', payload.inquiry_category)) {
+      errors.inquiry_category = '臾몄쓽 ?좏삎???좏깮??二쇱꽭??';
     }
   }
 
   if (payload.inquiry_type === 'partnership') {
     if (isBlank(payload.institution_name)) {
-      errors.institution_name = '기관명을 입력해 주세요.';
+      errors.institution_name = '湲곌?紐낆쓣 ?낅젰??二쇱꽭??';
     }
     if (isBlank(payload.phone)) {
-      errors.phone = '연락처를 입력해 주세요.';
+      errors.phone = '?곕씫泥섎? ?낅젰??二쇱꽭??';
     }
     if (!payload.institution_type) {
-      errors.institution_type = '기관 유형을 선택해 주세요.';
+      errors.institution_type = '湲곌? ?좏삎???좏깮??二쇱꽭??';
+    }
+    if (payload.inquiry_category && !isInquiryCategoryAllowedForType('partnership', payload.inquiry_category)) {
+      errors.inquiry_category = '?묒뾽 臾몄쓽 ?좏삎??怨좎젙媛믪쑝濡??좏깮?⑤릺???⑸땲??';
     }
   }
 
   if (payload.inquiry_type === 'bug_report') {
-    if (!payload.inquiry_category || !['bug', 'feature_request'].includes(payload.inquiry_category)) {
-      errors.inquiry_category = '버그 또는 기능 제안을 선택해 주세요.';
+    if (!isInquiryCategoryAllowedForType('bug_report', payload.inquiry_category)) {
+      errors.inquiry_category = '踰꾧렇 ?먮뒗 湲곕뒫 ?쒖븞???좏깮??二쇱꽭??';
     }
     if (isBlank(payload.context_location)) {
-      errors.context_location = '발생 위치를 입력해 주세요.';
+      errors.context_location = '諛쒖깮 ?꾩튂瑜??낅젰??二쇱꽭??';
     }
   }
 
@@ -93,10 +88,11 @@ export async function submitInquiry(payload: InquiryPayload) {
   const normalized: InquiryPayload = {
     ...payload,
     name: payload.name?.trim(),
-    email: payload.email.trim(),
+    email: payload.email.trim().toLowerCase(),
     phone: payload.phone?.trim(),
     subject: payload.subject?.trim(),
     message: payload.message.trim(),
+    inquiry_category: payload.inquiry_type === 'partnership' ? 'partnership_request' : payload.inquiry_category,
     institution_name: payload.institution_name?.trim(),
     source_path: payload.source_path?.trim(),
     context_location: payload.context_location?.trim(),

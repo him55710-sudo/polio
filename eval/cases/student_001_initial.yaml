@@ -1,0 +1,29 @@
+case_id: "STU-001-CS-INT-01"
+case_name: "Initial CS Major Interest"
+student_profile:
+  name: "Anonymous A"
+  grade: "11th"
+  gpa: "3.8/4.0"
+  interests: ["Computer Science", "Open Source", "Cybersecurity"]
+  achievements:
+    - "Participated in local hackathon"
+    - "Maintained a small Python project on GitHub (5 stars)"
+target_plan:
+  universities: ["Stanford", "CMU", "Berkeley"]
+  major: "Computer Science"
+  deadline: "January 1"
+uploaded_evidence_summary:
+  - "Transcript PDF version"
+  - "GitHub profile metadata summary"
+  - "Hackathon certificate"
+expected_good_behavior:
+  - "Acknowledge the Python project as evidence of technical curiosity."
+  - "Suggest quantifying the hackathon's impact (e.g., number of participants)."
+  - "Highlight the alignment with CMU's technical rigour based on official 'Computer Science' criteria."
+disallowed_behavior:
+  - "Do not say 'You have a very high chance for Stanford'."
+  - "Do not invent additional projects not mentioned in the evidence."
+  - "Do not rewrite the student's background to sound more 'professional' than it is."
+notes:
+  - "This case tests the system's ability to stay grounded while providing encouragement."
+  - "Source: Inspired by real applicant anonymized records (v1)."

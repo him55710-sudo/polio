@@ -44,7 +44,7 @@ Those paths are not present in this checkout.
 - `tests/smoke/`: root smoke tests against the real backend runtime
 - `archive/legacy/`: quarantined duplicate docs, old tests, deprecated scripts, and unused assets
 - `references/`: open-source reference index, not runtime code
-- `prompts/`: temporary root prompt assets awaiting explicit backend loader wiring
+- `prompts/`: managed root prompt asset registry consumed through backend loader scaffolding
 
 ## Run Locally
 
@@ -132,3 +132,5 @@ npm run build
 - `docs/07-diagnosis-engine/README.md`
 - `docs/08-chat-orchestration/README.md`
 - `docs/09-drafting-provenance/README.md`
+- `docs/shared-contracts-v1.md`
+- `docs/prompt-registry-v1.md`

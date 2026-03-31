@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     llm_cache_enabled: bool = True
     llm_cache_ttl_seconds: int = 21600
     llm_cache_version: str = "2026-03-29"
+    prompt_asset_root: str | None = None
+    prompt_registry_path: str | None = None
     async_job_max_retries: int = 2
     async_job_retry_delay_seconds: int = 15
     async_job_stale_after_seconds: int = 300

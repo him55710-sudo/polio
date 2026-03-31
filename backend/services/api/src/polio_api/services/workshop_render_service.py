@@ -12,6 +12,7 @@ from polio_api.services.quality_control import (
     resolve_advanced_features,
 )
 from polio_api.services.llm_cache_service import CacheRequest, fetch_cached_response, store_cached_response
+from polio_api.services.prompt_registry import get_prompt_registry
 from polio_api.services.rag_service import (
     RAGConfig,
     RAGContext,
@@ -22,6 +23,12 @@ from polio_api.services.rag_service import (
 from polio_api.services.safety_guard import SafetyFlag, run_safety_check
 from polio_api.services.visual_support_service import build_visual_support_plan
 from polio_domain.enums import QualityLevel
+
+_QUALITY_GUARDRAIL_PROMPTS: dict[str, str] = {
+    QualityLevel.LOW.value: "system.guardrails.render-quality-low",
+    QualityLevel.MID.value: "system.guardrails.render-quality-mid",
+    QualityLevel.HIGH.value: "system.guardrails.render-quality-high",
+}
 
 
 
@@ -43,29 +50,6 @@ def _sse_line(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-_GUARDRAILS: dict[str, str] = {
-    QualityLevel.LOW.value: """
-[안전형 가드레일]
-- 교과 개념과 학생이 실제로 한 활동만 사용한다.
-- 없는 실험, 없는 수치, 없는 인터뷰를 절대 만들지 않는다.
-- 심화 이론이나 화려한 표현보다 정확성과 수행 가능성을 우선한다.
-- 근거가 부족하면 '추가 확인 필요'처럼 보수적으로 쓴다.
-""",
-    QualityLevel.MID.value: """
-[표준형 가드레일]
-- 교과 응용은 허용하되 고교 학생이 직접 설명 가능한 범위를 넘지 않는다.
-- 결론은 약하게, 근거는 구체적으로 쓴다.
-- 학생이 실제로 하지 않은 행동은 결과가 아니라 계획 또는 확인 필요 사항으로 돌린다.
-- 참고자료는 필요할 때만 정확한 출처와 함께 쓴다.
-""",
-    QualityLevel.HIGH.value: """
-[심화형 가드레일]
-- 심화 개념은 학생이 실제로 말한 맥락과 참고자료가 있을 때만 사용한다.
-- 핵심 주장마다 근거 또는 출처를 붙인다.
-- 학생 경험, 해석, 외부 지식을 반드시 분리한다.
-- 근거가 빈약하면 더 안전한 수준으로 자동 교체된다.
-""",
-}
 
 
 def _supports_live_generation() -> bool:
@@ -157,7 +141,8 @@ def _build_render_prompt(
     rag_injection: str = "",
 ) -> str:
     profile = get_quality_profile(quality_level)
-    guardrail = _GUARDRAILS[profile.level]
+    guardrail = _build_quality_guardrail(profile.level)
+    base_instruction = _build_render_base_instruction()
 
     # 심화 모드 확장 출력 스펙
     advanced_output_spec = ""
@@ -186,8 +171,7 @@ def _build_render_prompt(
         rag_section = f"\n{rag_injection}\n"
 
     return f"""
-당신은 대한민국 고등학생 기록용 탐구 보고서를 작성하는 도우미입니다.
-목표는 최고의 글이 아니라, 학생에게 가장 적합하고 가장 안전한 결과를 만드는 것입니다.
+{base_instruction}
 
 [현재 품질 수준]
 - 수준: {profile.label} ({profile.level})
@@ -372,10 +356,7 @@ async def _generate_with_llm(
 ) -> AsyncIterator[str]:
     profile = get_quality_profile(quality_level)
     llm = get_llm_client()
-    system_instruction = (
-        f"너는 학생 탐구 보고서 생성기다. 현재 수준은 {profile.label}이다. "
-        "허위 경험, 과장된 수치, 근거 없는 실험 결과를 절대 만들지 말고, 유효한 JSON만 출력하라."
-    )
+    system_instruction = _build_render_system_instruction(quality_level=profile.level)
     async for token in llm.stream_chat(
         prompt=prompt,
         system_instruction=system_instruction,
@@ -679,3 +660,24 @@ def _parse_artifact(raw: str) -> dict[str, Any]:
             "visual_specs": [],
             "math_expressions": [],
         }
+
+
+def _build_render_base_instruction() -> str:
+    return get_prompt_registry().compose_prompt("drafting.report-render")
+
+
+def _build_render_system_instruction(*, quality_level: str) -> str:
+    profile = get_quality_profile(quality_level)
+    return (
+        f"{get_prompt_registry().compose_prompt('drafting.provenance-boundary')}\n\n"
+        f"Current quality level: {profile.label} ({profile.level}). "
+        "Return only valid JSON that matches the requested artifact contract."
+    )
+
+
+def _build_quality_guardrail(quality_level: str) -> str:
+    prompt_name = _QUALITY_GUARDRAIL_PROMPTS.get(
+        quality_level,
+        _QUALITY_GUARDRAIL_PROMPTS[QualityLevel.MID.value],
+    )
+    return get_prompt_registry().compose_prompt(prompt_name)

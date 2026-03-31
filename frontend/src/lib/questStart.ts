@@ -1,26 +1,6 @@
-export interface QuestStarterChoice {
-  id: string;
-  label: string;
-  prompt: string;
-}
+import type { QuestStartPayload, QuestStarterChoice } from '@shared-contracts';
 
-export interface QuestStartPayload {
-  quest_id: string;
-  blueprint_id: string;
-  project_id: string;
-  project_title: string;
-  target_major: string | null;
-  subject: string;
-  title: string;
-  summary: string;
-  why_this_matters: string;
-  expected_record_impact: string;
-  recommended_output_type: string;
-  status: string;
-  workshop_intro: string;
-  document_seed_markdown: string;
-  starter_choices_seed: QuestStarterChoice[];
-}
+export type { QuestStartPayload, QuestStarterChoice } from '@shared-contracts';
 
 const ACTIVE_QUEST_START_KEY = 'polio_active_quest_start';
 

@@ -1,13 +1,13 @@
 # Prompts Package
 
-Versioned prompt assets.
+This backend package is now a compatibility surface, not the primary prompt
+registry.
 
-## Keep here
+## Canonical Rule
 
-- system prompts
-- answer schemas
-- tool instructions
-- rubric prompts
-- fallback prompts
+- Edit prompt assets in the root `prompts/` directory
+- Load them at runtime from `backend/services/api/src/polio_api/services/prompt_registry.py`
+- Keep backend-only glue code, adapters, or legacy migration notes here when needed
 
-Prompts should be versioned and reviewed like code.
+Prompts should still be versioned and reviewed like code, but new canonical
+prompt content should not be added here first.

@@ -1,18 +1,29 @@
 # Shared Contracts
 
-This package is reserved for schemas shared by `frontend/` and `backend/`.
+This package is the canonical v1 contract surface for shapes that must stay aligned
+between `frontend/` and `backend/`.
 
-## Put Here
+## Structure
 
-- auth request and response contracts
-- onboarding payloads
-- diagnosis request and response schemas
-- project and draft DTOs that must match on both sides
+- `src/user.ts`: user profile, target updates, onboarding payloads, stats
+- `src/auth.ts`: social auth request/response basics
+- `src/diagnosis.ts`: diagnosis payloads persisted in UI and returned by API
+- `src/blueprint.ts`: action blueprint and quest payloads
+- `src/inquiry.ts`: inquiry request/response types plus enum-like validation values
+- `src/index.ts`: consolidated exports
 
-## Do Not Put Here
+## Scope
+
+Put here only DTOs that are part of the shared API contract.
+
+Do not put here:
 
 - backend-only ORM models
-- frontend-only view models
-- prompt text or business logic
+- frontend-only presentational view models
+- prompt text
+- business logic
 
-The package is intentionally light right now so auth and onboarding work can start on a clean path.
+## Current v1 rule
+
+When frontend and backend disagree, fix the implementation to match this package and
+the mirrored backend schemas under `backend/services/api/src/polio_api/schemas/`.

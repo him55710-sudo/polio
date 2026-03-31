@@ -2,20 +2,7 @@ import { create } from 'zustand';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { api } from '../lib/api';
-
-interface UserProfile {
-  id: string;
-  firebase_uid: string;
-  email: string | null;
-  name: string | null;
-  grade: string | null;
-  track: string | null;
-  career: string | null;
-  target_university: string | null;
-  target_major: string | null;
-  admission_type: string | null;
-  interest_universities: string[];
-}
+import type { UserProfile } from '@shared-contracts';
 
 interface AuthState {
   user: UserProfile | null;
