@@ -66,14 +66,67 @@
     },
     "diagnosis.grounded-analysis": {
       "category": "diagnosis",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "relative_path": "diagnosis/grounded-analysis-v1/prompt.md",
       "description": "Grounded diagnosis analysis over student evidence and target goals.",
       "output_mode": "json",
       "wiring_status": "wired",
       "dependencies": [
-        "system.guardrails.admissions-authenticity"
+        "chat.guided-diagnosis-orchestration"
       ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.guided-diagnosis-orchestration": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/guided-diagnosis-orchestration-v1/prompt.md",
+      "description": "Proactive guided-choice orchestration for diagnosis-driven student record planning.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity",
+        "chat.topic-candidate-generator",
+        "chat.page-count-selector",
+        "chat.template-recommender"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.topic-candidate-generator": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/topic-candidate-generator-v1/prompt.md",
+      "description": "Guidance fragment for generating realistic topic candidates from diagnosis weak axes.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.page-count-selector": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/page-count-selector-v1/prompt.md",
+      "description": "Guidance fragment for evidence-aware page count recommendations.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.template-recommender": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/template-recommender-v1/prompt.md",
+      "description": "Guidance fragment for template-aware structured export recommendations.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [],
       "runtime_targets": [
         "backend/services/api/src/polio_api/services/diagnosis_service.py"
       ]

@@ -12,57 +12,50 @@ export function usePyodide() {
   const pyodideRef = useRef<any>(null);
   const outputRef = useRef<string>('');
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadEngine = async () => {
-      if (window.loadPyodide && pyodideRef.current) {
-        if (isMounted) setIsLoading(false);
-        return;
+  const loadEngine = async () => {
+    if (window.loadPyodide && pyodideRef.current) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      if (!document.querySelector('#pyodide-script')) {
+        const script = document.createElement('script');
+        script.id = 'pyodide-script';
+        script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js';
+        document.head.appendChild(script);
+
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load Pyodide script.'));
+        });
+      } else {
+        while (!window.loadPyodide) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
       }
 
-      try {
-        if (!document.querySelector('#pyodide-script')) {
-          const script = document.createElement('script');
-          script.id = 'pyodide-script';
-          script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js';
-          document.head.appendChild(script);
-
-          await new Promise((resolve, reject) => {
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('Failed to load Pyodide script.'));
-          });
-        } else {
-          // Wait for script to be fully loaded and expose window.loadPyodide
-          while (!window.loadPyodide) {
-            await new Promise((r) => setTimeout(r, 100));
+      if (!pyodideRef.current) {
+        pyodideRef.current = await window.loadPyodide({
+          stdout: (msg: string) => {
+            outputRef.current += msg + '\n';
+          },
+          stderr: (msg: string) => {
+            outputRef.current += msg + '\n';
           }
-        }
-
-        if (!pyodideRef.current) {
-          pyodideRef.current = await window.loadPyodide({
-            stdout: (msg: string) => {
-              outputRef.current += msg + '\n';
-            },
-            stderr: (msg: string) => {
-              outputRef.current += msg + '\n';
-            }
-          });
-        }
-        if (isMounted) setIsLoading(false);
-      } catch (err: any) {
-        if (isMounted) {
-          console.error('[Pyodide Load Error]', err);
-          setError(err.message || 'Failed to initialize Python engine.');
-          setIsLoading(false);
-        }
+        });
       }
-    };
+      setIsLoading(false);
+    } catch (err: any) {
+      console.error('[Pyodide Load Error]', err);
+      setError(err.message || 'Failed to initialize Python engine.');
+      setIsLoading(false);
+    }
+  };
 
-    loadEngine();
-
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    return () => {};
   }, []);
 
   const runPythonCode = async (code: string): Promise<string> => {
@@ -89,5 +82,5 @@ export function usePyodide() {
     }
   };
 
-  return { isLoading, error, runPythonCode };
+  return { isLoading, error, runPythonCode, loadEngine };
 }

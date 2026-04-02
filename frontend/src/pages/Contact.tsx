@@ -1,46 +1,45 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Building2, Bug, Headset, Mail, Phone, Send, Sparkles } from 'lucide-react';
+import { Building2, Bug, Headset, Mail, Phone, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type {
-  BugReportInquiryCategory,
-  InstitutionType,
-  OneToOneInquiryCategory,
-} from '@shared-contracts';
+import type { BugReportInquiryCategory, InstitutionType, OneToOneInquiryCategory } from '@shared-contracts';
 import { submitInquiry, type InquiryErrors, type InquiryPayload, validateInquiry } from '../lib/inquiries';
+import {
+  Input,
+  PageHeader,
+  PrimaryButton,
+  SectionCard,
+  Select,
+  StatusBadge,
+  SurfaceCard,
+  Tabs,
+  TextArea,
+  WorkflowNotice,
+} from '../components/primitives';
 
 type ContactTab = 'one_to_one' | 'partnership' | 'bug_report';
 
-const tabConfigs: Record<
-  ContactTab,
-  {
-    label: string;
-    title: string;
-    description: string;
-    icon: typeof Headset;
-    query: string;
-  }
-> = {
+const tabMeta: Record<ContactTab, { label: string; query: string; icon: typeof Headset; title: string; description: string }> = {
   one_to_one: {
     label: '1:1 문의',
-    title: '계정, 사용 흐름, 기록 업로드 관련 문의',
-    description: '학생과 보호자가 바로 사용할 수 있는 문의 채널입니다.',
-    icon: Headset,
     query: 'support',
+    icon: Headset,
+    title: '사용 문의',
+    description: '계정, 업로드, 진단, 워크숍 사용 중 궁금한 점을 남겨 주세요.',
   },
   partnership: {
-    label: '협업/도입 문의',
-    title: '학교·학원 단위 협업과 도입 가능성 문의',
-    description: '운영 방식, 적용 범위, 협업 흐름을 확인하고 싶은 기관을 위한 채널입니다.',
-    icon: Building2,
+    label: '제휴 문의',
     query: 'partnership',
+    icon: Building2,
+    title: '기관/제휴 문의',
+    description: '학교·학원 단위 도입 및 운영 협업 문의를 남겨 주세요.',
   },
   bug_report: {
-    label: '버그/기능 제안',
-    title: '문제 제보와 개선 제안을 분리해 받습니다.',
-    description: '발생 위치와 상황을 남겨주시면 원인 파악에 도움이 됩니다.',
-    icon: Bug,
+    label: '버그 제보',
     query: 'bug',
+    icon: Bug,
+    title: '버그/개선 제안',
+    description: '문제 발생 위치와 상황을 남겨 주시면 빠르게 확인하겠습니다.',
   },
 };
 
@@ -54,10 +53,10 @@ const oneToOneCategoryOptions: Array<{ value: OneToOneInquiryCategory; label: st
 const institutionTypeOptions: Array<{ value: InstitutionType; label: string }> = [
   { value: 'school', label: '학교' },
   { value: 'academy', label: '학원' },
-  { value: 'other', label: '기타' },
+  { value: 'other', label: '기타 기관' },
 ];
 
-const bugReportCategoryOptions: Array<{ value: BugReportInquiryCategory; label: string }> = [
+const bugCategoryOptions: Array<{ value: BugReportInquiryCategory; label: string }> = [
   { value: 'bug', label: '버그' },
   { value: 'feature_request', label: '기능 제안' },
 ];
@@ -113,13 +112,12 @@ function resolveTab(rawType: string | null): ContactTab {
 }
 
 function getQueryValue(tab: ContactTab) {
-  return tabConfigs[tab].query;
+  return tabMeta[tab].query;
 }
 
 export function Contact() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = resolveTab(searchParams.get('type'));
-  const [activeTab, setActiveTab] = useState<ContactTab>(initialTab);
+  const [activeTab, setActiveTab] = useState<ContactTab>(resolveTab(searchParams.get('type')));
   const [oneToOne, setOneToOne] = useState(oneToOneInitial);
   const [partnership, setPartnership] = useState(partnershipInitial);
   const [bugReport, setBugReport] = useState(bugInitial);
@@ -129,11 +127,6 @@ export function Contact() {
     bug_report: {},
   });
   const [submittingTab, setSubmittingTab] = useState<ContactTab | null>(null);
-  const tabRefs = useRef<Record<ContactTab, HTMLButtonElement | null>>({
-    one_to_one: null,
-    partnership: null,
-    bug_report: null,
-  });
 
   useEffect(() => {
     setActiveTab(resolveTab(searchParams.get('type')));
@@ -144,40 +137,28 @@ export function Contact() {
     setSearchParams({ type: getQueryValue(tab) });
   };
 
-  const moveTab = (direction: 1 | -1) => {
-    const tabs: ContactTab[] = ['one_to_one', 'partnership', 'bug_report'];
-    const currentIndex = tabs.indexOf(activeTab);
-    const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
-    const nextTab = tabs[nextIndex];
-    setTab(nextTab);
-    tabRefs.current[nextTab]?.focus();
-  };
-
-  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      moveTab(1);
-    }
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      moveTab(-1);
-    }
-  };
+  const tabs = useMemo(
+    () => [
+      { value: 'one_to_one', label: '1:1 문의' },
+      { value: 'partnership', label: '제휴 문의' },
+      { value: 'bug_report', label: '버그 제보' },
+    ] as const,
+    [],
+  );
 
   const handleSubmit = async (tab: ContactTab, payload: InquiryPayload) => {
     const validation = validateInquiry(payload);
     setErrors(prev => ({ ...prev, [tab]: validation }));
     if (Object.keys(validation).length > 0) {
-      toast.error('필수 항목을 확인해 주세요.');
+      toast.error('필수 입력 항목을 확인해 주세요.');
       return;
     }
 
     setSubmittingTab(tab);
-    const loadingId = toast.loading('문의 내용을 접수하고 있습니다...');
-
+    const loadingId = toast.loading('문의 내용을 전송하는 중입니다...');
     try {
       await submitInquiry(payload);
-      toast.success('문의가 접수되었습니다. 남겨주신 연락처로 확인 후 안내드리겠습니다.', { id: loadingId });
+      toast.success('문의가 접수되었습니다. 남겨주신 연락처로 안내드리겠습니다.', { id: loadingId });
       setErrors(prev => ({ ...prev, [tab]: {} }));
       if (tab === 'one_to_one') setOneToOne(oneToOneInitial);
       if (tab === 'partnership') setPartnership(partnershipInitial);
@@ -190,186 +171,106 @@ export function Contact() {
     }
   };
 
-  const activeConfig = tabConfigs[activeTab];
-  const ActiveIcon = activeConfig.icon;
+  const activeInfo = tabMeta[activeTab];
+  const ActiveIcon = activeInfo.icon;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-      <section className="grid gap-8 lg:grid-cols-[0.88fr_1.12fr]">
-        <div className="rounded-[40px] border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
-          <p className="text-sm font-black uppercase tracking-[0.22em] text-blue-600">Support Hub</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-900 sm:text-5xl">
-            문의와 협업 제안을
-            <br />
-            한 곳에서 받습니다.
-          </h1>
-          <p className="mt-5 text-base font-medium leading-8 text-slate-600">
-            Uni Folia의 사용 문의, 학교·학원 협업, 버그 및 기능 제안을 구분해 접수할 수 있습니다. 유형에 맞는 항목을 남겨주시면
-            확인 흐름이 더 선명해집니다.
-          </p>
-
-          <div className="mt-8 space-y-4">
-            <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-center gap-3">
-                <Mail size={18} className="text-blue-600" />
-                <span className="text-sm font-black text-slate-900">이메일 문의</span>
-              </div>
-              <a href="mailto:mongben@naver.com" className="mt-3 block text-base font-bold text-slate-700 underline decoration-slate-200">
-                mongben@naver.com
-              </a>
-            </div>
-            <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-center gap-3">
-                <Phone size={18} className="text-blue-600" />
-                <span className="text-sm font-black text-slate-900">협업 연락처</span>
-              </div>
-              <a href="tel:01076142633" className="mt-3 block text-base font-bold text-slate-700 underline decoration-slate-200">
-                010-7614-2633
-              </a>
-            </div>
-            <div className="rounded-[28px] border border-blue-100 bg-blue-50 p-5">
-              <div className="flex items-center gap-3">
-                <Sparkles size={18} className="text-blue-600" />
-                <span className="text-sm font-black text-slate-900">안내</span>
-              </div>
-              <p className="mt-3 text-sm font-medium leading-7 text-slate-600">
-                문의 내용은 제품 운영과 지원에 필요한 범위에서만 검토합니다. 결제 시스템과 기관 도입 패키지는 현재 준비 중이므로,
-                공개되지 않은 항목은 문의를 통해 정직하게 안내드립니다.
-              </p>
-            </div>
+    <main className="mx-auto max-w-7xl space-y-6 py-10">
+      <PageHeader
+        eyebrow="문의"
+        title="문의 및 제휴 안내"
+        description="문의 유형에 맞는 폼으로 접수해 주세요. 목적에 맞는 채널로 확인 속도를 높였습니다."
+        evidence={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status="active">문의 허브 운영 중</StatusBadge>
+            <StatusBadge status="neutral">이메일: mongben@naver.com</StatusBadge>
           </div>
-        </div>
+        }
+      />
 
-        <div className="rounded-[40px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="rounded-[32px] border border-slate-200 bg-slate-50 p-2">
-            <div role="tablist" aria-label="문의 유형 선택" className="grid gap-2 md:grid-cols-3">
-              {(Object.entries(tabConfigs) as Array<[ContactTab, (typeof tabConfigs)[ContactTab]]>).map(([tab, config]) => {
-                const Icon = config.icon;
-                const selected = activeTab === tab;
-                return (
-                  <button
-                    key={tab}
-                    ref={element => {
-                      tabRefs.current[tab] = element;
-                    }}
-                    id={`${tab}-tab`}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    aria-controls={`${tab}-panel`}
-                    tabIndex={selected ? 0 : -1}
-                    onKeyDown={handleTabKeyDown}
-                    onClick={() => setTab(tab)}
-                    className={`rounded-[24px] px-4 py-4 text-left transition-colors ${
-                      selected ? 'bg-white shadow-sm' : 'text-slate-500 hover:bg-white/70'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon size={18} className={selected ? 'text-blue-600' : 'text-slate-400'} />
-                      <span className="text-sm font-black text-slate-900">{config.label}</span>
-                    </div>
-                    <p className="mt-2 text-xs font-medium leading-5 text-slate-500">{config.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-[32px] border border-slate-200 bg-white p-6">
-            <div className="mb-6 flex items-start gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <ActiveIcon size={22} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-black tracking-tight text-slate-900">{activeConfig.title}</h2>
-                <p className="mt-2 text-sm font-medium leading-7 text-slate-600">{activeConfig.description}</p>
-              </div>
-            </div>
-
-            {activeTab === 'one_to_one' ? (
-              <OneToOneForm
-                payload={oneToOne}
-                errors={errors.one_to_one}
-                pending={submittingTab === 'one_to_one'}
-                onChange={setOneToOne}
-                onSubmit={() => handleSubmit('one_to_one', oneToOne)}
-              />
-            ) : null}
-
-            {activeTab === 'partnership' ? (
-              <PartnershipForm
-                payload={partnership}
-                errors={errors.partnership}
-                pending={submittingTab === 'partnership'}
-                onChange={setPartnership}
-                onSubmit={() => handleSubmit('partnership', partnership)}
-              />
-            ) : null}
-
-            {activeTab === 'bug_report' ? (
-              <BugReportForm
-                payload={bugReport}
-                errors={errors.bug_report}
-                pending={submittingTab === 'bug_report'}
-                onChange={setBugReport}
-                onSubmit={() => handleSubmit('bug_report', bugReport)}
-              />
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-12 rounded-[36px] border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-900">로그인 전에도 서비스 방향을 먼저 확인할 수 있습니다.</h2>
-            <p className="mt-2 text-sm font-medium leading-7 text-slate-600">
-              처음 방문한 사용자라면 공개 홈과 FAQ에서 제품 원칙과 워크플로를 먼저 확인해 보세요.
+      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <SectionCard title="지원 채널" description="긴급하지 않은 문의는 폼 접수를 권장합니다." eyebrow="연락처">
+          <SurfaceCard tone="muted" padding="sm">
+            <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-800">
+              <Mail size={16} className="text-blue-700" />
+              이메일
             </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link to="/" className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-700">
-              홈으로 돌아가기
+            <a href="mailto:mongben@naver.com" className="mt-2 block text-sm font-semibold text-slate-700 underline decoration-slate-200">
+              mongben@naver.com
+            </a>
+          </SurfaceCard>
+
+          <SurfaceCard tone="muted" padding="sm">
+            <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-800">
+              <Phone size={16} className="text-blue-700" />
+              전화
+            </p>
+            <a href="tel:01076142633" className="mt-2 block text-sm font-semibold text-slate-700 underline decoration-slate-200">
+              010-7614-2633
+            </a>
+          </SurfaceCard>
+
+          <WorkflowNotice
+            tone="info"
+            title="응답 안내"
+            description="문의 유형에 따라 확인 시간이 다를 수 있습니다. 제휴 문의는 기관 정보를 함께 남겨 주세요."
+          />
+
+          <div className="flex flex-wrap gap-2">
+            <Link to="/" className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+              소개 페이지
             </Link>
-            <Link to="/faq" className="rounded-full bg-slate-900 px-5 py-3 text-sm font-black text-white">
-              FAQ 보기
+            <Link to="/faq" className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+              FAQ
             </Link>
           </div>
-        </div>
-      </section>
+        </SectionCard>
+
+        <SectionCard
+          title={activeInfo.title}
+          description={activeInfo.description}
+          eyebrow="문의 작성"
+          actions={
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700">
+              <ActiveIcon size={16} />
+            </span>
+          }
+        >
+          <Tabs value={activeTab} onChange={value => setTab(value as ContactTab)} items={tabs as any} ariaLabel="문의 유형 선택" className="w-full" />
+
+          {activeTab === 'one_to_one' ? (
+            <OneToOneForm
+              payload={oneToOne}
+              errors={errors.one_to_one}
+              pending={submittingTab === 'one_to_one'}
+              onChange={setOneToOne}
+              onSubmit={() => handleSubmit('one_to_one', oneToOne)}
+            />
+          ) : null}
+
+          {activeTab === 'partnership' ? (
+            <PartnershipForm
+              payload={partnership}
+              errors={errors.partnership}
+              pending={submittingTab === 'partnership'}
+              onChange={setPartnership}
+              onSubmit={() => handleSubmit('partnership', partnership)}
+            />
+          ) : null}
+
+          {activeTab === 'bug_report' ? (
+            <BugReportForm
+              payload={bugReport}
+              errors={errors.bug_report}
+              pending={submittingTab === 'bug_report'}
+              onChange={setBugReport}
+              onSubmit={() => handleSubmit('bug_report', bugReport)}
+            />
+          ) : null}
+        </SectionCard>
+      </div>
     </main>
   );
-}
-
-function FieldShell({
-  id,
-  label,
-  required = false,
-  children,
-  error,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-  error?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <label htmlFor={id} className="block text-sm font-black text-slate-700">
-        {label}
-        {required ? <span className="ml-1 text-blue-600">*</span> : null}
-      </label>
-      {children}
-      {error ? <p className="text-xs font-bold text-red-600">{error}</p> : null}
-    </div>
-  );
-}
-
-function inputClass(error?: string) {
-  return `w-full rounded-2xl border bg-slate-50 px-4 py-3.5 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 ${
-    error ? 'border-red-200 focus:border-red-400' : 'border-slate-200 focus:border-blue-500'
-  }`;
 }
 
 function OneToOneForm({
@@ -387,73 +288,49 @@ function OneToOneForm({
 }) {
   return (
     <form
-      id="one_to_one-panel"
-      role="tabpanel"
-      aria-labelledby="one_to_one-tab"
-      className="grid gap-5"
+      className="grid gap-4"
       onSubmit={event => {
         event.preventDefault();
         onSubmit();
       }}
     >
-      <div className="grid gap-5 md:grid-cols-2">
-        <FieldShell id="support-name" label="이름" required error={errors.name}>
-          <input
-            id="support-name"
-            value={payload.name ?? ''}
-            onChange={event => onChange({ ...payload, name: event.target.value })}
-            className={inputClass(errors.name)}
-            autoComplete="name"
-            aria-invalid={Boolean(errors.name)}
-          />
-        </FieldShell>
-        <FieldShell id="support-email" label="이메일" required error={errors.email}>
-          <input
-            id="support-email"
-            type="email"
-            value={payload.email}
-            onChange={event => onChange({ ...payload, email: event.target.value })}
-            className={inputClass(errors.email)}
-            autoComplete="email"
-            aria-invalid={Boolean(errors.email)}
-          />
-        </FieldShell>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input id="contact-name" label="이름" value={payload.name ?? ''} onChange={event => onChange({ ...payload, name: event.target.value })} error={errors.name} />
+        <Input
+          id="contact-email"
+          type="email"
+          label="이메일"
+          value={payload.email}
+          onChange={event => onChange({ ...payload, email: event.target.value })}
+          error={errors.email}
+        />
       </div>
 
-      <FieldShell id="support-type" label="문의 유형" required error={errors.inquiry_category}>
-        <select
-          id="support-type"
-          value={payload.inquiry_category ?? 'product_usage'}
-          onChange={event => onChange({ ...payload, inquiry_category: event.target.value as OneToOneInquiryCategory })}
-          className={inputClass(errors.inquiry_category)}
-          aria-invalid={Boolean(errors.inquiry_category)}
-        >
-          {oneToOneCategoryOptions.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </FieldShell>
+      <Select
+        id="contact-category"
+        label="문의 유형"
+        value={payload.inquiry_category ?? 'product_usage'}
+        onChange={event => onChange({ ...payload, inquiry_category: event.target.value as OneToOneInquiryCategory })}
+        options={oneToOneCategoryOptions}
+        error={errors.inquiry_category}
+      />
 
-      <FieldShell id="support-subject" label="제목" required error={errors.subject}>
-        <input
-          id="support-subject"
-          value={payload.subject ?? ''}
-          onChange={event => onChange({ ...payload, subject: event.target.value })}
-          className={inputClass(errors.subject)}
-          aria-invalid={Boolean(errors.subject)}
-        />
-      </FieldShell>
+      <Input
+        id="contact-subject"
+        label="제목"
+        value={payload.subject ?? ''}
+        onChange={event => onChange({ ...payload, subject: event.target.value })}
+        error={errors.subject}
+      />
 
-      <FieldShell id="support-message" label="내용" required error={errors.message}>
-        <textarea
-          id="support-message"
-          rows={6}
-          value={payload.message}
-          onChange={event => onChange({ ...payload, message: event.target.value })}
-          className={inputClass(errors.message)}
-          aria-invalid={Boolean(errors.message)}
-        />
-      </FieldShell>
+      <TextArea
+        id="contact-message"
+        rows={6}
+        label="문의 내용"
+        value={payload.message}
+        onChange={event => onChange({ ...payload, message: event.target.value })}
+        error={errors.message}
+      />
 
       <SubmitRow pending={pending} />
     </form>
@@ -475,81 +352,39 @@ function PartnershipForm({
 }) {
   return (
     <form
-      id="partnership-panel"
-      role="tabpanel"
-      aria-labelledby="partnership-tab"
-      className="grid gap-5"
+      className="grid gap-4"
       onSubmit={event => {
         event.preventDefault();
         onSubmit();
       }}
     >
-      <div className="grid gap-5 md:grid-cols-2">
-        <FieldShell id="partner-org" label="기관명" required error={errors.institution_name}>
-          <input
-            id="partner-org"
-            value={payload.institution_name ?? ''}
-            onChange={event => onChange({ ...payload, institution_name: event.target.value })}
-            className={inputClass(errors.institution_name)}
-            aria-invalid={Boolean(errors.institution_name)}
-          />
-        </FieldShell>
-        <FieldShell id="partner-name" label="담당자명" required error={errors.name}>
-          <input
-            id="partner-name"
-            value={payload.name ?? ''}
-            onChange={event => onChange({ ...payload, name: event.target.value })}
-            className={inputClass(errors.name)}
-            aria-invalid={Boolean(errors.name)}
-          />
-        </FieldShell>
-        <FieldShell id="partner-phone" label="연락처" required error={errors.phone}>
-          <input
-            id="partner-phone"
-            value={payload.phone ?? ''}
-            onChange={event => onChange({ ...payload, phone: event.target.value })}
-            className={inputClass(errors.phone)}
-            autoComplete="tel"
-            aria-invalid={Boolean(errors.phone)}
-          />
-        </FieldShell>
-        <FieldShell id="partner-email" label="이메일" required error={errors.email}>
-          <input
-            id="partner-email"
-            type="email"
-            value={payload.email}
-            onChange={event => onChange({ ...payload, email: event.target.value })}
-            className={inputClass(errors.email)}
-            autoComplete="email"
-            aria-invalid={Boolean(errors.email)}
-          />
-        </FieldShell>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input id="partner-org" label="기관명" value={payload.institution_name ?? ''} onChange={event => onChange({ ...payload, institution_name: event.target.value })} error={errors.institution_name} />
+        <Input id="partner-name" label="담당자명" value={payload.name ?? ''} onChange={event => onChange({ ...payload, name: event.target.value })} error={errors.name} />
       </div>
 
-      <FieldShell id="partner-type" label="기관 유형" required error={errors.institution_type}>
-        <select
-          id="partner-type"
-          value={payload.institution_type ?? 'school'}
-          onChange={event => onChange({ ...payload, institution_type: event.target.value as InstitutionType })}
-          className={inputClass(errors.institution_type)}
-          aria-invalid={Boolean(errors.institution_type)}
-        >
-          {institutionTypeOptions.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </FieldShell>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input id="partner-phone" label="연락처" value={payload.phone ?? ''} onChange={event => onChange({ ...payload, phone: event.target.value })} error={errors.phone} />
+        <Input id="partner-email" type="email" label="이메일" value={payload.email} onChange={event => onChange({ ...payload, email: event.target.value })} error={errors.email} />
+      </div>
 
-      <FieldShell id="partner-message" label="문의 내용" required error={errors.message}>
-        <textarea
-          id="partner-message"
-          rows={6}
-          value={payload.message}
-          onChange={event => onChange({ ...payload, message: event.target.value })}
-          className={inputClass(errors.message)}
-          aria-invalid={Boolean(errors.message)}
-        />
-      </FieldShell>
+      <Select
+        id="partner-type"
+        label="기관 유형"
+        value={payload.institution_type ?? 'school'}
+        onChange={event => onChange({ ...payload, institution_type: event.target.value as InstitutionType })}
+        options={institutionTypeOptions}
+        error={errors.institution_type}
+      />
+
+      <TextArea
+        id="partner-message"
+        rows={6}
+        label="문의 내용"
+        value={payload.message}
+        onChange={event => onChange({ ...payload, message: event.target.value })}
+        error={errors.message}
+      />
 
       <SubmitRow pending={pending} />
     </form>
@@ -571,73 +406,44 @@ function BugReportForm({
 }) {
   return (
     <form
-      id="bug_report-panel"
-      role="tabpanel"
-      aria-labelledby="bug_report-tab"
-      className="grid gap-5"
+      className="grid gap-4"
       onSubmit={event => {
         event.preventDefault();
         onSubmit();
       }}
     >
-      <div className="grid gap-5 md:grid-cols-2">
-        <FieldShell id="bug-name" label="이름 또는 닉네임" required error={errors.name}>
-          <input
-            id="bug-name"
-            value={payload.name ?? ''}
-            onChange={event => onChange({ ...payload, name: event.target.value })}
-            className={inputClass(errors.name)}
-            aria-invalid={Boolean(errors.name)}
-          />
-        </FieldShell>
-        <FieldShell id="bug-email" label="이메일" required error={errors.email}>
-          <input
-            id="bug-email"
-            type="email"
-            value={payload.email}
-            onChange={event => onChange({ ...payload, email: event.target.value })}
-            className={inputClass(errors.email)}
-            aria-invalid={Boolean(errors.email)}
-          />
-        </FieldShell>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input id="bug-name" label="이름 또는 닉네임" value={payload.name ?? ''} onChange={event => onChange({ ...payload, name: event.target.value })} error={errors.name} />
+        <Input id="bug-email" type="email" label="이메일" value={payload.email} onChange={event => onChange({ ...payload, email: event.target.value })} error={errors.email} />
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <FieldShell id="bug-type" label="유형" required error={errors.inquiry_category}>
-          <select
-            id="bug-type"
-            value={payload.inquiry_category ?? 'bug'}
-            onChange={event => onChange({ ...payload, inquiry_category: event.target.value as BugReportInquiryCategory })}
-            className={inputClass(errors.inquiry_category)}
-            aria-invalid={Boolean(errors.inquiry_category)}
-          >
-            {bugReportCategoryOptions.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </FieldShell>
-        <FieldShell id="bug-location" label="발생 위치" required error={errors.context_location}>
-          <input
-            id="bug-location"
-            value={payload.context_location ?? ''}
-            onChange={event => onChange({ ...payload, context_location: event.target.value })}
-            className={inputClass(errors.context_location)}
-            placeholder="예: 작업실 메시지 전송, 기록 업로드 화면"
-            aria-invalid={Boolean(errors.context_location)}
-          />
-        </FieldShell>
-      </div>
-
-      <FieldShell id="bug-message" label="상세 내용" required error={errors.message}>
-        <textarea
-          id="bug-message"
-          rows={6}
-          value={payload.message}
-          onChange={event => onChange({ ...payload, message: event.target.value })}
-          className={inputClass(errors.message)}
-          aria-invalid={Boolean(errors.message)}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Select
+          id="bug-category"
+          label="유형"
+          value={payload.inquiry_category ?? 'bug'}
+          onChange={event => onChange({ ...payload, inquiry_category: event.target.value as BugReportInquiryCategory })}
+          options={bugCategoryOptions}
+          error={errors.inquiry_category}
         />
-      </FieldShell>
+        <Input
+          id="bug-location"
+          label="발생 위치"
+          value={payload.context_location ?? ''}
+          onChange={event => onChange({ ...payload, context_location: event.target.value })}
+          error={errors.context_location}
+          placeholder="예: 워크숍 메시지 전송, 기록 업로드 화면"
+        />
+      </div>
+
+      <TextArea
+        id="bug-message"
+        rows={6}
+        label="상세 내용"
+        value={payload.message}
+        onChange={event => onChange({ ...payload, message: event.target.value })}
+        error={errors.message}
+      />
 
       <SubmitRow pending={pending} />
     </form>
@@ -646,18 +452,12 @@ function BugReportForm({
 
 function SubmitRow({ pending }: { pending: boolean }) {
   return (
-    <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm font-medium text-slate-500">
-        접수 후 확인 가능한 연락처로 안내드립니다. 급한 협업 문의는 공개 연락처도 함께 이용해 주세요.
-      </p>
-      <button
-        type="submit"
-        disabled={pending}
-        className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-6 py-4 text-sm font-black text-white shadow-lg shadow-slate-900/10 disabled:cursor-not-allowed disabled:opacity-60"
-      >
+    <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm font-medium text-slate-500">접수 후 담당자가 확인 가능한 연락처로 회신드립니다.</p>
+      <PrimaryButton type="submit" disabled={pending}>
         {pending ? '전송 중...' : '문의 보내기'}
         <Send size={16} />
-      </button>
+      </PrimaryButton>
     </div>
   );
 }

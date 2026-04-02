@@ -30,6 +30,16 @@ Background worker:
 .\scripts\start-worker.cmd
 ```
 
+## Vercel
+
+Use a separate Vercel project whose Root Directory is `backend/`.
+
+- `main.py` now exposes the FastAPI `app` from the backend root so Vercel can detect the ASGI entrypoint.
+- Use a real managed database in `DATABASE_URL`. SQLite on Vercel is ephemeral and should only be used for throwaway testing.
+- Uploads and rendered files should be treated as temporary. On Vercel, `POLIO_STORAGE_ROOT` can point to `/tmp/polio` and the backend will also auto-detect the Vercel runtime.
+- Background thread dispatch is intentionally skipped on Vercel. If you deploy without a separate worker, use the synchronous request paths from the frontend by setting `VITE_SYNC_API_JOBS=true` there.
+- Large ML packages are optional now. Install `.[ml]` and/or `.[privacy]` only when you need the sentence-transformers or Presidio-backed paths.
+
 ## Security Defaults
 
 - `APP_ENV` now defaults to `production` and `APP_DEBUG` defaults to `false`.

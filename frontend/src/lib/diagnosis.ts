@@ -11,14 +11,26 @@ import type {
 export type {
   AsyncJobRead,
   DiagnosisCitation,
+  DiagnosisExportFormat,
+  DiagnosisGuidedPlanRequest,
+  DiagnosisGuidedPlanResponse,
   DiagnosisGap,
+  DiagnosisGapAxis,
+  DiagnosisSummary,
   DiagnosisPolicyFlag,
   DiagnosisQuest,
   DiagnosisResultPayload,
   DiagnosisRiskLevel,
   DiagnosisRunRequest,
   DiagnosisRunResponse,
+  FormatRecommendation,
+  GuidedDraftOutline,
+  PageCountOption,
+  RecommendedDirection,
+  RecommendedDefaultAction,
   StoredDiagnosis,
+  TemplateCandidate,
+  TopicCandidate,
 } from '@shared-contracts';
 
 export function mergeDiagnosisPayload(run: DiagnosisRunResponse): DiagnosisResultPayload | null {

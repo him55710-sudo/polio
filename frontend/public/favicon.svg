@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Uni Folia">
+  <defs>
+    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="16" fill="url(#g)"/>
+  <path
+    d="M20 22.5c4.3 0 7.5 1.6 10 3.4V45c-2.5-1.6-5.8-2.6-10-2.6V22.5Zm24 0c-4.3 0-7.5 1.6-10 3.4V45c2.5-1.6 5.8-2.6 10-2.6V22.5ZM30 43.2c-2.2-1.4-4.7-2.2-8-2.2V24.7c3.3 0 5.8.9 8 2.4v16.1Zm4 0V27.1c2.2-1.5 4.7-2.4 8-2.4V41c-3.3 0-5.8.8-8 2.2Z"
+    fill="#fff"
+  />
+</svg>

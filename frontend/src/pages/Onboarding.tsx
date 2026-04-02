@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Loader2, Sparkles, Target, User, Trash2, School, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, Target, User, Trash2, School, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { motion } from 'motion/react';
 import { CatalogAutocompleteInput } from '../components/CatalogAutocompleteInput';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { searchUniversities, searchMajors } from '../lib/educationCatalog';
+import { resolveApiBaseUrl } from '../lib/api';
 
 const TEXT = {
   profileTitle: '기본 정보 설정',
@@ -32,6 +33,8 @@ const TEXT = {
   emptyGoals: '아직 추가된 대학이 없습니다.',
 };
 
+const API_BASE_URL = resolveApiBaseUrl();
+
 export function Onboarding() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -41,6 +44,8 @@ export function Onboarding() {
   const [currentUniv, setCurrentUniv] = useState('');
   const [currentMajor, setCurrentMajor] = useState('');
   const [goalList, setGoalList] = useState<{id: string, university: string, major: string}[]>([]);
+  const [draggingGoalId, setDraggingGoalId] = useState<string | null>(null);
+  const [dragOverGoalId, setDragOverGoalId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -69,7 +74,9 @@ export function Onboarding() {
   if (!user) return <Navigate to="/auth" replace />;
 
   const universitySuggestions = searchUniversities(univInput, { excludeNames: [currentUniv, ...goalList.map(g => g.university)] });
-  const majorSuggestions = searchMajors(currentMajor, currentUniv, 20);
+  const majorSuggestions = searchMajors(currentMajor, currentUniv || univInput, 20);
+  const logoPreviewName = (currentUniv || univInput).trim();
+  const canAddCurrentGoal = logoPreviewName.length >= 2 && currentMajor.trim().length >= 2 && goalList.length < 6;
 
   const handleAddGoal = () => {
     const generateId = () => {
@@ -79,8 +86,11 @@ export function Onboarding() {
         return Math.random().toString(36).substring(2) + Date.now().toString(36);
       }
     };
-    if (!currentUniv || !currentMajor || goalList.length >= 6) return;
-    setGoalList(prev => [...prev, { id: generateId(), university: currentUniv, major: currentMajor }]);
+    const universityName = (currentUniv || univInput).trim();
+    const majorName = currentMajor.trim();
+    if (!universityName || !majorName || goalList.length >= 6) return;
+    if (goalList.some(goal => goal.university === universityName && goal.major === majorName)) return;
+    setGoalList(prev => [...prev, { id: generateId(), university: universityName, major: majorName }]);
     setCurrentUniv('');
     setCurrentMajor('');
     setUnivInput('');
@@ -95,20 +105,44 @@ export function Onboarding() {
     setGoalList(newList);
   };
 
+  const moveGoalByDrag = (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    setGoalList(previous => {
+      const sourceIndex = previous.findIndex(item => item.id === sourceId);
+      const targetIndex = previous.findIndex(item => item.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return previous;
+
+      const next = [...previous];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const onGoalDragStart = (goalId: string) => {
+    setDraggingGoalId(goalId);
+  };
+
+  const onGoalDragEnd = () => {
+    setDraggingGoalId(null);
+    setDragOverGoalId(null);
+  };
+
   const handleStart = async () => {
     if (goalList.length === 0) return;
     const main = goalList[0];
     const others = goalList.slice(1).map(g => `${g.university} (${g.major})`);
     
-    // Update store state before submit
-    setGoals({
+    const currentGoals = {
       target_university: main.university,
       target_major: main.major,
       interest_universities: others,
       admission_type: goals.admission_type || '학생부종합'
-    });
+    };
     
-    const success = await submitGoals();
+    // Update store state AND pass directly to be safe
+    setGoals(currentGoals);
+    const success = await submitGoals(currentGoals);
     if (success) navigate('/app');
   };
 
@@ -135,6 +169,14 @@ export function Onboarding() {
                 <div className="h-16 w-16 bg-blue-50 text-blue-600 flex items-center justify-center rounded-2xl"><User size={32}/></div>
                 <div><h2 className="text-xl font-black text-slate-800">{TEXT.profileSectionTitle}</h2><p className="text-slate-500 font-medium">{TEXT.profileSectionDescription}</p></div>
               </div>
+              {goalList.length > 0 ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">저장된 목표</p>
+                  <p className="mt-1 text-sm font-black text-emerald-900">
+                    {goalList[0].university} · {goalList[0].major || '학과 미정'}
+                  </p>
+                </div>
+              ) : null}
               <div className="grid md:grid-cols-2 gap-8">
                  <div className="space-y-2">
                     <label className="text-sm font-black text-slate-700">{TEXT.gradeLabel}</label>
@@ -172,7 +214,18 @@ export function Onboarding() {
                     <div className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] space-y-6">
                        <div className="relative">
                          <label className="text-xs font-black text-slate-400 mb-2 block">{TEXT.universityLabel}</label>
-                         <input type="text" value={univInput} onChange={e => setUnivInput(e.target.value)} placeholder="대학명 검색..." className="w-full p-4 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-blue-500" />
+                         <input type="text" value={univInput} onChange={e => setUnivInput(e.target.value)} placeholder="대학명 검색..." className="w-full p-4 pr-12 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-blue-500" />
+                         {logoPreviewName.length >= 2 ? (
+                           <img
+                             key={logoPreviewName}
+                             src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(logoPreviewName)}`}
+                             className="pointer-events-none absolute right-3 top-[39px] h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
+                             alt="대학교 로고"
+                             onError={(event) => {
+                               event.currentTarget.style.display = 'none';
+                             }}
+                           />
+                         ) : null}
                          {univInput && universitySuggestions.length > 0 && (
                             <div className="absolute top-full left-0 right-0 z-10 mt-1 max-h-40 overflow-auto bg-white border border-slate-100 rounded-xl shadow-xl">
                                {universitySuggestions.map(s => <button key={s.label} onClick={() => { setCurrentUniv(s.label); setUnivInput(''); }} className="w-full text-left p-3 hover:bg-slate-50 text-sm font-bold border-b border-slate-50 last:border-0">{s.label}</button>)}
@@ -182,12 +235,22 @@ export function Onboarding() {
 
                        {currentUniv && (
                          <div className="space-y-4">
-                            <div className="p-3 bg-white rounded-xl border border-blue-100 flex items-center justify-between">
-                               <span className="text-sm font-black text-blue-600">{currentUniv}</span>
+                            <div className="p-3 bg-white rounded-xl border border-blue-100 flex items-center justify-between gap-3">
+                               <div className="flex min-w-0 items-center gap-2">
+                                 <img
+                                   src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(currentUniv)}`}
+                                   className="h-7 w-7 rounded-md bg-slate-50 object-contain p-0.5 shadow-sm"
+                                   alt="대학교 로고"
+                                   onError={(event) => {
+                                     event.currentTarget.style.display = 'none';
+                                   }}
+                                 />
+                                 <span className="truncate text-sm font-black text-blue-600">{currentUniv}</span>
+                               </div>
                                <button onClick={() => setCurrentUniv('')} className="text-slate-400"><Trash2 size={16}/></button>
                             </div>
-                            <CatalogAutocompleteInput label={TEXT.majorLabel} value={currentMajor} onChange={setCurrentMajor} placeholder="전공명 입력..." suggestions={searchMajors(currentMajor, currentUniv, 20)} onSelect={s => setCurrentMajor(s.label)} />
-                            <button onClick={handleAddGoal} disabled={!currentUniv || currentMajor.length < 2 || goalList.length >= 6} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-sm">
+                            <CatalogAutocompleteInput label={TEXT.majorLabel} value={currentMajor} onChange={setCurrentMajor} placeholder="전공명 입력..." suggestions={majorSuggestions} onSelect={s => setCurrentMajor(s.label)} />
+                            <button onClick={handleAddGoal} disabled={!canAddCurrentGoal} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-sm disabled:opacity-40">
                                {TEXT.addGoal} (+{goalList.length}/6)
                             </button>
                          </div>
@@ -205,7 +268,10 @@ export function Onboarding() {
 
                  {/* List Part */}
                  <div className="space-y-4">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Selected Goals</h3>
+                    <div>
+                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">선택된 목표</h3>
+                      {goalList.length > 1 ? <p className="mt-1 text-xs font-semibold text-slate-500">카드를 드래그해서 자유롭게 우선순위를 조정할 수 있어요.</p> : null}
+                    </div>
                     {goalList.length === 0 ? (
                       <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[32px] text-slate-300">
                          <School size={48} className="mb-2 opacity-10" />
@@ -214,15 +280,44 @@ export function Onboarding() {
                     ) : (
                       <div className="space-y-3">
                         {goalList.map((g, idx) => (
-                           <motion.div key={g.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl group">
-                              <div className="text-slate-300 font-black text-lg italic">#{idx+1}</div>
+                           <motion.div
+                              key={g.id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              draggable
+                              onDragStart={() => onGoalDragStart(g.id)}
+                              onDragOver={event => {
+                                event.preventDefault();
+                                setDragOverGoalId(g.id);
+                              }}
+                              onDrop={() => {
+                                if (draggingGoalId) moveGoalByDrag(draggingGoalId, g.id);
+                                onGoalDragEnd();
+                              }}
+                              onDragEnd={onGoalDragEnd}
+                              className={`flex items-center gap-4 rounded-2xl border p-4 transition-all ${
+                                dragOverGoalId === g.id ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-slate-50'
+                              } ${draggingGoalId === g.id ? 'opacity-60' : ''}`}
+                           >
+                              <div className="flex items-center gap-2 text-slate-400">
+                                <GripVertical size={18} />
+                                <span className="font-black text-lg italic text-slate-300">#{idx+1}</span>
+                              </div>
+                              <img
+                                src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(g.university)}`}
+                                className="h-9 w-9 rounded-md bg-white object-contain p-0.5 shadow-sm"
+                                alt="대학교 로고"
+                                onError={(event) => {
+                                  event.currentTarget.style.display = 'none';
+                                }}
+                              />
                               <div className="flex-1 min-w-0">
                                  <p className="text-sm font-black text-slate-800 truncate">{g.university}</p>
                                  <p className="text-[11px] font-bold text-slate-500">{g.major}</p>
                               </div>
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                                 <button onClick={() => moveGoal(idx, 'up')} disabled={idx===0} className="p-1 text-slate-400 hover:text-blue-500 disabled:opacity-0"><ChevronUp size={20}/></button>
-                                 <button onClick={() => moveGoal(idx, 'down')} disabled={idx===goalList.length-1} className="p-1 text-slate-400 hover:text-blue-500 disabled:opacity-0"><ChevronDown size={20}/></button>
+                              <div className="flex gap-1">
+                                 <button onClick={() => moveGoal(idx, 'up')} disabled={idx===0} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-blue-500 disabled:opacity-30"><ChevronUp size={20}/></button>
+                                 <button onClick={() => moveGoal(idx, 'down')} disabled={idx===goalList.length-1} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-blue-500 disabled:opacity-30"><ChevronDown size={20}/></button>
                                  <button onClick={() => removeGoal(g.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 size={20}/></button>
                               </div>
                            </motion.div>

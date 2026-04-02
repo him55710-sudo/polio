@@ -25,6 +25,7 @@ class Draft(Base):
     )
     title: Mapped[str] = mapped_column(String(200))
     content_markdown: Mapped[str] = mapped_column(Text(), default="")
+    content_json: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=DraftStatus.IN_PROGRESS.value)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)

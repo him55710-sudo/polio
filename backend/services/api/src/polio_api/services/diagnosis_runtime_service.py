@@ -126,6 +126,8 @@ async def run_diagnosis_run(
             masked_text=full_text[:30000],
             target_university=fallback_target_university,
             target_major=target_major,
+            career_direction=owner.career,
+            project_title=project.title,
             scope_key=f"project:{project.id}",
             evidence_keys=evidence_keys,
         )
@@ -134,6 +136,8 @@ async def run_diagnosis_run(
         result = build_grounded_diagnosis_result(
             project_title=project.title,
             target_major=target_major,
+            target_university=fallback_target_university,
+            career_direction=owner.career,
             document_count=len(documents),
             full_text=full_text,
         )

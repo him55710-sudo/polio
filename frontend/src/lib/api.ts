@@ -5,6 +5,8 @@ function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, '');
 }
 
+let hasWarnedMissingApiUrl = false;
+
 export function resolveApiBaseUrl() {
   const configured = import.meta.env.VITE_API_URL;
   if (configured && configured.trim()) {
@@ -16,10 +18,20 @@ export function resolveApiBaseUrl() {
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return `${protocol}//${hostname}:8000`;
     }
+    if (!hasWarnedMissingApiUrl) {
+      console.warn(
+        'VITE_API_URL is not set. The frontend will call the current origin. Set VITE_API_URL when the API is deployed separately.',
+      );
+      hasWarnedMissingApiUrl = true;
+    }
     return normalizeBaseUrl(origin);
   }
 
   return 'http://localhost:8000';
+}
+
+export function shouldUseSynchronousApiJobs() {
+  return import.meta.env.VITE_SYNC_API_JOBS === 'true';
 }
 
 const client = axios.create({

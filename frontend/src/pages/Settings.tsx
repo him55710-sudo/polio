@@ -1,18 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  ShieldCheck,
-  LogOut,
-  RefreshCw,
-  Mail,
-  UserCircle2,
-  Sparkles,
-  Trash2,
-  CheckCircle2,
-} from 'lucide-react';
+import { CheckCircle2, LogOut, Mail, RefreshCw, ShieldCheck, Sparkles, Trash2, UserCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import { PageHeader, PrimaryButton, SecondaryButton, SectionCard, StatusBadge, SurfaceCard, WorkflowNotice } from '../components/primitives';
 
 interface UserSettings {
   autoSaveDrafts: boolean;
@@ -42,6 +34,32 @@ function readSavedSettings(): UserSettings {
   }
 }
 
+function SettingToggleRow({
+  title,
+  description,
+  enabled,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  enabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50"
+    >
+      <div>
+        <p className="text-sm font-bold text-slate-800">{title}</p>
+        <p className="mt-1 text-xs font-medium leading-5 text-slate-500">{description}</p>
+      </div>
+      <StatusBadge status={enabled ? 'active' : 'neutral'}>{enabled ? '켜짐' : '꺼짐'}</StatusBadge>
+    </button>
+  );
+}
+
 export function Settings() {
   const navigate = useNavigate();
   const { user, isGuestSession, signInWithGoogle, logout } = useAuth();
@@ -65,20 +83,20 @@ export function Settings() {
   const displayName = user?.displayName || (isGuestSession ? '게스트' : '사용자');
 
   const toggle = (key: keyof UserSettings) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleConnectGoogle = async () => {
     if (user && !user.isAnonymous) {
-      toast('이미 Google 계정이 연결되어 있습니다.', { icon: 'ℹ️' });
+      toast('이미 Google 계정이 연결되어 있습니다.', { icon: '✅' });
       return;
     }
 
-    const toastId = toast.loading('Google 계정 연결 중입니다...');
+    const toastId = toast.loading('Google 계정을 연결하는 중입니다...');
     try {
       await signInWithGoogle();
-      toast.success('Google 계정이 연결되었습니다.', { id: toastId });
-      navigate('/');
+      toast.success('Google 계정 연결이 완료되었습니다.', { id: toastId });
+      navigate('/app');
     } catch (error) {
       console.error('Google connect error:', error);
       toast.error('Google 계정 연결에 실패했습니다.', { id: toastId });
@@ -94,19 +112,16 @@ export function Settings() {
   const handleHealthCheck = async () => {
     if (isCheckingHealth) return;
     setIsCheckingHealth(true);
-    const toastId = toast.loading('서버 연결 상태를 점검 중입니다...');
+    const toastId = toast.loading('서버 상태를 확인하는 중입니다...');
 
     try {
       const result = await api.get<{ status?: string; ok?: boolean }>('/api/v1/health');
       const isOk = result?.status === 'ok' || result?.ok === true;
-      if (isOk) {
-        toast.success('서버 연결이 정상입니다.', { id: toastId });
-      } else {
-        toast('서버 응답은 왔지만 상태 확인이 필요합니다.', { id: toastId, icon: '⚠️' });
-      }
+      if (isOk) toast.success('서버 연결이 정상입니다.', { id: toastId });
+      else toast('서버 응답을 확인했지만 상태 점검이 필요합니다.', { id: toastId, icon: '⚠️' });
     } catch (error) {
       console.error('Health check error:', error);
-      toast.error('서버 연결에 실패했습니다. 백엔드 실행 상태를 확인해주세요.', { id: toastId });
+      toast.error('서버 상태 확인에 실패했습니다.', { id: toastId });
     } finally {
       setIsCheckingHealth(false);
     }
@@ -116,131 +131,106 @@ export function Settings() {
     const shouldClear = window.confirm('아카이브에 저장된 로컬 결과물을 모두 삭제할까요?');
     if (!shouldClear) return;
     localStorage.removeItem('polio_archive_items');
-    toast.success('아카이브 로컬 데이터를 초기화했습니다.');
+    toast.success('아카이브 로컬 데이터를 삭제했습니다.');
   };
 
   const handleResetSettings = () => {
-    const shouldReset = window.confirm('설정 값을 기본값으로 되돌릴까요?');
+    const shouldReset = window.confirm('설정을 기본값으로 되돌릴까요?');
     if (!shouldReset) return;
     setSettings(DEFAULT_SETTINGS);
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
-    toast.success('설정을 기본값으로 되돌렸습니다.');
-  };
-
-  const handleContact = () => {
-    navigate('/contact');
+    toast.success('설정을 기본값으로 초기화했습니다.');
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 pb-24 sm:px-6 lg:px-8">
-      <div>
-        <h1 className="mb-2 text-3xl font-extrabold text-slate-800">설정 및 계정</h1>
-        <p className="font-medium text-slate-500">
-          계정 연결, 워크플로 설정, 서버 상태 점검을 한 곳에서 관리합니다.
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6 pb-12">
+      <PageHeader
+        eyebrow="설정"
+        title="계정 및 작업 환경 설정"
+        description="계정 연결, 워크플로 옵션, 서버 상태를 한 곳에서 관리합니다."
+        evidence={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={user && !user.isAnonymous ? 'success' : 'warning'}>{accountLabel}</StatusBadge>
+            <StatusBadge status="neutral">사용자: {displayName}</StatusBadge>
+          </div>
+        }
+      />
 
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="space-y-5 p-6 sm:p-8 clay-card">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard title="계정" description="로그인 상태와 연결 계정을 관리합니다." eyebrow="프로필">
+          <SurfaceCard padding="sm" className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
               <UserCircle2 size={22} />
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-400">현재 계정</p>
-              <h2 className="text-xl font-extrabold text-slate-800">{displayName}</h2>
+              <p className="text-sm font-bold text-slate-800">{displayName}</p>
+              <p className="text-xs font-medium text-slate-500">{accountLabel}</p>
             </div>
-          </div>
+          </SurfaceCard>
 
-          <div className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700">
-            <CheckCircle2 size={16} />
-            {accountLabel}
-          </div>
-
-          <div className="space-y-2">
-            <button
-              onClick={handleConnectGoogle}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              <Sparkles size={18} />
-              Google 계정 연결하기
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white transition-colors hover:bg-slate-900"
-            >
-              <LogOut size={18} />
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton onClick={handleConnectGoogle}>
+              <Sparkles size={16} />
+              Google 계정 연결
+            </SecondaryButton>
+            <PrimaryButton onClick={handleLogout}>
+              <LogOut size={16} />
               로그아웃
-            </button>
+            </PrimaryButton>
           </div>
-        </div>
+        </SectionCard>
 
-        <div className="space-y-4 p-6 sm:p-8 clay-card">
-          <h2 className="text-xl font-extrabold text-slate-800">작업 환경</h2>
-          <button
-            onClick={() => toggle('autoSaveDrafts')}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left font-bold text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <span>초안 자동 저장</span>
-            <span className={settings.autoSaveDrafts ? 'text-blue-600' : 'text-slate-400'}>
-              {settings.autoSaveDrafts ? '켜짐' : '꺼짐'}
-            </span>
-          </button>
-          <button
-            onClick={() => toggle('compactView')}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left font-bold text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <span>컴팩트 보기</span>
-            <span className={settings.compactView ? 'text-blue-600' : 'text-slate-400'}>
-              {settings.compactView ? '켜짐' : '꺼짐'}
-            </span>
-          </button>
-          <button
-            onClick={() => toggle('notifyOnExport')}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left font-bold text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <span>내보내기 완료 알림</span>
-            <span className={settings.notifyOnExport ? 'text-blue-600' : 'text-slate-400'}>
-              {settings.notifyOnExport ? '켜짐' : '꺼짐'}
-            </span>
-          </button>
-        </div>
-      </section>
+        <SectionCard title="작업 환경" description="초안 작성과 알림 관련 기본 동작을 조정합니다." eyebrow="환경설정">
+          <SettingToggleRow
+            title="초안 자동 저장"
+            description="워크숍 편집 내용을 자동으로 저장합니다."
+            enabled={settings.autoSaveDrafts}
+            onToggle={() => toggle('autoSaveDrafts')}
+          />
+          <SettingToggleRow
+            title="컴팩트 보기"
+            description="목록/패널 간 여백을 줄인 레이아웃으로 전환합니다."
+            enabled={settings.compactView}
+            onToggle={() => toggle('compactView')}
+          />
+          <SettingToggleRow
+            title="내보내기 완료 알림"
+            description="렌더링/내보내기 완료 시 알림을 표시합니다."
+            enabled={settings.notifyOnExport}
+            onToggle={() => toggle('notifyOnExport')}
+          />
+        </SectionCard>
+      </div>
 
-      <section className="space-y-4 p-6 sm:p-8 clay-card">
-        <h2 className="text-xl font-extrabold text-slate-800">연결 및 데이터 관리</h2>
+      <SectionCard title="진단 및 데이터 관리" description="서버 상태 확인과 로컬 데이터 정리를 수행합니다." eyebrow="관리">
+        <WorkflowNotice tone="info" title="중요 안내" description="아카이브 초기화는 로컬 저장 데이터만 삭제합니다. 서버 원본 데이터는 유지됩니다." />
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button
-            onClick={handleHealthCheck}
-            disabled={isCheckingHealth}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ShieldCheck size={18} />
-            {isCheckingHealth ? '점검 중...' : '서버 연결 점검'}
-          </button>
-          <button
-            onClick={handleClearArchive}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 font-bold text-amber-700 transition-colors hover:bg-amber-100"
-          >
-            <Trash2 size={18} />
+          <SecondaryButton onClick={handleHealthCheck} disabled={isCheckingHealth}>
+            <ShieldCheck size={16} />
+            {isCheckingHealth ? '확인 중...' : '서버 상태 확인'}
+          </SecondaryButton>
+          <SecondaryButton onClick={() => navigate('/contact')}>
+            <Mail size={16} />
+            문의 페이지 이동
+          </SecondaryButton>
+          <SecondaryButton onClick={handleResetSettings}>
+            <RefreshCw size={16} />
+            설정 기본값 복원
+          </SecondaryButton>
+          <PrimaryButton onClick={handleClearArchive}>
+            <Trash2 size={16} />
             아카이브 초기화
-          </button>
-          <button
-            onClick={handleResetSettings}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <RefreshCw size={18} />
-            설정 기본값 복구
-          </button>
-          <button
-            onClick={handleContact}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 font-bold text-blue-700 transition-colors hover:bg-blue-100"
-          >
-            <Mail size={18} />
-            문의 허브 열기
-          </button>
+          </PrimaryButton>
         </div>
-      </section>
+
+        <SurfaceCard tone="muted" padding="sm">
+          <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
+            <CheckCircle2 size={16} className="text-emerald-600" />
+            설정 변경 내용은 즉시 저장됩니다.
+          </p>
+        </SurfaceCard>
+      </SectionCard>
     </div>
   );
 }

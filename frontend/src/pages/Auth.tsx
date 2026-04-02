@@ -33,8 +33,8 @@ function toAuthMessage(error: unknown): string {
 }
 
 export function Auth() {
-  const { user, isGuestSession, guestModeAvailable, signInWithGoogle, signInAsGuest } = useAuth();
-  const [isSigningIn, setIsSigningIn] = useState<'google' | 'guest' | null>(null);
+  const { user, isGuestSession, guestModeAvailable, signInWithGoogle, signInWithKakao, signInWithNaver, signInAsGuest } = useAuth();
+  const [isSigningIn, setIsSigningIn] = useState<'google' | 'kakao' | 'naver' | 'guest' | null>(null);
 
   if (user || isGuestSession) {
     return <Navigate to="/app" replace />;
@@ -45,6 +45,30 @@ export function Auth() {
     setIsSigningIn('google');
     try {
       await signInWithGoogle();
+    } catch (error) {
+      toast.error(toAuthMessage(error));
+    } finally {
+      setIsSigningIn(null);
+    }
+  };
+
+  const onKakaoLogin = async () => {
+    if (isSigningIn !== null) return;
+    setIsSigningIn('kakao');
+    try {
+      await signInWithKakao();
+    } catch (error) {
+      toast.error(toAuthMessage(error));
+    } finally {
+      setIsSigningIn(null);
+    }
+  };
+
+  const onNaverLogin = async () => {
+    if (isSigningIn !== null) return;
+    setIsSigningIn('naver');
+    try {
+      await signInWithNaver();
     } catch (error) {
       toast.error(toAuthMessage(error));
     } finally {
@@ -187,11 +211,30 @@ export function Auth() {
                 type="button"
                 onClick={onGoogleLogin}
                 disabled={isSigningIn !== null}
-                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-base font-black text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-base font-black text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <img src="https://www.google.com/favicon.ico" alt="" className="h-5 w-5" />
                 {isSigningIn === 'google' ? '로그인 중...' : 'Google로 계속하기'}
-                <ArrowRight size={18} className="absolute right-5 text-slate-400 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
+              </button>
+
+              <button
+                type="button"
+                onClick={onKakaoLogin}
+                disabled={isSigningIn !== null}
+                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border-none bg-[#FEE500] px-6 py-4 text-base font-black text-[#191919] shadow-sm transition-all hover:bg-[#FADA0A] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" alt="" className="h-5 w-5" />
+                {isSigningIn === 'kakao' ? '로그인 중...' : '카카오로 계속하기'}
+              </button>
+
+              <button
+                type="button"
+                onClick={onNaverLogin}
+                disabled={isSigningIn !== null}
+                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border-none bg-[#03C75A] px-6 py-4 text-base font-black text-white shadow-sm transition-all hover:bg-[#02b351] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <img src="https://upload.wikimedia.org/wikipedia/commons/2/21/Naver_favicon_%282021%29.svg" alt="" className="h-4 w-4" />
+                {isSigningIn === 'naver' ? '로그인 중...' : '네이버로 계속하기'}
               </button>
 
               {guestModeAvailable ? (

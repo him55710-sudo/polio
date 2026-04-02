@@ -6,7 +6,15 @@ from pydantic import BaseModel, ConfigDict, Field
 class DraftCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content_markdown: str = Field(default="", max_length=100000)
+    content_json: str | None = Field(default=None, max_length=1000000)
     source_document_id: str | None = None
+
+
+class DraftUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    content_markdown: str | None = Field(default=None, max_length=100000)
+    content_json: str | None = Field(default=None, max_length=1000000)
+    status: str | None = Field(default=None, max_length=32)
 
 
 class DraftFromDocumentCreate(BaseModel):
@@ -22,6 +30,7 @@ class DraftRead(BaseModel):
     source_document_id: str | None
     title: str
     content_markdown: str
+    content_json: str | None
     status: str
     created_at: datetime
     updated_at: datetime

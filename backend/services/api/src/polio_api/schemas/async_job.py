@@ -16,6 +16,8 @@ class AsyncJobRead(BaseModel):
     max_retries: int
     failure_reason: str | None
     failure_history: list[dict[str, object]]
+    progress_stage: str | None = None
+    progress_message: str | None = None
     next_attempt_at: datetime
     started_at: datetime | None
     completed_at: datetime | None

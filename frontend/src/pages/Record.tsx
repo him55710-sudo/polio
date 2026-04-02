@@ -1,30 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  Clock3,
-  FileText,
-  FileUp,
-  RefreshCw,
-  ShieldCheck,
-  TimerReset,
-} from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, FileText, FileUp, RefreshCw, ShieldCheck, TimerReset } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import {
+  Input,
+  PageHeader,
+  PrimaryButton,
+  SecondaryButton,
+  SectionCard,
+  StatusBadge,
+  StepIndicator,
+  SurfaceCard,
+  WorkflowNotice,
+} from '../components/primitives';
 
-type DocumentStatus =
-  | 'uploaded'
-  | 'masking'
-  | 'parsing'
-  | 'retrying'
-  | 'parsed'
-  | 'partial'
-  | 'failed';
-
+type DocumentStatus = 'uploaded' | 'masking' | 'parsing' | 'retrying' | 'parsed' | 'partial' | 'failed';
 type MaskingStatus = 'pending' | 'masking' | 'masked' | 'failed';
 
 interface DocumentStatusResponse {
@@ -96,19 +89,6 @@ function formatStatusLabel(status: DocumentStatus): string {
   }
 }
 
-function getStatusTone(status: DocumentStatus): string {
-  switch (status) {
-    case 'parsed':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'partial':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'failed':
-      return 'border-red-200 bg-red-50 text-red-700';
-    default:
-      return 'border-blue-200 bg-blue-50 text-blue-700';
-  }
-}
-
 function getStepState(
   document: DocumentStatusResponse | null,
   step: 'upload' | 'masking' | 'parsing',
@@ -127,49 +107,10 @@ function getStepState(
   return 'pending';
 }
 
-function StepRow({
-  title,
-  description,
-  state,
-}: {
-  title: string;
-  description: string;
-  state: 'done' | 'active' | 'pending' | 'error';
-}) {
-  const tone =
-    state === 'done'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-      : state === 'active'
-        ? 'border-blue-200 bg-blue-50 text-blue-700'
-        : state === 'error'
-          ? 'border-red-200 bg-red-50 text-red-700'
-          : 'border-slate-200 bg-slate-50 text-slate-500';
-
-  const icon =
-    state === 'done' ? (
-      <CheckCircle2 size={18} />
-    ) : state === 'error' ? (
-      <AlertTriangle size={18} />
-    ) : state === 'active' ? (
-      <RefreshCw size={18} className="animate-spin" />
-    ) : (
-      <Clock3 size={18} />
-    );
-
-  return (
-    <div className={`flex items-start gap-3 rounded-2xl border p-4 ${tone}`}>
-      <div className="mt-0.5">{icon}</div>
-      <div>
-        <p className="text-sm font-extrabold">{title}</p>
-        <p className="mt-1 text-xs font-medium">{description}</p>
-      </div>
-    </div>
-  );
-}
-
 export function Record() {
   const navigate = useNavigate();
   const { user, isGuestSession } = useAuth();
+
   const [targetMajor, setTargetMajor] = useState('');
   const [document, setDocument] = useState<DocumentStatusResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -177,15 +118,10 @@ export function Record() {
   const lastTerminalStatus = useRef<DocumentStatus | null>(null);
 
   const isBusy = isUploading || isStartingParse;
-  const previewText = useMemo(() => {
-    if (!document?.content_text) return '';
-    return document.content_text.slice(0, 800);
-  }, [document?.content_text]);
+  const previewText = useMemo(() => (document?.content_text ? document.content_text.slice(0, 900) : ''), [document?.content_text]);
 
   useEffect(() => {
-    if (!document || !IN_PROGRESS_STATUSES.has(document.status)) {
-      return undefined;
-    }
+    if (!document || !IN_PROGRESS_STATUSES.has(document.status)) return undefined;
 
     const intervalId = window.setInterval(async () => {
       try {
@@ -208,12 +144,13 @@ export function Record() {
     if (lastTerminalStatus.current === document.status) return;
 
     if (document.status === 'parsed') {
-      toast.success('업로드, 마스킹 및 파싱이 모두 완료되었습니다.');
+      toast.success('업로드, 마스킹, 파싱이 모두 완료되었습니다.');
     } else if (document.status === 'partial') {
-      toast('파싱이 완료되었으나 경고가 발생했습니다. 계속하기 전에 상태 위젯을 확인해 주세요.', { icon: '!' });
+      toast('일부 경고가 있지만 파싱이 완료되었습니다. 상태를 확인해 주세요.', { icon: '!' });
     } else if (document.status === 'failed') {
-      toast.error(document.last_error || '파싱에 실패했습니다. 오류 내용을 확인하고 다시 시도해 주세요.');
+      toast.error(document.last_error || '파싱에 실패했습니다. 오류를 확인하고 다시 시도해 주세요.');
     }
+
     lastTerminalStatus.current = document.status;
   }, [document]);
 
@@ -224,7 +161,7 @@ export function Record() {
       setDocument(started);
     } catch (error) {
       console.error('Failed to start parsing:', error);
-      toast.error('마스킹 및 파싱을 시작할 수 없습니다.');
+      toast.error('마스킹/파싱 시작에 실패했습니다.');
     } finally {
       setIsStartingParse(false);
     }
@@ -236,7 +173,7 @@ export function Record() {
       if (!file || isBusy) return;
 
       setIsUploading(true);
-      const loadingId = toast.loading('PDF를 업로드하고 문서를 등록하는 중...');
+      const loadingId = toast.loading('PDF를 업로드하고 문서를 등록하는 중입니다...');
 
       try {
         const formData = new FormData();
@@ -250,11 +187,11 @@ export function Record() {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         setDocument(created);
-        toast.success('업로드 성공. 다음 단계인 마스킹과 파싱이 시작됩니다.', { id: loadingId });
+        toast.success('업로드가 완료되었습니다. 파싱을 시작합니다.', { id: loadingId });
         await startParse(created.id);
       } catch (error) {
         console.error('Upload flow failed:', error);
-        toast.error('업로드에 실패했습니다. 올바른 PDF 파일인지 확인 후 다시 시도해 주세요.', { id: loadingId });
+        toast.error('업로드에 실패했습니다. PDF 파일을 확인해 주세요.', { id: loadingId });
       } finally {
         setIsUploading(false);
       }
@@ -273,239 +210,150 @@ export function Record() {
   const maskingSummary = document?.parse_metadata?.masking;
   const pageFailures = document?.parse_metadata?.page_failures ?? [];
   const warnings = document?.parse_metadata?.warnings ?? [];
+  const stepItems = [
+    { id: 'upload', label: '업로드', description: '파일 등록', state: getStepState(document, 'upload') },
+    { id: 'masking', label: '마스킹', description: '개인정보 보호 처리', state: getStepState(document, 'masking') },
+    { id: 'parsing', label: '파싱', description: '텍스트/구조 분석', state: getStepState(document, 'parsing') },
+    { id: 'done', label: '진입 준비', description: '워크숍 이동 가능', state: canContinue ? 'done' : document?.status === 'failed' ? 'error' : 'pending' as 'done' | 'active' | 'pending' | 'error' },
+  ] as Array<{ id: string; label: string; description: string; state: 'done' | 'active' | 'pending' | 'error' }>;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-800">
-            {user?.displayName || (isGuestSession ? '게스트' : '학생')} 생기부 데이터 관리
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">
-            실제 생활기록부 PDF를 업로드하여 개인정보 마스킹을 거친 뒤 안전하게 저장하고 처리 과정을 추적합니다.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <label className="block text-xs font-extrabold uppercase tracking-[0.18em] text-slate-400">
-            목표 전공
-          </label>
-          <input
-            value={targetMajor}
-            onChange={(event) => setTargetMajor(event.target.value)}
-            placeholder="업로드할 문서의 목표 전공 정보를 입력해 주세요 (선택 사항)"
-            className="mt-2 w-full min-w-[280px] bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400"
-          />
-        </div>
-      </div>
+    <div className="mx-auto max-w-7xl space-y-6 py-4">
+      <PageHeader
+        eyebrow="기록 업로드"
+        title="학생부 PDF를 안전하게 처리합니다"
+        description="문서 업로드 후 개인정보 마스킹과 파싱 상태를 확인하고, 준비가 끝나면 워크숍으로 이어가세요."
+        evidence={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={document?.status === 'failed' ? 'danger' : document && SUCCESS_STATUSES.has(document.status) ? 'success' : 'active'}>
+              {document ? formatStatusLabel(document.status) : '업로드 대기'}
+            </StatusBadge>
+            {document ? <StatusBadge status="neutral">시도 {document.parse_attempts}회</StatusBadge> : null}
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1.05fr_0.95fr]">
-        <section className="space-y-6">
+      <StepIndicator items={stepItems} />
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <SectionCard title="문서 업로드" description="PDF 1개(최대 50MB) 업로드를 지원합니다." eyebrow="입력">
+          <Input
+            id="record-target-major"
+            label="목표 학과 (선택)"
+            value={targetMajor}
+            onChange={event => setTargetMajor(event.target.value)}
+            placeholder="예: 경영학과, 컴퓨터공학과"
+            hint="입력하면 문서 제목 및 워크숍 연계 정보에 반영됩니다."
+          />
+
           <div
             {...getRootProps()}
-            className={`cursor-pointer rounded-3xl border-2 border-dashed p-8 text-left transition-all clay-card ${
-              isDragActive
-                ? 'border-blue-400 bg-blue-50'
-                : 'border-blue-200 bg-white hover:border-blue-400 hover:bg-slate-50'
-            } ${isBusy ? 'cursor-not-allowed opacity-75' : ''}`}
+            className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-left transition-all ${
+              isDragActive ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-white'
+            } ${isBusy ? 'cursor-not-allowed opacity-70' : ''}`}
           >
-            <input {...getInputProps({ 'aria-label': 'Upload student record PDF' })} />
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <input {...getInputProps({ 'aria-label': '학생부 PDF 업로드' })} />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20">
-                  <FileUp size={30} />
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+                  <FileUp size={26} />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-extrabold text-slate-800">생활기록부 PDF 업로드</h2>
-                  <p className="mt-2 max-w-xl text-sm font-medium leading-6 text-slate-500">
-                    백엔드에서 먼저 문서 리소스를 생성한 뒤, 텍스트 파싱 및 청크 저장 전에 개인정보 마스킹을 적용합니다.
-                  </p>
+                  <h2 className="text-lg font-bold text-slate-900">PDF 업로드</h2>
+                  <p className="mt-1 text-sm font-medium leading-6 text-slate-600">여기에 파일을 드래그하거나 클릭해 선택하세요.</p>
                 </div>
               </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-                {isBusy ? '처리 진행 중' : '단일 PDF, 최대 50MB'}
-              </div>
+              <StatusBadge status={isBusy ? 'active' : 'neutral'}>{isBusy ? '처리 중' : '단일 PDF'}</StatusBadge>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <StepRow
-              title="1. 업로드 및 등록"
-              description="파일이 백엔드 저장소에 기록되고 문서 ID가 할당됩니다."
-              state={getStepState(document, 'upload')}
-            />
-            <StepRow
-              title="2. 개인정보 마스킹"
-              description="정규표현식 기반 필터링과 Presidio(가능한 경우)가 적용됩니다."
-              state={getStepState(document, 'masking')}
-            />
-            <StepRow
-              title="3. PDF 텍스트 파싱"
-              description="텍스트, 표, 청크 및 파싱 메타데이터가 상태와 함께 저장됩니다."
-              state={getStepState(document, 'parsing')}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SurfaceCard tone="muted" padding="sm">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">파일명</p>
+              <p className="mt-2 text-sm font-bold text-slate-700">{document?.original_filename || '-'}</p>
+            </SurfaceCard>
+            <SurfaceCard tone="muted" padding="sm">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">용량</p>
+              <p className="mt-2 text-sm font-bold text-slate-700">{formatBytes(document?.file_size_bytes ?? null)}</p>
+            </SurfaceCard>
+            <SurfaceCard tone="muted" padding="sm">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">페이지</p>
+              <p className="mt-2 text-sm font-bold text-slate-700">{document?.page_count ?? 0}p</p>
+            </SurfaceCard>
+            <SurfaceCard tone="muted" padding="sm">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">텍스트 조각</p>
+              <p className="mt-2 text-sm font-bold text-slate-700">{document?.parse_metadata?.chunk_count ?? 0}개</p>
+            </SurfaceCard>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`rounded-full border px-3 py-1 text-xs font-extrabold uppercase tracking-[0.16em] ${getStatusTone(document?.status ?? 'uploaded')}`}>
-                {document ? formatStatusLabel(document.status) : '대기 중'}
-              </span>
-              {document ? (
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                  시도 횟수: {document.parse_attempts}회
-                </span>
-              ) : null}
-              {document?.masking_status ? (
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                  마스킹 상태: {document.masking_status === 'masked' ? '완료' : document.masking_status}
-                </span>
-              ) : null}
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">파일명</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">{document?.original_filename || '파일 없음'}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">용량</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">{formatBytes(document?.file_size_bytes ?? null)}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">페이지 수</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">{document?.page_count ?? 0}p</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">데이터 조각</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">{document?.parse_metadata?.chunk_count ?? 0}개</p>
-              </div>
-            </div>
-
-            {document ? (
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => startParse(document.id)}
-                  disabled={!document.can_retry || isBusy}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <TimerReset size={16} />
-                  파싱 재시도
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/app/workshop/${document.project_id}?major=${encodeURIComponent(targetMajor.trim())}`)}
-                  disabled={!canContinue}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-extrabold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  워크숍 시작하기
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="space-y-6">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-800">마스킹 요약</h2>
-                <p className="text-sm font-medium text-slate-500">저장 및 인덱싱되는 모든 텍스트는 먼저 마스킹 과정을 거쳐야 합니다.</p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">적용 방법</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">
-                  {maskingSummary?.methods?.join(', ') || '대기 중'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">변환 횟수</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">{maskingSummary?.replacement_count ?? 0}회</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">보존된 표</p>
-                <p className="mt-2 text-sm font-bold text-slate-700">{document?.parse_metadata?.table_count ?? 0}개</p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">정규표현식 매칭 요약</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {Object.entries(maskingSummary?.pattern_hits ?? {}).length ? (
-                  Object.entries(maskingSummary?.pattern_hits ?? {}).map(([key, value]) => (
-                    <span
-                      key={key}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700"
-                    >
-                      {key}: {value}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm font-medium text-slate-500">기록된 정규표현식 매칭 결과가 없습니다.</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <FileText size={22} />
-              </div>
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-800">파싱 미리보기</h2>
-                <p className="text-sm font-medium text-slate-500">여기 표시되는 미리보기는 이미 마스킹 처리가 완료된 상태입니다.</p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm leading-6 text-slate-100">
-              <pre className="whitespace-pre-wrap break-words font-mono">
-                {previewText || '사용 가능한 파싱 텍스트가 아직 없습니다.'}
-              </pre>
-            </div>
-          </div>
-
-          {(warnings.length || pageFailures.length || document?.last_error) ? (
-            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
-              <div className="flex items-center gap-3">
-                <AlertTriangle size={20} className="text-amber-600" />
-                <h2 className="text-lg font-extrabold text-amber-900">경고 및 복구 상세 정보</h2>
-              </div>
-              <div className="mt-4 space-y-3 text-sm font-medium text-amber-900">
-                {document?.status === 'failed' && (
-                  <div className="mb-4 rounded-xl bg-white/50 p-4 ring-1 ring-amber-200">
-                    <p className="font-extrabold text-amber-600">💡 왜 실패했나요?</p>
-                    <ul className="mt-2 list-inside list-disc space-y-1.5 text-xs text-amber-800">
-                      <li>파일이 비밀번호로 보호되어 있어 내용을 읽을 수 없는 경우</li>
-                      <li>텍스트가 없는 이미지 전용 PDF인 경우 (OCR 필요)</li>
-                      <li>파일이 손상되었거나 지원되지 않는 PDF 버전인 경우</li>
-                    </ul>
-                  </div>
-                )}
-                {document?.last_error ? (
-                  <p className="rounded-lg bg-red-50 px-3 py-2 text-red-700 ring-1 ring-red-100">
-                    {document.last_error}
-                  </p>
-                ) : null}
-                {warnings.map((warning) => (
-                  <p key={warning}>{warning}</p>
-                ))}
-                {pageFailures.map((failure, index) => (
-                   <p key={`${failure.page_number ?? 'na'}-${index}`}>
-                     {failure.page_number ?? '?'}페이지: {failure.message || '알 수 없는 파싱 문제'}
-                   </p>
-                ))}
-              </div>
+          {document ? (
+            <div className="flex flex-wrap gap-2">
+              <SecondaryButton onClick={() => startParse(document.id)} disabled={!document.can_retry || isBusy}>
+                <TimerReset size={16} />
+                파싱 재시도
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => navigate(`/app/workshop/${document.project_id}?major=${encodeURIComponent(targetMajor.trim())}`)}
+                disabled={!canContinue}
+              >
+                워크숍으로 이동
+                <ArrowRight size={16} />
+              </PrimaryButton>
             </div>
           ) : null}
-        </section>
+        </SectionCard>
+
+        <div className="space-y-6">
+          <SectionCard title="마스킹 요약" description="개인정보 보호 처리 결과를 확인합니다." eyebrow="보안">
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <ShieldCheck size={18} className="mt-0.5 text-blue-700" />
+              <p className="text-sm font-medium leading-6 text-blue-900">
+                모든 텍스트는 파싱 전에 마스킹 규칙이 적용됩니다. 처리 방식과 패턴 매칭 결과를 아래에서 확인할 수 있습니다.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <SurfaceCard tone="muted" padding="sm">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">적용 방식</p>
+                <p className="mt-2 text-sm font-bold text-slate-700">{maskingSummary?.methods?.join(', ') || '대기 중'}</p>
+              </SurfaceCard>
+              <SurfaceCard tone="muted" padding="sm">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">치환 건수</p>
+                <p className="mt-2 text-sm font-bold text-slate-700">{maskingSummary?.replacement_count ?? 0}건</p>
+              </SurfaceCard>
+              <SurfaceCard tone="muted" padding="sm">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">표 보존</p>
+                <p className="mt-2 text-sm font-bold text-slate-700">{document?.parse_metadata?.table_count ?? 0}개</p>
+              </SurfaceCard>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="파싱 미리보기" description="마스킹 처리 후 텍스트 일부를 확인합니다." eyebrow="미리보기">
+            <SurfaceCard padding="sm" className="bg-slate-950 text-slate-100">
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-6">
+                {previewText || '아직 표시할 파싱 텍스트가 없습니다.'}
+              </pre>
+            </SurfaceCard>
+          </SectionCard>
+
+          {warnings.length || pageFailures.length || document?.last_error ? (
+            <SectionCard title="경고 및 오류" description="복구가 필요한 페이지 또는 파싱 경고를 확인합니다." eyebrow="확인 필요">
+              {document?.last_error ? <WorkflowNotice tone="danger" title="오류 메시지" description={document.last_error} /> : null}
+              {warnings.map(warning => (
+                <WorkflowNotice key={warning} tone="warning" title="파싱 경고" description={warning} />
+              ))}
+              {pageFailures.map((failure, index) => (
+                <WorkflowNotice
+                  key={`${failure.page_number ?? 'na'}-${index}`}
+                  tone="warning"
+                  title={`${failure.page_number ?? '?'} 페이지 오류`}
+                  description={failure.message || '상세 원인을 확인해 주세요.'}
+                />
+              ))}
+            </SectionCard>
+          ) : (
+            <WorkflowNotice tone="success" title="현재 경고/오류가 없습니다." />
+          )}
+        </div>
       </div>
     </div>
   );

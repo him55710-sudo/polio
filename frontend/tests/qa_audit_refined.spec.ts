@@ -17,7 +17,7 @@ test.describe('Uni Folia QA Audit - Refined', () => {
     
     // Check Navigation Links
     const navLinks = page.locator('nav a, header a');
-    const faqLink = navLinks.filter({ hasText: /FAQ/i });
+    const faqLink = navLinks.filter({ hasText: /FAQ|자주 묻는 질문/i });
     const contactLink = navLinks.filter({ hasText: /문의/i });
     await expect(faqLink.first()).toBeVisible();
     await expect(contactLink.first()).toBeVisible();
@@ -27,17 +27,15 @@ test.describe('Uni Folia QA Audit - Refined', () => {
 
   test('2. FAQ Page (/faq)', async ({ page }) => {
     await page.goto('/faq');
-    // The FAQ uses FaqAccordion component. Let's look for buttons inside it.
     const accordionButtons = page.locator('button[aria-expanded]');
+    await expect(accordionButtons.first()).toBeVisible();
     const count = await accordionButtons.count();
-    if (count > 0) {
-      console.log(`[INFO] Found ${count} FAQ accordion buttons`);
-      await accordionButtons.first().click();
-      // Check if it expanded (aria-expanded should change or content become visible)
-      await expect(accordionButtons.first()).toHaveAttribute('aria-expanded', 'true');
-    } else {
-      console.log('[WARN] No FAQ accordion buttons found. Check if page loaded correctly.');
-    }
+    console.log(`[INFO] Found ${count} FAQ accordion buttons`);
+
+    const firstAccordion = accordionButtons.first();
+    const beforeExpanded = await firstAccordion.getAttribute('aria-expanded');
+    await firstAccordion.click();
+    await expect(firstAccordion).toHaveAttribute('aria-expanded', beforeExpanded === 'true' ? 'false' : 'true');
     await page.screenshot({ path: 'screenshots/qa_faq_refined.png' });
   });
 
@@ -45,13 +43,13 @@ test.describe('Uni Folia QA Audit - Refined', () => {
     await page.goto('/contact');
     
     // Check Tab Switching
-    const partnershipTab = page.locator('button:has-text("협업/도입 문의")');
+    const partnershipTab = page.getByRole('tab', { name: '제휴 문의' });
     await partnershipTab.click();
-    await expect(page.locator('h2:has-text("학교·학원 단위")')).toBeVisible();
+    await expect(page.locator('h2:has-text("기관/제휴 문의")')).toBeVisible();
     console.log('[INFO] Tab switching to Partnership working');
 
     // Test validation on 1:1 Inquiry (default tab)
-    const supportTab = page.locator('button:has-text("1:1 문의")');
+    const supportTab = page.getByRole('tab', { name: '1:1 문의' });
     await supportTab.click();
     
     const submitBtn = page.locator('button:has-text("문의 보내기")');
@@ -67,7 +65,7 @@ test.describe('Uni Folia QA Audit - Refined', () => {
     
     // Check query string basic tab selection
     await page.goto('/contact?type=partnership');
-    await expect(partnershipTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '제휴 문의' })).toHaveAttribute('aria-selected', 'true');
     console.log('[INFO] Query string tab selection working');
 
     await page.screenshot({ path: 'screenshots/qa_contact_refined.png' });

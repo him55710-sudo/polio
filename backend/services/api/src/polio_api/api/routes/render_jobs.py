@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,7 @@ from polio_api.core.config import get_settings
 from polio_api.core.rate_limit import rate_limit
 from polio_api.core.security import ensure_resolved_within_base
 from polio_api.db.models.user import User
-from polio_api.schemas.render_job import RenderFormatInfo, RenderJobCreate, RenderJobRead
+from polio_api.schemas.render_job import RenderFormatInfo, RenderJobCreate, RenderJobRead, RenderTemplateInfo
 from polio_api.services.async_job_service import get_latest_job_for_resource, process_async_job
 from polio_api.services.project_service import get_project
 from polio_api.services.render_job_service import (
@@ -17,8 +17,10 @@ from polio_api.services.render_job_service import (
     create_render_job,
     get_render_format_catalog,
     get_render_job_for_owner,
+    get_render_template_catalog,
     list_render_jobs_for_owner,
 )
+from polio_domain.enums import RenderFormat
 from polio_shared.paths import get_export_root, resolve_project_path
 
 router = APIRouter(prefix="/render-jobs")
@@ -39,6 +41,13 @@ def list_render_formats_route() -> list[RenderFormatInfo]:
     return get_render_format_catalog()
 
 
+@router.get("/templates", response_model=list[RenderTemplateInfo])
+def list_render_templates_route(
+    render_format: RenderFormat | None = Query(default=None),
+) -> list[RenderTemplateInfo]:
+    return get_render_template_catalog(render_format)
+
+
 @router.post("", response_model=RenderJobRead, status_code=status.HTTP_201_CREATED)
 def create_render_job_route(
     payload: RenderJobCreate,
@@ -49,7 +58,10 @@ def create_render_job_route(
     project = get_project(db, payload.project_id, owner_user_id=current_user.id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project or draft not found.")
-    job = create_render_job(db, payload)
+    try:
+        job = create_render_job(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project or draft not found.")
     return RenderJobRead.model_validate(build_render_job_payload(db, job))

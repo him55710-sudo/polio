@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from polio_api.core.config import get_settings
 from polio_api.db.models.upload_asset import UploadAsset
 from polio_api.services.document_service import ensure_document_placeholder, ingest_upload_asset, upload_supports_ingest
-from polio_shared.paths import find_project_root, get_upload_root, slugify
+from polio_shared.paths import get_upload_root, slugify, to_stored_path
 from polio_domain.enums import UploadStatus
 
 
@@ -48,7 +48,7 @@ async def store_upload(
     target_path = project_dir / filename
 
     target_path.write_bytes(contents)
-    relative_path = str(target_path.relative_to(find_project_root()))
+    relative_path = to_stored_path(target_path)
 
     asset = UploadAsset(
         project_id=project_id,

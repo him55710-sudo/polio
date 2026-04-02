@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 import html
+from pathlib import Path
 import re
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from polio_render.formats.base import BaseRenderer
 from polio_render.markdown import markdown_lines_to_bullets, split_markdown_sections
 from polio_render.models import RenderArtifact, RenderBuildContext
-from polio_shared.paths import find_project_root
+from polio_render.template_registry import build_provenance_appendix_lines
+from polio_shared.paths import find_project_root, to_stored_path
 
 
 class HwpxRenderer(BaseRenderer):
@@ -20,7 +21,7 @@ class HwpxRenderer(BaseRenderer):
         output_path = self.prepare_output_path(context)
         message = self._render_hwpx(context, output_path)
 
-        relative_path = str(output_path.relative_to(find_project_root()))
+        relative_path = to_stored_path(output_path)
         return RenderArtifact(
             absolute_path=str(output_path),
             relative_path=relative_path,
@@ -109,9 +110,11 @@ class HwpxRenderer(BaseRenderer):
         return xml
 
     def _build_paragraph_lines(self, context: RenderBuildContext) -> list[tuple[str, bool]]:
+        template = context.resolve_template()
         lines: list[tuple[str, bool]] = [
             (context.project_title, False),
             (context.draft_title, False),
+            (template.label, False),
             (f"Requested by: {context.requested_by or 'anonymous'}", False),
             ("", False),
         ]
@@ -132,22 +135,25 @@ class HwpxRenderer(BaseRenderer):
         return trimmed[:40]
 
     def _build_authenticity_appendix(self, context: RenderBuildContext) -> list[tuple[str, bool]]:
-        log_lines = [line.strip() for line in context.authenticity_log_lines if line.strip()]
+        template = context.resolve_template()
+        policy = context.export_policy
+        if not policy.include_provenance_appendix or not template.supports_provenance_appendix:
+            return []
+
         appendix_lines: list[tuple[str, bool]] = [
-            ("부록: Poli Research Log", True),
-            (
-                "본 문서는 AI의 단순 생성이 아닌, 학생이 직접 KCI 논문을 탐색하고 시뮬레이션을 수행한 결과물임을 증명합니다.",
-                False,
-            ),
+            ("Provenance Appendix", True),
+            ("This appendix keeps the export submission-friendly while preserving the evidence basis.", False),
         ]
-
-        if not log_lines:
-            appendix_lines.append(("아직 저장된 핵심 디스커션 프롬프트가 없습니다. 워크숍 대화를 2~3회 이상 진행하면 이 영역이 채워집니다.", False))
-            return appendix_lines
-
-        for index, prompt in enumerate(log_lines[-3:], start=1):
-            appendix_lines.append((f"핵심 디스커션 {index}: {prompt}", False))
-
+        appendix_lines.extend(
+            (line, False)
+            for line in build_provenance_appendix_lines(
+                evidence_map=context.evidence_map,
+                authenticity_log_lines=context.authenticity_log_lines,
+                hide_internal=policy.hide_internal_provenance_on_final_export,
+                max_evidence_items=4,
+                max_authenticity_notes=3,
+            )
+        )
         return appendix_lines
 
     def _build_additional_paragraph(self, text: str, paragraph_id: int, *, page_break: bool = False) -> str:

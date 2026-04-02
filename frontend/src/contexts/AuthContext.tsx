@@ -10,6 +10,8 @@ import {
   signOut,
 } from 'firebase/auth';
 import { auth, googleProvider, isFirebaseConfigured, isGuestModeAllowed } from '../lib/firebase';
+import { api } from '../lib/api';
+import { readGuestProfile } from '../lib/guestProfile';
 
 interface AuthContextType {
   user: User | null;
@@ -18,6 +20,8 @@ interface AuthContextType {
   guestModeAvailable: boolean;
   isAuthenticated: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithKakao: () => Promise<void>;
+  signInWithNaver: () => Promise<void>;
   signInAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -75,11 +79,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         if (guestModeAvailable && savedGuestSession) {
           setIsGuestSession(true);
+          const guestProfile = readGuestProfile();
+          if (guestProfile) {
+            useAuthStore.getState().setUser(guestProfile);
+          } else {
+            useAuthStore.getState().setUser(null);
+          }
         } else {
           setIsGuestSession(false);
           localStorage.removeItem(GUEST_SESSION_KEY);
+          useAuthStore.getState().setUser(null);
         }
-        useAuthStore.getState().setUser(null);
       }
       setLoading(false);
     });
@@ -99,6 +109,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await signInWithRedirect(auth, googleProvider);
         return;
       }
+      throw error;
+    }
+  };
+
+  const signInWithKakao = async () => {
+    try {
+      const response = await api.post<{ authorize_url: string }>('/api/v1/auth/social/prepare', {
+        provider: 'kakao',
+      });
+      window.location.href = response.authorize_url;
+    } catch (error) {
+      console.error('Kakao auth prepare failed:', error);
+      throw error;
+    }
+  };
+
+  const signInWithNaver = async () => {
+    try {
+      const response = await api.post<{ authorize_url: string }>('/api/v1/auth/social/prepare', {
+        provider: 'naver',
+      });
+      window.location.href = response.authorize_url;
+    } catch (error) {
+      console.error('Naver auth prepare failed:', error);
       throw error;
     }
   };
@@ -153,6 +187,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         guestModeAvailable,
         isAuthenticated,
         signInWithGoogle,
+        signInWithKakao,
+        signInWithNaver,
         signInAsGuest,
         logout,
       }}

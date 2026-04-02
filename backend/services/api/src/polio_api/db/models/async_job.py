@@ -11,7 +11,7 @@ from polio_domain.enums import AsyncJobStatus
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc)
 
 
 class AsyncJob(Base):
@@ -32,6 +32,8 @@ class AsyncJob(Base):
     max_retries: Mapped[int] = mapped_column(Integer, default=2)
     failure_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
     failure_history: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
+    progress_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    progress_message: Mapped[str | None] = mapped_column(Text(), nullable=True)
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

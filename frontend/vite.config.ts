@@ -6,11 +6,15 @@ import { visualizer } from 'rollup-plugin-visualizer';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const shouldAnalyzeBundle = env.ANALYZE === 'true';
   return {
-    plugins: [react(), tailwindcss(), visualizer({ open: false, filename: 'stats.html', gzipSize: true, brotliSize: true })],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-    },
+    plugins: [
+      react(),
+      tailwindcss(),
+      ...(shouldAnalyzeBundle
+        ? [visualizer({ open: false, filename: 'stats.html', gzipSize: true, brotliSize: true })]
+        : []),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 from threading import Thread
@@ -26,7 +27,7 @@ logger = logging.getLogger("polio.api.async_jobs")
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc)
 
 
 def create_async_job(
@@ -80,6 +81,9 @@ def dispatch_job_if_enabled(job_id: str) -> None:
     settings = get_settings()
     if not settings.async_jobs_inline_dispatch:
         return
+    if settings.serverless_runtime:
+        logger.info("Skipping background thread dispatch for %s in serverless runtime.", job_id)
+        return
 
     worker = Thread(
         target=run_async_job,
@@ -93,6 +97,31 @@ def dispatch_job_if_enabled(job_id: str) -> None:
 def run_async_job(job_id: str) -> AsyncJob | None:
     with SessionLocal() as db:
         return process_async_job(db, job_id)
+
+
+def _run_async_callable(func: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Run an async callable from sync code, even if this thread already has a running loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(func(*args, **kwargs))
+
+    result: dict[str, Any] = {}
+    error: dict[str, BaseException] = {}
+
+    def runner() -> None:
+        try:
+            result["value"] = asyncio.run(func(*args, **kwargs))
+        except BaseException as exc:  # noqa: BLE001
+            error["value"] = exc
+
+    worker = Thread(target=runner, daemon=True, name="polio-inline-async")
+    worker.start()
+    worker.join()
+
+    if "value" in error:
+        raise error["value"]
+    return result.get("value")
 
 
 def process_async_job(db: Session, job_id: str) -> AsyncJob | None:
@@ -264,17 +293,14 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
         )
         return
     if job.job_type == AsyncJobType.DIAGNOSIS.value:
-        import asyncio
-
-        asyncio.run(
-            run_diagnosis_run(
-                db,
-                run_id=str(payload.get("run_id") or job.resource_id),
-                project_id=str(payload.get("project_id") or job.project_id or ""),
-                owner_user_id=str(payload.get("owner_user_id") or ""),
-                fallback_target_university=_opt_str(payload.get("fallback_target_university")),
-                fallback_target_major=_opt_str(payload.get("fallback_target_major")),
-            )
+        _run_async_callable(
+            run_diagnosis_run,
+            db,
+            run_id=str(payload.get("run_id") or job.resource_id),
+            project_id=str(payload.get("project_id") or job.project_id or ""),
+            owner_user_id=str(payload.get("owner_user_id") or ""),
+            fallback_target_university=_opt_str(payload.get("fallback_target_university")),
+            fallback_target_major=_opt_str(payload.get("fallback_target_major")),
         )
         return
     raise ValueError(f"Unsupported async job type: {job.job_type}")

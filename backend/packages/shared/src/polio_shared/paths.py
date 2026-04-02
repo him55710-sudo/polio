@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 
@@ -23,7 +24,21 @@ def find_project_root() -> Path:
     raise RuntimeError("Could not find the polio-backend project root.")
 
 
+def _get_storage_override() -> Path | None:
+    configured = os.getenv("POLIO_STORAGE_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+
+    if os.getenv("VERCEL") == "1":
+        return Path("/tmp/polio")
+
+    return None
+
+
 def get_storage_root() -> Path:
+    override = _get_storage_override()
+    if override is not None:
+        return override
     return find_project_root() / "storage"
 
 
@@ -40,7 +55,22 @@ def get_runtime_root() -> Path:
 
 
 def get_tmp_root() -> Path:
+    override = _get_storage_override()
+    if override is not None:
+        return override / "tmp"
     return find_project_root() / "tmp"
+
+
+def resolve_runtime_path(value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+
+    if path.parts and path.parts[0] == "storage":
+        return get_storage_root().joinpath(*path.parts[1:])
+    if path.parts and path.parts[0] == "tmp":
+        return get_tmp_root().joinpath(*path.parts[1:])
+    return find_project_root().joinpath(*path.parts)
 
 
 def ensure_app_directories() -> None:
@@ -49,10 +79,7 @@ def ensure_app_directories() -> None:
 
 
 def resolve_project_path(value: str | Path) -> Path:
-    path = Path(value)
-    if path.is_absolute():
-        return path
-    return find_project_root() / path
+    return resolve_runtime_path(value)
 
 
 def resolve_stored_path(stored_path: str) -> Path:
@@ -60,8 +87,16 @@ def resolve_stored_path(stored_path: str) -> Path:
     if path.is_absolute():
         return path
     if path.parts and path.parts[0] == "storage":
-        return find_project_root() / path
+        return resolve_runtime_path(path)
     return get_storage_root() / path
+
+
+def to_stored_path(value: str | Path) -> str:
+    path = Path(value)
+    try:
+        return str(path.relative_to(find_project_root()))
+    except ValueError:
+        return str(path)
 
 
 def slugify(value: str) -> str:

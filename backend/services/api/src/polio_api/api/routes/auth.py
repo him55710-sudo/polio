@@ -23,6 +23,7 @@ class SocialProviderPrepareRequest(BaseModel):
 class SocialProviderPrepareResponse(BaseModel):
     provider: Literal["kakao", "naver"]
     state: str
+    authorize_url: str
     expires_in: int
 
 
@@ -67,9 +68,17 @@ def prepare_social_login(
         secret=state_secret,
         client_binding=client_binding,
     )
+
+    # Build authorize url
+    if payload.provider == "kakao":
+        authorize_url = f"https://kauth.kakao.com/oauth/authorize?client_id={settings.kakao_client_id}&redirect_uri={settings.kakao_redirect_uri}&response_type=code&state={state}"
+    else:
+        authorize_url = f"https://nid.naver.com/oauth2.0/authorize?client_id={settings.naver_client_id}&redirect_uri={settings.naver_redirect_uri}&response_type=code&state={state}"
+
     return SocialProviderPrepareResponse(
         provider=payload.provider,
         state=state,
+        authorize_url=authorize_url,
         expires_in=settings.auth_social_state_ttl_seconds,
     )
 

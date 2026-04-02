@@ -50,6 +50,36 @@ const defaultArchives: ArchiveCardItem[] = [
     contentMarkdown: '# 영어 심화 보고서\n\nAI 번역기의 구조적 한계 분석 초안입니다.',
     projectId: null,
   },
+  {
+    id: 'seed-4',
+    title: '건축과 사회 - 기후 변화에 대응하는 미래 주거 구조',
+    subject: '건축/사회',
+    createdAt: '2026-03-15T10:00:00.000Z',
+    emoji: '🏡',
+    color: 'bg-amber-100',
+    contentMarkdown: '# 건축 탐구 보고서\n\n지속 가능한 건축 자재와 제로 에너지 하우스의 상관관계 분석입니다.',
+    projectId: null,
+  },
+  {
+    id: 'seed-5',
+    title: '의학 입문 - 암 치료를 위한 면역 항암제의 원리',
+    subject: '의학',
+    createdAt: '2026-03-22T14:00:00.000Z',
+    emoji: '🩺',
+    color: 'bg-indigo-100',
+    contentMarkdown: '# 의학 탐구 보고서\n\nT-세포 활성화를 통한 면역 항암 요법의 최신 트렌드를 정리했습니다.',
+    projectId: null,
+  },
+  {
+    id: 'seed-6',
+    title: '환경공학 - 폐플라스틱 업사이클링의 경제성 분석',
+    subject: '환경',
+    createdAt: '2026-03-28T16:30:00.000Z',
+    emoji: '♻️',
+    color: 'bg-teal-100',
+    contentMarkdown: '# 환경 보고서\n\n자원 순환 모델 확립을 위한 업사이클링 공정의 비용 대비 편익 분석 초안입니다.',
+    projectId: null,
+  },
 ];
 
 function mapStoredItemToCard(item: StoredArchiveItem): ArchiveCardItem {
@@ -122,9 +152,9 @@ export function Archive() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid auto-rows-fr grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
-          <div key={item.id} className="group relative flex flex-col overflow-hidden clay-card">
+          <div key={item.id} className="group flex h-full min-h-[26rem] flex-col overflow-hidden clay-card">
             <div className={`relative w-full overflow-hidden rounded-t-3xl pt-[75%] ${item.color}`}>
               <div className="absolute inset-0 opacity-20 mix-blend-overlay bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]" />
               <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-7xl drop-shadow-xl transition-transform duration-500 group-hover:scale-110">
@@ -139,22 +169,22 @@ export function Archive() {
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
               </div>
-              <h3 className="mb-4 line-clamp-2 text-lg font-extrabold leading-snug text-slate-800">{item.title}</h3>
-            </div>
+              <h3 className="line-clamp-2 min-h-[3.5rem] text-lg font-extrabold leading-snug text-slate-800">{item.title}</h3>
 
-            <div className="absolute bottom-0 left-0 flex w-full translate-y-full gap-2 border-t border-slate-100 bg-white/90 p-4 backdrop-blur-md transition-transform duration-300 group-hover:translate-y-0">
-              <button
-                onClick={() => handleDownload(item, 'hwpx')}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-500 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-600"
-              >
-                <FileText size={16} /> HWPX
-              </button>
-              <button
-                onClick={() => handleDownload(item, 'pdf')}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-900"
-              >
-                <Download size={16} /> PDF
-              </button>
+              <div className="mt-auto flex gap-2 border-t border-slate-100 pt-4">
+                <button
+                  onClick={() => handleDownload(item, 'hwpx')}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-500 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-600"
+                >
+                  <FileText size={16} /> HWPX
+                </button>
+                <button
+                  onClick={() => handleDownload(item, 'pdf')}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-900"
+                >
+                  <Download size={16} /> PDF
+                </button>
+              </div>
             </div>
           </div>
         ))}

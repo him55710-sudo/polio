@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from polio_api.core.database import Base
@@ -21,6 +21,9 @@ class RenderJob(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     draft_id: Mapped[str] = mapped_column(ForeignKey("drafts.id", ondelete="CASCADE"))
     render_format: Mapped[str] = mapped_column(String(16))
+    template_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    include_provenance_appendix: Mapped[bool] = mapped_column(Boolean, default=False)
+    hide_internal_provenance_on_final_export: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(32), default=RenderStatus.QUEUED.value)
     output_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     result_message: Mapped[str | None] = mapped_column(Text(), nullable=True)

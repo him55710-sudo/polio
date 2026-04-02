@@ -53,6 +53,8 @@ class RenderFormat(StrEnum):
     PDF = "pdf"
     PPTX = "pptx"
     HWPX = "hwpx"
+    PORTFOLIO_DEV = "portfolio_dev"
+    PORTFOLIO_ARCH = "portfolio_arch"
 
 
 class RenderStatus(StrEnum):

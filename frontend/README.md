@@ -21,9 +21,18 @@ npm run build
 
 - Start from [`frontend/.env.example`](./.env.example).
 - `VITE_API_URL` should point to the backend API, usually `http://localhost:8000`.
+- Set `VITE_SYNC_API_JOBS=true` when the backend is deployed on a serverless runtime without a separate background worker.
 - Firebase variables are optional for local development.
 - Local guest mode is auto-enabled only during local development.
 - In a non-dev environment, guest mode stays off unless `VITE_ALLOW_GUEST_MODE=true` is set explicitly.
+
+## Vercel
+
+Use a separate Vercel project whose Root Directory is `frontend/`.
+
+- Set `VITE_API_URL` to the backend deployment URL. The frontend now warns when it falls back to the current origin without an explicit API URL.
+- If the backend is also on Vercel and you are not running a separate worker, set `VITE_SYNC_API_JOBS=true` so parse and diagnosis requests use the synchronous API paths.
+- Add the deployed frontend domain to Firebase Authorized domains and to the backend `CORS_ORIGINS` list.
 
 ## Firebase Console Checklist
 

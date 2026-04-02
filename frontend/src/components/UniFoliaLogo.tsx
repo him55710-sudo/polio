@@ -1,10 +1,5 @@
 import React from 'react';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-function cn(...inputs: (string | undefined | null | false)[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from '../lib/cn';
 
 type LogoSize = 'sm' | 'md' | 'lg';
 type LogoTone = 'light' | 'dark';

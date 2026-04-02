@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 import re
 from typing import Annotated
 from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
-from polio_shared.paths import find_project_root
+from polio_shared.paths import find_project_root, resolve_runtime_path
 
 
 class Settings(BaseSettings):
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     async_job_stale_after_seconds: int = 300
     async_jobs_inline_dispatch: bool = True
     allow_inline_job_processing: bool = True
+    serverless_runtime: bool = Field(default_factory=lambda: os.getenv("VERCEL") == "1")
     
     # Social Auth
     kakao_client_id: str = "DUMMY_KAKAO_ID"
@@ -90,6 +92,11 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     ollama_base_url: str = "http://localhost:11434/v1"
     ollama_model: str = "llama3.1"
+    ollama_timeout_seconds: float = 90.0
+    ollama_keep_alive: str = "30m"
+    ollama_num_ctx: int = 2048
+    ollama_num_predict: int = 512
+    ollama_num_thread: int | None = None
 
     model_config = SettingsConfigDict(
         env_file=(
@@ -137,9 +144,10 @@ class Settings(BaseSettings):
     def normalize_sqlite_path(cls, value: str) -> str:
         prefix = "sqlite:///./"
         if value.startswith(prefix):
-            relative_path = value.removeprefix(prefix)
-            absolute_path = (find_project_root() / relative_path).as_posix()
-            return f"sqlite:///{absolute_path}"
+            relative_path, separator, query = value.removeprefix(prefix).partition("?")
+            absolute_path = resolve_runtime_path(relative_path).as_posix()
+            suffix = f"{separator}{query}" if separator else ""
+            return f"sqlite:///{absolute_path}{suffix}"
         return value
 
     @model_validator(mode="after")

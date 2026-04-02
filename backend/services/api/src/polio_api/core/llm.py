@@ -88,12 +88,40 @@ class GeminiClient(LLMClient):
 
 
 class OllamaClient(LLMClient):
-    def __init__(self, base_url: str, model: str):
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        request_timeout_seconds: float = 90.0,
+        keep_alive: str | None = "30m",
+        num_ctx: int | None = 2048,
+        num_predict: int | None = 512,
+        num_thread: int | None = None,
+    ):
         self.client = AsyncOpenAI(
             base_url=base_url,
             api_key="ollama",  # Required but not used for local Ollama
+            timeout=request_timeout_seconds,
+            max_retries=1,
         )
         self.model = model
+        self.keep_alive = keep_alive
+        self.options: dict[str, int] = {}
+        if num_ctx is not None:
+            self.options["num_ctx"] = num_ctx
+        if num_predict is not None:
+            self.options["num_predict"] = num_predict
+        if num_thread is not None:
+            self.options["num_thread"] = num_thread
+
+    def _extra_body(self) -> dict[str, Any] | None:
+        payload: dict[str, Any] = {}
+        if self.keep_alive:
+            payload["keep_alive"] = self.keep_alive
+        if self.options:
+            payload["options"] = self.options
+        return payload or None
 
     async def generate_json(
         self,
@@ -112,6 +140,7 @@ class OllamaClient(LLMClient):
             messages=messages,
             temperature=temperature,
             response_format={"type": "json_object"},
+            extra_body=self._extra_body(),
         )
         
         content = response.choices[0].message.content
@@ -135,6 +164,7 @@ class OllamaClient(LLMClient):
             messages=messages,
             temperature=temperature,
             stream=True,
+            extra_body=self._extra_body(),
         )
         async for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
@@ -147,6 +177,11 @@ def get_llm_client() -> LLMClient:
         return OllamaClient(
             base_url=settings.ollama_base_url,
             model=settings.ollama_model,
+            request_timeout_seconds=settings.ollama_timeout_seconds,
+            keep_alive=settings.ollama_keep_alive,
+            num_ctx=settings.ollama_num_ctx,
+            num_predict=settings.ollama_num_predict,
+            num_thread=settings.ollama_num_thread,
         )
     api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key or api_key == "DUMMY_KEY":

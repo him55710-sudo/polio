@@ -9,7 +9,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from polio_render.formats.base import BaseRenderer
 from polio_render.markdown import split_markdown_sections
 from polio_render.models import RenderArtifact, RenderBuildContext
-from polio_shared.paths import find_project_root
+from polio_render.template_registry import build_provenance_appendix_lines
+from polio_shared.paths import to_stored_path
 
 
 class PdfRenderer(BaseRenderer):
@@ -20,7 +21,7 @@ class PdfRenderer(BaseRenderer):
         output_path = self.prepare_output_path(context)
         self._build_pdf(context, output_path)
 
-        relative_path = str(output_path.relative_to(find_project_root()))
+        relative_path = to_stored_path(output_path)
         message = "PDF renderer completed with ReportLab."
         return RenderArtifact(
             absolute_path=str(output_path),
@@ -29,6 +30,7 @@ class PdfRenderer(BaseRenderer):
         )
 
     def _build_pdf(self, context: RenderBuildContext, output_path) -> None:
+        template = context.resolve_template()
         doc = SimpleDocTemplate(
             str(output_path),
             pagesize=A4,
@@ -41,6 +43,7 @@ class PdfRenderer(BaseRenderer):
         )
 
         styles = getSampleStyleSheet()
+        accent = colors.HexColor(template.preview.accent_color)
         title_style = ParagraphStyle(
             "PolioTitle",
             parent=styles["Title"],
@@ -50,6 +53,15 @@ class PdfRenderer(BaseRenderer):
             textColor=colors.HexColor("#0f172a"),
             alignment=TA_LEFT,
             spaceAfter=10,
+        )
+        template_style = ParagraphStyle(
+            "PolioTemplate",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=12,
+            textColor=accent,
+            spaceAfter=8,
         )
         meta_style = ParagraphStyle(
             "PolioMeta",
@@ -66,7 +78,7 @@ class PdfRenderer(BaseRenderer):
             fontName="Helvetica-Bold",
             fontSize=14,
             leading=18,
-            textColor=colors.HexColor("#1d4ed8"),
+            textColor=accent,
             spaceBefore=10,
             spaceAfter=8,
         )
@@ -79,11 +91,22 @@ class PdfRenderer(BaseRenderer):
             textColor=colors.black,
             spaceAfter=6,
         )
+        appendix_style = ParagraphStyle(
+            "PolioAppendix",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#334155"),
+            spaceAfter=4,
+        )
 
         story = [
             Paragraph(context.project_title, title_style),
+            Paragraph(template.label.upper(), template_style),
             Paragraph(f"Draft: {context.draft_title}", meta_style),
             Paragraph(f"Requested by: {context.requested_by or 'anonymous'}", meta_style),
+            Paragraph(f"Template intent: {template.description}", meta_style),
             Spacer(1, 12),
         ]
 
@@ -101,20 +124,41 @@ class PdfRenderer(BaseRenderer):
                         story.append(Paragraph(text, body_style))
             story.append(Spacer(1, 6))
 
+        appendix_lines = self._build_provenance_appendix(context)
+        if appendix_lines:
+            story.append(Spacer(1, 12))
+            story.append(Paragraph("Provenance Appendix", heading_style))
+            for line in appendix_lines:
+                story.append(Paragraph(self._escape_text(line), appendix_style))
+
         doc.build(story, onFirstPage=self._draw_footer, onLaterPages=self._draw_footer)
+
+    @staticmethod
+    def _build_provenance_appendix(context: RenderBuildContext) -> list[str]:
+        template = context.resolve_template()
+        policy = context.export_policy
+        if not policy.include_provenance_appendix or not template.supports_provenance_appendix:
+            return []
+
+        return [
+            "This appendix summarizes the evidence basis used for the export.",
+            *build_provenance_appendix_lines(
+                evidence_map=context.evidence_map,
+                authenticity_log_lines=context.authenticity_log_lines,
+                hide_internal=policy.hide_internal_provenance_on_final_export,
+                max_evidence_items=5,
+                max_authenticity_notes=3,
+            ),
+        ]
 
     @staticmethod
     def _draw_footer(canvas, doc) -> None:
         canvas.saveState()
         canvas.setFont("Helvetica", 9)
         canvas.setFillColor(colors.HexColor("#64748b"))
-        canvas.drawString(doc.leftMargin, 20, f"polio export • page {canvas.getPageNumber()}")
+        canvas.drawString(doc.leftMargin, 20, f"polio export - page {canvas.getPageNumber()}")
         canvas.restoreState()
 
     @staticmethod
     def _escape_text(value: str) -> str:
-        return (
-            value.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

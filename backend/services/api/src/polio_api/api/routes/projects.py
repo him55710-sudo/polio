@@ -12,12 +12,14 @@ from polio_api.schemas.user import UserStatsRead
 from polio_api.services.blueprint_service import create_blueprint_from_project_diagnosis
 from polio_api.services.document_service import list_documents_for_project
 from polio_api.services.project_service import create_project, get_project, list_project_discussion_log, list_projects
+from polio_api.services.render_job_service import load_render_support_payload
 from pydantic import BaseModel, Field
 
 # Try to import from the render service
 try:
-    from polio_render.formats.hwpx_renderer import HwpxRenderer
+    from polio_render.dispatcher import dispatch_render
     from polio_render.models import RenderBuildContext
+    from polio_render.template_registry import RenderExportPolicy, get_template
     from polio_domain.enums import RenderFormat
 except ImportError:
     # Path setup for local dev
@@ -28,8 +30,9 @@ except ImportError:
     sys.path.append(str(root / "services" / "render" / "src"))
     sys.path.append(str(root / "packages" / "domain" / "src"))
 
-    from polio_render.formats.hwpx_renderer import HwpxRenderer
+    from polio_render.dispatcher import dispatch_render
     from polio_render.models import RenderBuildContext
+    from polio_render.template_registry import RenderExportPolicy, get_template
     from polio_domain.enums import RenderFormat
 
 router = APIRouter()
@@ -235,9 +238,13 @@ def get_user_stats(
 
 class ExportRequest(BaseModel):
     content_markdown: str = Field(min_length=1, max_length=100000)
+    render_format: RenderFormat = RenderFormat.HWPX
+    template_id: str | None = Field(default=None, max_length=80)
+    include_provenance_appendix: bool = False
+    hide_internal_provenance_on_final_export: bool = True
 
 @router.post("/{project_id}/export")
-def export_project_hwpx(
+def export_project_document(
     project_id: str,
     payload: ExportRequest,
     db: Session = Depends(get_db),
@@ -248,25 +255,46 @@ def export_project_hwpx(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
-    renderer = HwpxRenderer()
+    try:
+        template = get_template(payload.template_id, render_format=payload.render_format)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    support_payload = load_render_support_payload(db, project.id)
     context = RenderBuildContext(
         project_id=project_id,
         project_title=project.title,
         draft_id=str(uuid.uuid4()),
-        draft_title=f"{project.target_major or 'General'} Research Report",
-        render_format=RenderFormat.HWPX,
+        draft_title=f"{template.label} Export",
+        render_format=payload.render_format,
         content_markdown=payload.content_markdown,
         requested_by=current_user.name,
         job_id=str(uuid.uuid4()),
+        visual_specs=list(support_payload["visual_specs"]),
+        math_expressions=list(support_payload["math_expressions"]),
+        evidence_map=dict(support_payload["evidence_map"]),
         authenticity_log_lines=list_project_discussion_log(project),
+        template_id=template.id,
+        export_policy=RenderExportPolicy(
+            include_provenance_appendix=payload.include_provenance_appendix,
+            hide_internal_provenance_on_final_export=payload.hide_internal_provenance_on_final_export,
+        ),
     )
 
     try:
-        artifact = renderer.render(context)
+        artifact = dispatch_render(context)
+        media_type = {
+            RenderFormat.HWPX: "application/vnd.hancom.hwpx",
+            RenderFormat.PDF: "application/pdf",
+            RenderFormat.PPTX: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }[payload.render_format]
         return FileResponse(
             path=artifact.absolute_path,
-            filename=f"Research_Report_{project_id}.hwpx",
-            media_type="application/vnd.hancom.hwpx"
+            filename=f"{template.id}_{project_id}.{payload.render_format.value}",
+            media_type=media_type,
         )
     except Exception as exc:
         logger.exception("Project export failed: %s", project_id)

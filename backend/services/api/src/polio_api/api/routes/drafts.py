@@ -11,8 +11,8 @@ from polio_api.api.deps import get_current_user, get_db
 from polio_api.core.rate_limit import rate_limit
 from polio_api.db.models.user import User
 from polio_api.core.llm import get_llm_client
-from polio_api.schemas.draft import DraftCreate, DraftRead
-from polio_api.services.draft_service import create_draft, get_draft, list_drafts_for_project
+from polio_api.schemas.draft import DraftCreate, DraftUpdate, DraftRead
+from polio_api.services.draft_service import create_draft, update_draft, get_draft, list_drafts_for_project
 from polio_api.services.prompt_registry import get_prompt_registry
 from polio_api.services.project_service import append_project_discussion_log, get_project
 
@@ -178,6 +178,26 @@ def get_draft_route(
     if not draft or draft.project_id != project_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found.")
     return DraftRead.model_validate(draft)
+
+
+@router.patch("/{project_id}/drafts/{draft_id}", response_model=DraftRead)
+def update_draft_route(
+    project_id: str,
+    draft_id: str,
+    payload: DraftUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DraftRead:
+    project = get_project(db, project_id, owner_user_id=current_user.id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    
+    draft = get_draft(db, draft_id)
+    if not draft or draft.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found.")
+    
+    updated = update_draft(db, draft_id, payload)
+    return DraftRead.model_validate(updated)
 
 
 @router.post("/{project_id}/chat/stream")

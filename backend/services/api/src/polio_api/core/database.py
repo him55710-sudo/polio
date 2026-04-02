@@ -95,6 +95,11 @@ def _apply_schema_evolution() -> None:
             "usage_note": "usage_note TEXT",
             "copyright_note": "copyright_note TEXT",
         },
+        "render_jobs": {
+            "template_id": "template_id VARCHAR(80)",
+            "include_provenance_appendix": "include_provenance_appendix BOOLEAN DEFAULT 0 NOT NULL",
+            "hide_internal_provenance_on_final_export": "hide_internal_provenance_on_final_export BOOLEAN DEFAULT 1 NOT NULL",
+        },
     }
 
     with engine.begin() as connection:

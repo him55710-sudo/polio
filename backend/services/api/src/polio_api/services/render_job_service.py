@@ -9,14 +9,47 @@ from polio_api.core.config import get_settings
 from polio_api.db.models.draft import Draft
 from polio_api.db.models.project import Project
 from polio_api.db.models.render_job import RenderJob
-from polio_api.schemas.render_job import RenderFormatInfo, RenderJobCreate
+from polio_api.schemas.render_job import (
+    RenderFormatInfo,
+    RenderJobCreate,
+    RenderTemplateInfo,
+    RenderTemplatePreviewInfo,
+)
 from polio_api.services.project_service import list_project_discussion_log
-from polio_domain.enums import AsyncJobType
-from polio_domain.enums import RenderFormat, RenderStatus
+from polio_domain.enums import AsyncJobType, RenderFormat, RenderStatus
 from polio_render.dispatcher import dispatch_render
 from polio_render.models import RenderBuildContext
+from polio_render.template_registry import (
+    RenderExportPolicy,
+    RenderTemplate,
+    get_default_template_id,
+    get_template,
+    list_templates,
+)
 
 logger = logging.getLogger("polio.api.render_jobs")
+
+
+def _serialize_template(template: RenderTemplate) -> RenderTemplateInfo:
+    return RenderTemplateInfo(
+        id=template.id,
+        label=template.label,
+        description=template.description,
+        supported_formats=list(template.supported_formats),
+        category=template.category,
+        section_schema=list(template.section_schema),
+        density=template.density,
+        visual_priority=template.visual_priority,
+        supports_provenance_appendix=template.supports_provenance_appendix,
+        recommended_for=list(template.recommended_for),
+        preview=RenderTemplatePreviewInfo(
+            accent_color=template.preview.accent_color,
+            surface_tone=template.preview.surface_tone,
+            cover_title=template.preview.cover_title,
+            preview_sections=list(template.preview.preview_sections),
+            thumbnail_hint=template.preview.thumbnail_hint,
+        ),
+    )
 
 
 def get_render_format_catalog() -> list[RenderFormatInfo]:
@@ -24,19 +57,30 @@ def get_render_format_catalog() -> list[RenderFormatInfo]:
         RenderFormatInfo(
             format=RenderFormat.PDF,
             implementation_level="reportlab",
-            description="Creates a styled PDF document with ReportLab.",
+            description="Creates a template-driven PDF export with grounded section styling.",
+            default_template_id=get_default_template_id(RenderFormat.PDF),
         ),
         RenderFormatInfo(
             format=RenderFormat.PPTX,
             implementation_level="python-pptx",
-            description="Creates a real PowerPoint presentation with section-based slides.",
+            description="Creates a template-driven presentation with section-based slides.",
+            default_template_id=get_default_template_id(RenderFormat.PPTX),
         ),
         RenderFormatInfo(
             format=RenderFormat.HWPX,
             implementation_level="template",
-            description="Creates an HWPX package by filling a bundled skeleton template.",
+            description="Creates a conservative HWPX package for school-friendly submission.",
+            default_template_id=get_default_template_id(RenderFormat.HWPX),
         ),
     ]
+
+
+def get_render_template_catalog(render_format: RenderFormat | None = None) -> list[RenderTemplateInfo]:
+    return [_serialize_template(template) for template in list_templates(render_format=render_format)]
+
+
+def _resolve_selected_template(*, render_format: RenderFormat, template_id: str | None) -> RenderTemplate:
+    return get_template(template_id, render_format=render_format)
 
 
 def create_render_job(db: Session, payload: RenderJobCreate) -> RenderJob | None:
@@ -46,15 +90,24 @@ def create_render_job(db: Session, payload: RenderJobCreate) -> RenderJob | None
     if not project or not draft or draft.project_id != project.id:
         return None
 
+    template = _resolve_selected_template(
+        render_format=payload.render_format,
+        template_id=payload.template_id,
+    )
+
     job = RenderJob(
         project_id=payload.project_id,
         draft_id=payload.draft_id,
         render_format=payload.render_format.value,
+        template_id=template.id,
+        include_provenance_appendix=payload.include_provenance_appendix,
+        hide_internal_provenance_on_final_export=payload.hide_internal_provenance_on_final_export,
         requested_by=payload.requested_by,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
+
     from polio_api.services.async_job_service import create_async_job
 
     create_async_job(
@@ -100,6 +153,34 @@ def get_next_queued_render_job(db: Session) -> RenderJob | None:
     return db.scalars(stmt).first()
 
 
+def load_render_support_payload(db: Session, project_id: str) -> dict[str, object]:
+    from polio_api.db.models.workshop import DraftArtifact, WorkshopSession
+
+    stmt = (
+        select(DraftArtifact)
+        .join(WorkshopSession, WorkshopSession.id == DraftArtifact.session_id)
+        .where(WorkshopSession.project_id == project_id)
+        .order_by(DraftArtifact.created_at.desc())
+    )
+    artifact = db.scalars(stmt).first()
+    if artifact is None:
+        return {
+            "visual_specs": [],
+            "math_expressions": [],
+            "evidence_map": {},
+        }
+
+    return {
+        "visual_specs": [
+            item for item in (artifact.visual_specs or []) if item.get("approval_status") == "approved"
+        ],
+        "math_expressions": [
+            item for item in (artifact.math_expressions or []) if item.get("approval_status") == "approved"
+        ],
+        "evidence_map": dict(artifact.evidence_map or {}),
+    }
+
+
 def process_render_job(db: Session, job_id: str) -> RenderJob | None:
     job = db.get(RenderJob, job_id)
     if not job:
@@ -110,26 +191,16 @@ def process_render_job(db: Session, job_id: str) -> RenderJob | None:
     db.refresh(job)
 
     try:
-        from polio_api.db.models.workshop import DraftArtifact
         draft = db.get(Draft, job.draft_id)
         project = db.get(Project, job.project_id)
         if not draft or not project:
             raise ValueError("Project or draft missing while processing render job.")
 
-        visual_specs = []
-        math_expressions = []
-        
-        # Check if this draft is linked to a workshop session for visuals
-        # Currently, workshop produces artifacts directly, but the render job path might refer to a Draft model.
-        # Since 'visual_specs' exist in 'DraftArtifact', we filter them if this draft was derived from a workshop.
-        stmt = select(DraftArtifact).where(DraftArtifact.id == draft.id).limit(1)
-        artifact = db.execute(stmt).scalars().first()
-        
-        if artifact:
-            # Filter ONLY approved items
-            visual_specs = [v for v in (artifact.visual_specs or []) if v.get("approval_status") == "approved"]
-            math_expressions = [m for m in (artifact.math_expressions or []) if m.get("approval_status") == "approved"]
-
+        template = _resolve_selected_template(
+            render_format=RenderFormat(job.render_format),
+            template_id=job.template_id,
+        )
+        support_payload = load_render_support_payload(db, project.id)
         context = RenderBuildContext(
             project_id=project.id,
             project_title=project.title,
@@ -139,16 +210,22 @@ def process_render_job(db: Session, job_id: str) -> RenderJob | None:
             content_markdown=draft.content_markdown,
             requested_by=job.requested_by,
             job_id=job.id,
-            visual_specs=visual_specs,
-            math_expressions=math_expressions,
+            visual_specs=list(support_payload["visual_specs"]),
+            math_expressions=list(support_payload["math_expressions"]),
+            evidence_map=dict(support_payload["evidence_map"]),
             authenticity_log_lines=list_project_discussion_log(project),
+            template_id=template.id,
+            export_policy=RenderExportPolicy(
+                include_provenance_appendix=job.include_provenance_appendix,
+                hide_internal_provenance_on_final_export=job.hide_internal_provenance_on_final_export,
+            ),
         )
         artifact = dispatch_render(context)
 
         job.status = RenderStatus.COMPLETED.value
         job.output_path = artifact.relative_path
         job.result_message = artifact.message
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         logger.exception("Render job failed: %s", job.id)
         job.status = RenderStatus.FAILED.value
         job.result_message = "Render job failed. Review the draft content and retry."
@@ -162,18 +239,35 @@ def build_render_job_payload(db: Session, job: RenderJob) -> dict[str, object]:
     from polio_api.services.async_job_service import get_latest_job_for_resource
 
     settings = get_settings()
+    try:
+        template = _resolve_selected_template(
+            render_format=RenderFormat(job.render_format),
+            template_id=job.template_id,
+        )
+        template_label = template.label
+        template_id = template.id
+    except ValueError:
+        template_label = None
+        template_id = job.template_id
+
     async_job = get_latest_job_for_resource(db, resource_type="render_job", resource_id=job.id)
     return {
         "id": job.id,
         "project_id": job.project_id,
         "draft_id": job.draft_id,
         "render_format": job.render_format,
+        "template_id": template_id,
+        "template_label": template_label,
+        "include_provenance_appendix": job.include_provenance_appendix,
+        "hide_internal_provenance_on_final_export": job.hide_internal_provenance_on_final_export,
         "status": job.status,
         "download_url": f"{settings.api_prefix}/render-jobs/{job.id}/download" if job.output_path else None,
         "result_message": job.result_message,
         "requested_by": job.requested_by,
         "async_job_id": async_job.id if async_job else None,
         "async_job_status": async_job.status if async_job else None,
+        "progress_stage": async_job.progress_stage if async_job else None,
+        "progress_message": async_job.progress_message if async_job else None,
         "retry_count": async_job.retry_count if async_job else 0,
         "max_retries": async_job.max_retries if async_job else 0,
         "failure_reason": async_job.failure_reason if async_job else None,

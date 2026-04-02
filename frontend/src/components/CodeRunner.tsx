@@ -8,7 +8,8 @@ interface CodeRunnerProps {
 }
 
 export function CodeRunner({ code }: CodeRunnerProps) {
-  const { isLoading: isPyodideLoading, error: pyodideError, runPythonCode } = usePyodide();
+  const { isLoading: isPyodideLoading, error: pyodideError, runPythonCode, loadEngine } = usePyodide();
+  const [isEngineReady, setIsEngineReady] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
 
@@ -52,18 +53,35 @@ export function CodeRunner({ code }: CodeRunnerProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={handleRun}
-          disabled={isPyodideLoading || isRunning}
-          className="flex items-center gap-1.5 rounded-lg bg-[#34D399] px-3.5 py-1.5 text-[13px] font-extrabold text-slate-900 transition-all hover:bg-emerald-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.1),0_2px_4px_rgba(52,211,153,0.3)]"
-        >
-          {isRunning ? (
-            <Loader2 size={14} className="animate-spin text-slate-800" />
-          ) : (
-            <Play size={14} fill="currentColor" />
-          )}
-          실행하기
-        </button>
+      </div>
+
+      <div className="px-4 py-3 bg-slate-900/50 flex items-center justify-between">
+         <span className="text-xs text-slate-400 font-medium">To run this python script securely in your browser, initialize the engine.</span>
+         {!isEngineReady ? (
+           <button 
+             onClick={async () => {
+                await loadEngine();
+                setIsEngineReady(true);
+             }}
+             disabled={isPyodideLoading}
+             className="px-3 py-1.5 bg-blue-600/20 text-blue-400 font-bold text-xs rounded-lg hover:bg-blue-600/30 transition-colors"
+           >
+             {isPyodideLoading ? 'Initializing...' : 'Initialize Engine'}
+           </button>
+         ) : (
+           <button
+             onClick={handleRun}
+             disabled={isPyodideLoading || isRunning}
+             className="flex items-center gap-1.5 rounded-lg bg-[#34D399] px-3.5 py-1.5 text-[13px] font-extrabold text-slate-900 transition-all hover:bg-emerald-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.1),0_2px_4px_rgba(52,211,153,0.3)]"
+           >
+             {isRunning ? (
+               <Loader2 size={14} className="animate-spin text-slate-800" />
+             ) : (
+               <Play size={14} fill="currentColor" />
+             )}
+             Run Sandbox
+           </button>
+         )}
       </div>
 
       <div className="px-4 py-5 overflow-x-auto whitespace-pre font-mono text-[13px] leading-relaxed text-slate-300 hide-scrollbar">

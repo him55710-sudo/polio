@@ -2,9 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('has title', async ({ page }) => {
   await page.goto('/');
-  // Expect a title "to contain" a substring.
-  // Replace this with the actual title of your app
-  await expect(page).toHaveTitle(/Polio/i);
+  await expect(page).toHaveTitle(/Uni Folia|Polio/i);
 });
 
 test('get started link', async ({ page }) => {
