@@ -33,6 +33,18 @@ export function PublicLayout() {
   const location = useLocation();
   const { isAuthenticated } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  };
+
+  const handleDesktopNavClick = () => {
+    scrollToTop();
+  };
+
+  const handleMobileNavClick = () => {
+    scrollToTop();
+    setMenuOpen(false);
+  };
 
   const entry = useMemo(
     () => ({
@@ -46,19 +58,19 @@ export function PublicLayout() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <Link to="/">
+          <Link to="/" onClick={handleDesktopNavClick}>
             <UniFoliaLogo size="md" subtitle={null} />
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">
             {navItems.map(item => (
-              <PublicNavItem key={item.to} to={item.to} label={item.label} />
+              <PublicNavItem key={item.to} to={item.to} label={item.label} onClick={handleDesktopNavClick} />
             ))}
           </nav>
 
           <div className="hidden md:block">
             {location.pathname !== '/auth' ? (
-              <Link to={entry.href} className={buttonClassName({ variant: 'primary', size: 'md' })}>
+              <Link to={entry.href} onClick={handleDesktopNavClick} className={buttonClassName({ variant: 'primary', size: 'md' })}>
                 {entry.label}
                 <ArrowRight size={16} />
               </Link>
@@ -79,12 +91,12 @@ export function PublicLayout() {
           <div className="border-t border-slate-200 bg-white px-4 py-3 md:hidden">
             <div className="flex flex-col gap-1">
               {navItems.map(item => (
-                <PublicNavItem key={item.to} to={item.to} label={item.label} onClick={() => setMenuOpen(false)} />
+                <PublicNavItem key={item.to} to={item.to} label={item.label} onClick={handleMobileNavClick} />
               ))}
               {location.pathname !== '/auth' ? (
                 <Link
                   to={entry.href}
-                  onClick={() => setMenuOpen(false)}
+                  onClick={handleMobileNavClick}
                   className={buttonClassName({ variant: 'primary', size: 'md', fullWidth: true })}
                 >
                   {entry.label}
@@ -109,10 +121,10 @@ export function PublicLayout() {
               공개 페이지는 서비스 철학과 사용 흐름을 설명합니다. 앱 내부에서는 홍보 톤을 줄이고, 다음 행동 중심의 워크플로 UI로 전환됩니다.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link to="/faq" className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
+              <Link to="/faq" onClick={handleDesktopNavClick} className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
                 자주 묻는 질문
               </Link>
-              <Link to="/contact" className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
+              <Link to="/contact" onClick={handleDesktopNavClick} className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
                 문의하기
               </Link>
             </div>
@@ -133,10 +145,10 @@ export function PublicLayout() {
               </p>
             </div>
             <div className="flex flex-wrap gap-4 lg:justify-end">
-              <Link to="/terms" className="font-semibold text-slate-600 hover:text-slate-900">
+              <Link to="/terms" onClick={handleDesktopNavClick} className="font-semibold text-slate-600 hover:text-slate-900">
                 이용약관
               </Link>
-              <Link to="/privacy" className="font-semibold text-slate-600 hover:text-slate-900">
+              <Link to="/privacy" onClick={handleDesktopNavClick} className="font-semibold text-slate-600 hover:text-slate-900">
                 개인정보처리방침
               </Link>
             </div>

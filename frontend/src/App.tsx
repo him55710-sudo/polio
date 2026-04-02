@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -34,6 +34,16 @@ function PageLoader() {
       <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
     </div>
   );
+}
+
+function RouteScrollManager() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname, search]);
+
+  return null;
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -98,6 +108,7 @@ export default function App() {
     <GlobalErrorBoundary>
       <AuthProvider>
         <BrowserRouter>
+          <RouteScrollManager />
           <Toaster
             position="top-center"
             toastOptions={{

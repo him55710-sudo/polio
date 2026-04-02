@@ -13,8 +13,8 @@ const firebaseConfig: FirebaseOptions = {
 };
 
 const firestoreDatabaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
-export const isGuestModeAllowed =
-  import.meta.env.DEV || import.meta.env.VITE_ALLOW_GUEST_MODE === 'true';
+// Guest mode is a core onboarding path and must stay available in every environment.
+export const isGuestModeAllowed = true;
 
 export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey &&
