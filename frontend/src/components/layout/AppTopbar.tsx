@@ -2,10 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Flag, Menu, X } from 'lucide-react';
 import { UniFoliaLogo } from '../UniFoliaLogo';
+import { UniversityLogo } from '../UniversityLogo';
 import { Button } from '../ui';
 import { Topbar } from '../primitives';
 import { WorkflowContextHeader } from './WorkflowContextHeader';
-import { resolveApiBaseUrl } from '../../lib/api';
 
 interface AppTopbarProps {
   currentSectionLabel: string;
@@ -17,8 +17,6 @@ interface AppTopbarProps {
     major?: string;
   } | null;
 }
-
-const API_BASE_URL = resolveApiBaseUrl();
 
 export function AppTopbar({ currentSectionLabel, summary, isSidebarOpen, onToggleSidebar, primaryGoal }: AppTopbarProps) {
   return (
@@ -35,13 +33,10 @@ export function AppTopbar({ currentSectionLabel, summary, isSidebarOpen, onToggl
       {primaryGoal ? (
         <div className="border-b border-slate-200 bg-blue-50 px-4 py-2 md:hidden">
           <div className="flex items-center gap-2">
-            <img
-              src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(primaryGoal.university)}`}
+            <UniversityLogo
+              universityName={primaryGoal.university}
               className="h-7 w-7 rounded-md bg-white object-contain p-1"
-              alt={`${primaryGoal.university} 로고`}
-              onError={event => {
-                event.currentTarget.style.display = 'none';
-              }}
+              fallbackClassName="border border-blue-100"
             />
             <p className="truncate text-sm font-black text-slate-800">
               목표: {primaryGoal.university}
@@ -57,13 +52,10 @@ export function AppTopbar({ currentSectionLabel, summary, isSidebarOpen, onToggl
         <div className="flex items-center gap-3">
           {primaryGoal ? (
             <div className="hidden items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 lg:flex">
-              <img
-                src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(primaryGoal.university)}`}
+              <UniversityLogo
+                universityName={primaryGoal.university}
                 className="h-8 w-8 rounded-lg bg-white object-contain p-1"
-                alt={`${primaryGoal.university} 로고`}
-                onError={event => {
-                  event.currentTarget.style.display = 'none';
-                }}
+                fallbackClassName="border border-blue-100"
               />
               <div className="min-w-0">
                 <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-600">Dream School</p>

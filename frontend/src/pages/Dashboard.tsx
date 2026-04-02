@@ -12,8 +12,9 @@ import {
   type UserTargetsUpdateResponse,
 } from '@shared-contracts';
 import { OnboardingModal } from '../components/OnboardingModal';
+import { UniversityLogo } from '../components/UniversityLogo';
 import { useAuth } from '../contexts/AuthContext';
-import { api, resolveApiBaseUrl } from '../lib/api';
+import { api } from '../lib/api';
 import { DIAGNOSIS_STORAGE_KEY, type DiagnosisResultPayload, type StoredDiagnosis } from '../lib/diagnosis';
 import { isGuestSessionActive, readGuestProfile, updateGuestTargets } from '../lib/guestProfile';
 import { updateLocalAuthTargets } from '../lib/localAuthProfile';
@@ -30,8 +31,6 @@ import {
   SurfaceCard,
   WorkflowNotice,
 } from '../components/primitives';
-
-const API_BASE_URL = resolveApiBaseUrl();
 
 type WorkflowStatus = 'done' | 'active' | 'pending';
 
@@ -533,13 +532,10 @@ export function Dashboard() {
       {primaryGoal ? (
         <SurfaceCard className="border-blue-200 bg-[linear-gradient(120deg,_rgba(37,99,235,0.14),_rgba(255,255,255,1))]">
           <div className="flex flex-wrap items-center gap-4">
-            <img
-              src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(primaryGoal.university)}`}
+            <UniversityLogo
+              universityName={primaryGoal.university}
               className="h-14 w-14 rounded-2xl bg-white object-contain p-2 shadow-sm"
-              alt={`${primaryGoal.university} 로고`}
-              onError={event => {
-                event.currentTarget.style.display = 'none';
-              }}
+              fallbackClassName="border border-blue-100"
             />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Dream Target</p>
@@ -594,13 +590,10 @@ export function Dashboard() {
             <SurfaceCard padding="sm" className="border-blue-200 bg-blue-50/70">
               <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-600">현재 1순위 목표</p>
               <div className="mt-2 flex items-center gap-3">
-                <img
-                  src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(primaryGoal.university)}`}
+                <UniversityLogo
+                  universityName={primaryGoal.university}
                   className="h-10 w-10 rounded-xl bg-white object-contain p-1.5"
-                  alt={`${primaryGoal.university} 로고`}
-                  onError={event => {
-                    event.currentTarget.style.display = 'none';
-                  }}
+                  fallbackClassName="border border-blue-100"
                 />
                 <div className="min-w-0">
                   <p className="truncate text-base font-black text-slate-900">{primaryGoal.university}</p>
@@ -614,13 +607,10 @@ export function Dashboard() {
             <div className="space-y-2">
               {allGoals.slice(0, 6).map((goal, index) => (
                 <SurfaceCard key={`${goal.university}-${goal.major}-${index}`} padding="sm" className="flex items-center gap-3">
-                  <img
-                    src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(goal.university)}`}
+                  <UniversityLogo
+                    universityName={goal.university}
                     className="h-9 w-9 rounded-xl bg-slate-100 object-contain p-1"
-                    alt={`${goal.university} 로고`}
-                    onError={event => {
-                      event.currentTarget.style.display = 'none';
-                    }}
+                    fallbackClassName="border border-slate-200"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-black text-slate-800">{goal.university}</p>

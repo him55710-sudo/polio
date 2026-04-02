@@ -3,12 +3,12 @@ import { motion } from 'motion/react';
 import { ArrowRight, School, Sparkles, X, Trash2, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { CatalogAutocompleteInput } from './CatalogAutocompleteInput';
 import { CatalogMultiSelectInput } from './CatalogMultiSelectInput';
+import { UniversityLogo } from './UniversityLogo';
 import {
   isEducationCatalogLoaded,
   searchMajors,
   searchUniversities,
 } from '../lib/educationCatalog';
-import { resolveApiBaseUrl } from '../lib/api';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -44,8 +44,6 @@ interface GoalItem {
   university: string;
   major: string;
 }
-
-const API_BASE_URL = resolveApiBaseUrl();
 
 export function OnboardingModal({
   isOpen,
@@ -206,14 +204,10 @@ export function OnboardingModal({
                   />
                   {logoPreviewName.length >= 2 ? (
                     <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <img
-                        key={logoPreviewName}
-                        src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(logoPreviewName)}`}
+                      <UniversityLogo
+                        universityName={logoPreviewName}
                         className="h-7 w-7 rounded-md bg-slate-50 object-contain p-0.5"
-                        alt="대학교 로고"
-                        onError={(event) => {
-                          event.currentTarget.style.display = 'none';
-                        }}
+                        fallbackClassName="border border-slate-200"
                       />
                       <span className="text-xs font-semibold text-slate-500">{logoPreviewName}</span>
                     </div>
@@ -223,13 +217,10 @@ export function OnboardingModal({
                 <div className="space-y-4">
                   <div className="p-3 bg-slate-50 rounded-2xl flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
-                      <img
-                        src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(currentUniv || univInput)}`}
+                      <UniversityLogo
+                        universityName={currentUniv || univInput}
                         className="h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                        alt="대학교 로고"
-                        onError={(event) => {
-                          event.currentTarget.style.display = 'none';
-                        }}
+                        fallbackClassName="border border-blue-100"
                       />
                       <span className="truncate text-sm font-bold text-slate-700">{currentUniv || univInput}</span>
                     </div>
@@ -293,9 +284,11 @@ export function OnboardingModal({
                       <p className="text-sm font-black text-slate-800 truncate">{g.university}</p>
                       <p className="text-[11px] font-medium text-slate-500 truncate">{g.major}</p>
                     </div>
-                    <img src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(g.university)}`} 
-                         className="w-10 h-10 object-contain p-1 bg-white rounded-lg shadow-sm" alt="Logo" 
-                         onError={(e)=>(e.currentTarget.style.display='none')}/>
+                    <UniversityLogo
+                      universityName={g.university}
+                      className="h-10 w-10 rounded-lg bg-white object-contain p-1 shadow-sm"
+                      fallbackClassName="border border-slate-200"
+                    />
                     <button onClick={()=>removeGoal(g.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
                   </motion.div>
                 ))}

@@ -5,9 +5,10 @@ import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { AsyncJobStatusCard } from '../components/AsyncJobStatusCard';
+import { UniversityLogo } from '../components/UniversityLogo';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
-import { api, resolveApiBaseUrl, shouldUseSynchronousApiJobs } from '../lib/api';
+import { api, shouldUseSynchronousApiJobs } from '../lib/api';
 import { DiagnosisEvidencePanel } from '../components/DiagnosisEvidencePanel';
 import { DiagnosisGuidedChoicePanel } from '../components/DiagnosisGuidedChoicePanel';
 import { ClaimGroundingPanel } from '../components/ClaimGroundingPanel';
@@ -37,8 +38,6 @@ import {
 } from '../components/primitives';
 
 type DiagnosisStep = 'GOALS' | 'UPLOAD' | 'ANALYSING' | 'RESULT' | 'FAILED';
-
-const API_BASE_URL = resolveApiBaseUrl();
 
 export function Diagnosis() {
   const navigate = useNavigate();
@@ -377,14 +376,10 @@ export function Diagnosis() {
                         className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-12 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
                       />
                       {univPreviewName.length >= 2 ? (
-                        <img
-                          key={univPreviewName}
-                          src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(univPreviewName)}`}
+                        <UniversityLogo
+                          universityName={univPreviewName}
                           className="pointer-events-none absolute right-2 top-[31px] h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                          alt="대학교 로고"
-                          onError={(event) => {
-                            event.currentTarget.style.display = 'none';
-                          }}
+                          fallbackClassName="border border-slate-200"
                         />
                       ) : null}
                       {univInput ? (
@@ -411,13 +406,10 @@ export function Diagnosis() {
                       <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
-                            <img
-                              src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(currentUniv)}`}
+                            <UniversityLogo
+                              universityName={currentUniv}
                               className="h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                              alt="대학교 로고"
-                              onError={(event) => {
-                                event.currentTarget.style.display = 'none';
-                              }}
+                              fallbackClassName="border border-blue-100"
                             />
                             <StatusBadge status="active" className="truncate">{currentUniv}</StatusBadge>
                           </div>
@@ -452,13 +444,10 @@ export function Diagnosis() {
                     {goalList.map((goal, index) => (
                       <SurfaceCard key={goal.id} padding="sm" className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2">
-                          <img
-                            src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(goal.university)}`}
+                          <UniversityLogo
+                            universityName={goal.university}
                             className="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                            alt="대학교 로고"
-                            onError={(event) => {
-                              event.currentTarget.style.display = 'none';
-                            }}
+                            fallbackClassName="border border-slate-200"
                           />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-bold text-slate-800">{goal.university}</p>
@@ -483,13 +472,10 @@ export function Diagnosis() {
                         <StatusBadge status={index === 0 ? 'active' : 'neutral'}>{index === 0 ? '주 목표' : `목표 ${index + 1}`}</StatusBadge>
                       </div>
                       <div className="flex min-w-0 items-center gap-2">
-                        <img
-                          src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(goal.university)}`}
+                        <UniversityLogo
+                          universityName={goal.university}
                           className="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                          alt="대학교 로고"
-                          onError={(event) => {
-                            event.currentTarget.style.display = 'none';
-                          }}
+                          fallbackClassName="border border-slate-200"
                         />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-slate-800">{goal.university}</p>

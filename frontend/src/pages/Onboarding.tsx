@@ -3,10 +3,10 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Loader2, Sparkles, Target, User, Trash2, School, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { motion } from 'motion/react';
 import { CatalogAutocompleteInput } from '../components/CatalogAutocompleteInput';
+import { UniversityLogo } from '../components/UniversityLogo';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { searchUniversities, searchMajors } from '../lib/educationCatalog';
-import { resolveApiBaseUrl } from '../lib/api';
 
 const TEXT = {
   profileTitle: '기본 정보 설정',
@@ -32,8 +32,6 @@ const TEXT = {
   addGoal: '이 목표 추가',
   emptyGoals: '아직 추가된 대학이 없습니다.',
 };
-
-const API_BASE_URL = resolveApiBaseUrl();
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -216,14 +214,10 @@ export function Onboarding() {
                          <label className="text-xs font-black text-slate-400 mb-2 block">{TEXT.universityLabel}</label>
                          <input type="text" value={univInput} onChange={e => setUnivInput(e.target.value)} placeholder="대학명 검색..." className="w-full p-4 pr-12 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-blue-500" />
                          {logoPreviewName.length >= 2 ? (
-                           <img
-                             key={logoPreviewName}
-                             src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(logoPreviewName)}`}
+                           <UniversityLogo
+                             universityName={logoPreviewName}
                              className="pointer-events-none absolute right-3 top-[39px] h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                             alt="대학교 로고"
-                             onError={(event) => {
-                               event.currentTarget.style.display = 'none';
-                             }}
+                             fallbackClassName="border border-slate-200"
                            />
                          ) : null}
                          {univInput && universitySuggestions.length > 0 && (
@@ -237,13 +231,10 @@ export function Onboarding() {
                          <div className="space-y-4">
                             <div className="p-3 bg-white rounded-xl border border-blue-100 flex items-center justify-between gap-3">
                                <div className="flex min-w-0 items-center gap-2">
-                                 <img
-                                   src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(currentUniv)}`}
+                                 <UniversityLogo
+                                   universityName={currentUniv}
                                    className="h-7 w-7 rounded-md bg-slate-50 object-contain p-0.5 shadow-sm"
-                                   alt="대학교 로고"
-                                   onError={(event) => {
-                                     event.currentTarget.style.display = 'none';
-                                   }}
+                                   fallbackClassName="border border-blue-100"
                                  />
                                  <span className="truncate text-sm font-black text-blue-600">{currentUniv}</span>
                                </div>
@@ -303,13 +294,10 @@ export function Onboarding() {
                                 <GripVertical size={18} />
                                 <span className="font-black text-lg italic text-slate-300">#{idx+1}</span>
                               </div>
-                              <img
-                                src={`${API_BASE_URL}/api/v1/assets/univ-logo?name=${encodeURIComponent(g.university)}`}
+                              <UniversityLogo
+                                universityName={g.university}
                                 className="h-9 w-9 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                                alt="대학교 로고"
-                                onError={(event) => {
-                                  event.currentTarget.style.display = 'none';
-                                }}
+                                fallbackClassName="border border-slate-200"
                               />
                               <div className="flex-1 min-w-0">
                                  <p className="text-sm font-black text-slate-800 truncate">{g.university}</p>
