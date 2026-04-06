@@ -36,6 +36,30 @@ npm install
 npm run dev
 ```
 
+## 3.1 Local Ollama/Gemma setup (guided chat test)
+
+```powershell
+ollama serve
+ollama pull gemma
+ollama list
+```
+
+Set backend envs in `.env`:
+
+```dotenv
+APP_ENV=local
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=gemma
+OLLAMA_NUM_CTX=4096
+OLLAMA_NUM_PREDICT=768
+OLLAMA_TIMEOUT_SECONDS=120
+```
+
+Notes:
+- In local mode, if `GEMINI_API_KEY` is empty, backend automatically falls back to Ollama.
+- In production mode, missing Gemini key is still treated as an error unless provider is explicitly configured.
+
 ## 4. Recommended first workflow
 
 1. Create a project.
@@ -44,6 +68,19 @@ npm run dev
 4. Review gaps and next actions.
 5. Draft only from grounded evidence.
 6. Export when the student has reviewed the result.
+
+### Guided-chat test flow
+
+1. Open `/app/guided-chat` (or `/app/guided-chat/:projectId`).
+2. First greeting must be exactly: `안녕하세요. 어떤 주제의 보고서를 써볼까요?`
+3. Enter a broad subject (example: `수학`).
+4. Verify exactly 3 topic suggestions are shown.
+5. Click one suggestion and confirm:
+- page range options are shown
+- recommended outline is shown
+- right draft panel is filled with starter markdown
+
+If diagnosis/PDF evidence is missing, the flow should still work in limited mode and explicitly mention limited context.
 
 ## 5. Safety reminder
 

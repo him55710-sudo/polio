@@ -8,6 +8,7 @@ from polio_api.api.routes import (
     documents,
     drafts,
     global_documents,
+    guided_chat,
     health,
     inquiries,
     jobs,
@@ -28,6 +29,7 @@ api_router.include_router(answers.router, prefix="/projects", tags=["answers"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
 api_router.include_router(drafts.chat_router, prefix="/drafts", tags=["chat"])
+api_router.include_router(guided_chat.router, prefix="/guided-chat", tags=["guided-chat"])
 api_router.include_router(research.router, prefix="/research", tags=["research"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(uploads.router, prefix="/projects", tags=["uploads"])

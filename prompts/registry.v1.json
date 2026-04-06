@@ -145,6 +145,20 @@
         "backend/services/api/src/polio_api/api/routes/drafts.py"
       ]
     },
+    "chat.guided-report-topic-orchestration": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/guided-report-topic-orchestration-v1/prompt.md",
+      "description": "Structured topic-guidance chat for grounded, admissions-safe report planning.",
+      "output_mode": "json",
+      "wiring_status": "wired",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/guided_chat_service.py"
+      ]
+    },
     "chat.workshop-choice-copy": {
       "category": "chat",
       "version": "1.0.0",

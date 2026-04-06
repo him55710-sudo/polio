@@ -35,6 +35,7 @@ The following prompt names are now reserved and documented:
 | `system.guardrails.workshop-quality-profiles` | `system-guardrails` | Workshop quality profile data bundle | Wired into `quality_control.py` |
 | `diagnosis.grounded-analysis` | `diagnosis` | Diagnosis result generation | Wired into diagnosis runtime |
 | `chat.coaching-orchestration` | `chat` | Coaching-first draft chat | Wired into draft chat runtime |
+| `chat.guided-report-topic-orchestration` | `chat` | Structured guided topic chat (exactly 3 grounded topics) | Wired into guided-chat runtime |
 | `chat.workshop-choice-copy` | `chat` | Workshop starter/follow-up/ack copy bundle | Wired into `quality_control.py` |
 | `drafting.provenance-boundary` | `drafting` | Provenance separation rules | Wired as render system instruction fragment |
 | `drafting.report-render` | `drafting` | Report artifact rendering | Wired into workshop render runtime |
@@ -48,6 +49,7 @@ assemble inline strings:
 
 - `backend/services/api/src/polio_api/services/diagnosis_service.py`
 - `backend/services/api/src/polio_api/api/routes/drafts.py`
+- `backend/services/api/src/polio_api/api/routes/guided_chat.py`
 - `backend/services/api/src/polio_api/services/workshop_render_service.py`
 - `backend/services/api/src/polio_api/services/quality_control.py`
 - `backend/services/api/src/polio_api/services/rag_service.py`

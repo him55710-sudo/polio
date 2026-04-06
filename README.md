@@ -76,6 +76,48 @@ Security note:
 `/docs` is also hidden by default outside local development unless `API_DOCS_ENABLED=true` is set explicitly.
 If social login is enabled, production redirect URIs must not point at localhost. KCI-backed research search also now requires an explicit `KCI_API_KEY`.
 
+### Local Ollama/Gemma Guided-Chat Test
+
+1. Start Ollama locally:
+
+```powershell
+ollama serve
+```
+
+2. Ensure the local model exists:
+
+```powershell
+ollama pull gemma
+ollama list
+```
+
+3. Set local backend envs (`.env` from `.env.example`):
+
+```dotenv
+APP_ENV=local
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=gemma
+OLLAMA_NUM_CTX=4096
+OLLAMA_NUM_PREDICT=768
+OLLAMA_TIMEOUT_SECONDS=120
+```
+
+4. Local fallback rule:
+- If `APP_ENV=local` and `GEMINI_API_KEY` is not configured, backend automatically falls back to Ollama.
+- Production does not auto-force Ollama.
+
+5. Guided chat API flow:
+- `POST /api/v1/guided-chat/start`
+- `POST /api/v1/guided-chat/topic-suggestions`
+- `POST /api/v1/guided-chat/topic-selection`
+
+6. Frontend test page:
+- `/app/guided-chat`
+- `/app/guided-chat/:projectId`
+
+If Ollama is unavailable, the guided chat route returns conservative fallback suggestions with a limited-context note instead of crashing.
+
 ### Frontend
 
 ```powershell

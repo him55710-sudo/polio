@@ -9,6 +9,7 @@ Public HTTP entrypoint.
 - diagnosis request submission
 - grounded-answer request handling
 - chat session APIs
+- guided topic-chat APIs (`/api/v1/guided-chat/*`)
 - draft CRUD
 - export request APIs
 

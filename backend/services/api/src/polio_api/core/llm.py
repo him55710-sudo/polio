@@ -173,17 +173,35 @@ class OllamaClient(LLMClient):
 
 def get_llm_client() -> LLMClient:
     settings = get_settings()
-    if settings.llm_provider == "ollama":
-        return OllamaClient(
-            base_url=settings.ollama_base_url,
-            model=settings.ollama_model,
-            request_timeout_seconds=settings.ollama_timeout_seconds,
-            keep_alive=settings.ollama_keep_alive,
-            num_ctx=settings.ollama_num_ctx,
-            num_predict=settings.ollama_num_predict,
-            num_thread=settings.ollama_num_thread,
-        )
-    api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")
-    if not api_key or api_key == "DUMMY_KEY":
-        raise RuntimeError("Gemini API key is not configured.")
-    return GeminiClient(api_key=api_key)
+    provider = (settings.llm_provider or "gemini").strip().lower()
+    api_key = (settings.gemini_api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
+    has_valid_gemini_key = bool(api_key) and api_key != "DUMMY_KEY"
+
+    if provider == "ollama":
+        return _build_ollama_client()
+
+    if provider not in {"gemini", "ollama"}:
+        if settings.app_env == "local" and not has_valid_gemini_key:
+            return _build_ollama_client()
+        raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
+
+    if has_valid_gemini_key:
+        return GeminiClient(api_key=api_key)
+
+    if settings.app_env == "local":
+        return _build_ollama_client()
+
+    raise RuntimeError("Gemini API key is not configured.")
+
+
+def _build_ollama_client() -> OllamaClient:
+    settings = get_settings()
+    return OllamaClient(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_model,
+        request_timeout_seconds=settings.ollama_timeout_seconds,
+        keep_alive=settings.ollama_keep_alive,
+        num_ctx=settings.ollama_num_ctx,
+        num_predict=settings.ollama_num_predict,
+        num_thread=settings.ollama_num_thread,
+    )
