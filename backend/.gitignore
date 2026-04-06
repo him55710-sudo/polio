@@ -18,3 +18,5 @@ storage/exports/*
 !storage/exports/.gitkeep
 references/open-source/*
 !references/open-source/README.md
+
+.vercel

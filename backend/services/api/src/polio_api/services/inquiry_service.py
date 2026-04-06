@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from polio_api.db.models.inquiry import Inquiry
 from polio_api.schemas.inquiry import InquiryCreate
 from polio_api.services.prompt_registry import PromptRegistryError, get_prompt_registry
+from polio_api.core.config import get_settings
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import threading
 
 TRIAGE_PROMPT_NAME = "inquiry-support.contact-triage"
 _FABRICATION_PATTERN = re.compile(r"\b(make up|fabricat(?:e|ed|ion)|조작|거짓|허위)\b", re.IGNORECASE)
@@ -36,7 +41,44 @@ def create_inquiry(db: Session, payload: InquiryCreate) -> Inquiry:
     db.add(inquiry)
     db.commit()
     db.refresh(inquiry)
+    
+    # Notify via email asynchronously so it doesn't block the API response
+    threading.Thread(target=_send_email_notification_safe, args=(payload,), daemon=True).start()
+    
     return inquiry
+
+def _send_email_notification_safe(payload: InquiryCreate) -> None:
+    try:
+        settings = get_settings()
+        if not settings.smtp_enabled or not settings.smtp_username or not settings.smtp_password:
+            return
+            
+        msg = MIMEMultipart()
+        msg["From"] = settings.smtp_username
+        msg["To"] = settings.smtp_receiver_email
+        msg["Subject"] = f"[{payload.inquiry_type.upper()}] 새 문의가 접수되었습니다: {payload.name}"
+        
+        body = f"""유형: {payload.inquiry_type}
+카테고리: {payload.inquiry_category or '-'}
+이름: {payload.name or '-'}
+이메일: {payload.email}
+연락처: {payload.phone or '-'}
+기관명: {payload.institution_name or '-'}
+발생위치: {payload.context_location or '-'}
+
+--- 문의내용 ---
+{payload.message}
+"""
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        
+        server = smtplib.SMTP(settings.smtp_server, settings.smtp_port)
+        server.starttls()
+        server.login(settings.smtp_username, settings.smtp_password)
+        server.send_message(msg)
+        server.quit()
+    except Exception as e:
+        print(f"Failed to send email notification: {e}")
+
 
 
 def _build_extra_fields(payload: InquiryCreate) -> dict[str, Any]:

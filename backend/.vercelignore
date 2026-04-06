@@ -1,0 +1,14 @@
+.venv
+build
+tests
+tmp
+storage
+infra
+scripts
+alembic
+.pytest_cache
+__pycache__
+*.egg-info
+*.log
+*.db
+docker-compose.yml

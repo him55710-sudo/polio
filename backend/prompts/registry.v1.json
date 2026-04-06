@@ -1,0 +1,219 @@
+{
+  "schema_version": "1.0.0",
+  "registry_name": "polio-prompt-registry-v1",
+  "prompts": {
+    "system.guardrails.admissions-authenticity": {
+      "category": "system-guardrails",
+      "version": "1.0.0",
+      "relative_path": "system-guardrails/admissions-authenticity-v1/prompt.md",
+      "description": "Shared admissions authenticity and provenance guardrails.",
+      "output_mode": "instructions",
+      "wiring_status": "shared-fragment",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py",
+        "backend/services/api/src/polio_api/api/routes/drafts.py",
+        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+      ]
+    },
+    "system.guardrails.render-quality-low": {
+      "category": "system-guardrails",
+      "version": "1.0.0",
+      "relative_path": "system-guardrails/render-quality-low-v1/prompt.md",
+      "description": "Low-intensity render guardrails for finishable, evidence-first output.",
+      "output_mode": "instructions",
+      "wiring_status": "wired",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+      ]
+    },
+    "system.guardrails.render-quality-mid": {
+      "category": "system-guardrails",
+      "version": "1.0.0",
+      "relative_path": "system-guardrails/render-quality-mid-v1/prompt.md",
+      "description": "Mid-level render guardrails for grounded extension without overreach.",
+      "output_mode": "instructions",
+      "wiring_status": "wired",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+      ]
+    },
+    "system.guardrails.render-quality-high": {
+      "category": "system-guardrails",
+      "version": "1.0.0",
+      "relative_path": "system-guardrails/render-quality-high-v1/prompt.md",
+      "description": "High-level render guardrails for provenance-explicit advanced output.",
+      "output_mode": "instructions",
+      "wiring_status": "wired",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+      ]
+    },
+    "system.guardrails.workshop-quality-profiles": {
+      "category": "system-guardrails",
+      "version": "1.0.0",
+      "relative_path": "system-guardrails/workshop-quality-profiles-v1/prompt.md",
+      "description": "Canonical quality-level profile bundle for workshop safety posture and thresholds.",
+      "output_mode": "json",
+      "wiring_status": "wired",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/quality_control.py"
+      ]
+    },
+    "diagnosis.grounded-analysis": {
+      "category": "diagnosis",
+      "version": "1.1.0",
+      "relative_path": "diagnosis/grounded-analysis-v1/prompt.md",
+      "description": "Grounded diagnosis analysis over student evidence and target goals.",
+      "output_mode": "json",
+      "wiring_status": "wired",
+      "dependencies": [
+        "chat.guided-diagnosis-orchestration"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.guided-diagnosis-orchestration": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/guided-diagnosis-orchestration-v1/prompt.md",
+      "description": "Proactive guided-choice orchestration for diagnosis-driven student record planning.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity",
+        "chat.topic-candidate-generator",
+        "chat.page-count-selector",
+        "chat.template-recommender"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.topic-candidate-generator": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/topic-candidate-generator-v1/prompt.md",
+      "description": "Guidance fragment for generating realistic topic candidates from diagnosis weak axes.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.page-count-selector": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/page-count-selector-v1/prompt.md",
+      "description": "Guidance fragment for evidence-aware page count recommendations.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.template-recommender": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/template-recommender-v1/prompt.md",
+      "description": "Guidance fragment for template-aware structured export recommendations.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+      ]
+    },
+    "chat.coaching-orchestration": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/coaching-orchestration-v1/prompt.md",
+      "description": "Question-first coaching and conversation orchestration for draft support.",
+      "output_mode": "markdown",
+      "wiring_status": "wired",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/api/routes/drafts.py"
+      ]
+    },
+    "chat.workshop-choice-copy": {
+      "category": "chat",
+      "version": "1.0.0",
+      "relative_path": "chat/workshop-choice-copy-v1/prompt.md",
+      "description": "Canonical starter, follow-up, and acknowledgement copy bundle for workshop UX.",
+      "output_mode": "json",
+      "wiring_status": "wired",
+      "dependencies": [],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/quality_control.py"
+      ]
+    },
+    "drafting.provenance-boundary": {
+      "category": "drafting",
+      "version": "1.0.0",
+      "relative_path": "drafting/provenance-boundary-v1/prompt.md",
+      "description": "Reusable provenance rules that separate student evidence from external research.",
+      "output_mode": "instructions",
+      "wiring_status": "wired-shared-fragment",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/workshop_render_service.py",
+        "backend/services/api/src/polio_api/services/rag_service.py"
+      ]
+    },
+    "drafting.report-render": {
+      "category": "drafting",
+      "version": "1.0.0",
+      "relative_path": "drafting/report-render-v1/prompt.md",
+      "description": "Grounded report artifact rendering prompt for workshop output generation.",
+      "output_mode": "json",
+      "wiring_status": "wired",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity",
+        "drafting.provenance-boundary"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+      ]
+    },
+    "inquiry-support.contact-triage": {
+      "category": "inquiry-support",
+      "version": "1.0.0",
+      "relative_path": "inquiry-support/contact-triage-v1/prompt.md",
+      "description": "Safe triage and summarization prompt for incoming contact inquiries.",
+      "output_mode": "json",
+      "wiring_status": "wired-deterministic-triage",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity"
+      ],
+      "runtime_targets": [
+        "backend/services/api/src/polio_api/services/inquiry_service.py"
+      ]
+    },
+    "evaluation.prompt-output-rubric": {
+      "category": "evaluation",
+      "version": "1.0.0",
+      "relative_path": "evaluation/prompt-output-rubric-v1/prompt.md",
+      "description": "Rubric prompt for reviewing prompt outputs against contract and safety rules.",
+      "output_mode": "json",
+      "wiring_status": "wired-eval-runner",
+      "dependencies": [
+        "system.guardrails.admissions-authenticity"
+      ],
+      "runtime_targets": [
+        "eval/"
+      ]
+    }
+  }
+}

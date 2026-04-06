@@ -123,7 +123,8 @@ interface WorkshopSessionResponse {
   quality_level: QualityLevel;
   turns?: Array<{
     id: string;
-    turn_type: 'user' | 'assistant';
+    turn_type: string;
+    speaker_role?: string;
     query?: string;
     response?: string;
   }>;
@@ -176,24 +177,37 @@ function buildFoliFallback(message: string) {
   ].join('\n');
 }
 
-async function streamFoliReply(projectId: string | undefined, message: string, onDelta?: (delta: string) => void) {
+async function streamFoliReply(
+  projectId: string | undefined,
+  workshopId: string | undefined,
+  message: string,
+  onDelta?: (delta: string) => void
+) {
   const baseUrl = resolveApiBaseUrl();
   const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
   let response: Response;
 
   try {
-    response = await fetch(`${baseUrl}/api/v1/drafts/chat/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ project_id: projectId, message, reference_materials: [] }),
-    });
+    if (workshopId) {
+      response = await fetch(`${baseUrl}/api/v1/workshops/${workshopId}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ message }),
+      });
+    } else {
+      response = await fetch(`${baseUrl}/api/v1/drafts/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ project_id: projectId, message, reference_materials: [] }),
+      });
+    }
   } catch {
-    if (!projectId) return buildFoliFallback(message);
+    if (!projectId && !workshopId) return buildFoliFallback(message);
     throw new Error('NETWORK_FAIL');
   }
 
   if (!response.ok || !response.body) {
-    if (!projectId) return buildFoliFallback(message);
+    if (!projectId && !workshopId) return buildFoliFallback(message);
     if (response.status === 429) throw new Error('RATE_LIMIT');
     if (response.status === 401 || response.status === 403) throw new Error('AUTH_REQUIRED');
     throw new Error('STREAM_FAIL');
@@ -360,11 +374,17 @@ export function Workshop() {
       }
 
       const turns = state.session.turns || [];
-      const loadedMessages: Message[] = turns.map(turn => ({
-        id: turn.id,
-        role: turn.turn_type === 'user' ? 'user' : 'foli',
-        content: turn.turn_type === 'user' ? turn.query || '' : turn.response || '',
-      }));
+      const loadedMessages: Message[] = [];
+      turns.forEach(turn => {
+        if (turn.speaker_role === 'assistant') {
+          loadedMessages.push({ id: turn.id, role: 'foli', content: turn.query || '' });
+        } else {
+          loadedMessages.push({ id: turn.id, role: 'user', content: turn.query || '' });
+          if (turn.response) {
+            loadedMessages.push({ id: `${turn.id}-A`, role: 'foli', content: turn.response });
+          }
+        }
+      });
 
       setMessages(
         loadedMessages.length
@@ -417,8 +437,12 @@ export function Workshop() {
     };
 
     try {
-      const raw = await streamFoliReply(isProjectBacked ? projectId : undefined, text, delta => {
-        pendingDelta += delta;
+      const raw = await streamFoliReply(
+        isProjectBacked ? projectId : undefined,
+        workshopState?.session.id,
+        text,
+        delta => {
+          pendingDelta += delta;
         if (flushTimer === null) {
           flushTimer = window.setTimeout(flushBufferedDelta, 40);
         }

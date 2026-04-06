@@ -1,6 +1,9 @@
+import base64
 from collections.abc import Generator
 from dataclasses import dataclass
 from functools import lru_cache
+import json
+import os
 from typing import Any
 
 import jwt
@@ -32,8 +35,24 @@ def get_firebase_auth_client():
         ) from exc
 
     if not firebase_admin._apps:
-        # Defaults to ADC or GOOGLE_APPLICATION_CREDENTIALS path
-        firebase_admin.initialize_app()
+        inline_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        inline_json_b64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64", "").strip()
+
+        if inline_json or inline_json_b64:
+            try:
+                if inline_json_b64:
+                    inline_json = base64.b64decode(inline_json_b64).decode("utf-8")
+                certificate_payload = json.loads(inline_json)
+                credential = firebase_admin.credentials.Certificate(certificate_payload)
+                firebase_admin.initialize_app(credential)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Firebase service account configuration is invalid.",
+                ) from exc
+        else:
+            # Defaults to ADC or GOOGLE_APPLICATION_CREDENTIALS path
+            firebase_admin.initialize_app()
 
     return auth
 

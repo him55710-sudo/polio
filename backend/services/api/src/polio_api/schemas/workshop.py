@@ -24,6 +24,7 @@ class FollowupChoice(BaseModel):
 
 class WorkshopTurnBase(BaseModel):
     turn_type: str = TurnType.MESSAGE.value
+    speaker_role: str = "user"
     query: str
     action_payload: dict[str, Any] | None = None
     response: str | None = None

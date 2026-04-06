@@ -114,6 +114,14 @@ class Settings(BaseSettings):
     ollama_num_predict: int = 512
     ollama_num_thread: int | None = None
 
+    # SMTP Settings
+    smtp_enabled: bool = False
+    smtp_server: str = "smtp.naver.com"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_receiver_email: str = "mongben@naver.com"
+
     model_config = SettingsConfigDict(
         env_file=(
             str(find_project_root() / ".env"),

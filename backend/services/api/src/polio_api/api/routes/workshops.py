@@ -37,7 +37,6 @@ from polio_api.schemas.workshop import (
 from polio_api.services.quality_control import (
     build_choice_acknowledgement,
     build_followup_choices,
-    build_message_acknowledgement,
     build_quality_control_metadata,
     build_render_requirements,
     build_starter_choices,
@@ -408,6 +407,7 @@ def record_choice_route(
     turn = WorkshopTurn(
         session_id=session.id,
         turn_type=turn_type,
+        speaker_role="user",
         query=query_text,
         action_payload={
             **(payload.payload or {}),
@@ -427,36 +427,74 @@ def record_choice_route(
     return _build_state_response(session=loaded_session, db=db, message=turn.response)
 
 
-@router.post("/{workshop_id}/messages", response_model=WorkshopStateResponse)
-def record_message_route(
+@router.post("/{workshop_id}/chat/stream")
+async def chat_stream_route(
     workshop_id: str,
     payload: WorkshopMessageRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> WorkshopStateResponse:
+    _: None = Depends(rate_limit(bucket="workshop_chat", limit=30, window_seconds=300)),
+) -> StreamingResponse:
+    from polio_api.core.llm import get_llm_client
+    from polio_api.services.chat_memory_service import build_workshop_memory_context
+    from polio_api.services.prompt_registry import get_prompt_registry
+    
     session = _get_session_loaded_for_user(workshop_id, db, current_user.id)
-    followup_choices = build_followup_choices(quality_level=session.quality_level, turn_count=len(session.turns) + 1)
-    next_label = followup_choices[0]["label"] if followup_choices else None
-    ai_response = build_message_acknowledgement(
-        quality_level=session.quality_level,
-        next_choice_label=next_label,
-    )
-
-    turn = WorkshopTurn(
+    project, quest = _get_project_and_quest(db, session)
+    
+    # Persist the user turn immediately
+    user_turn = WorkshopTurn(
         session_id=session.id,
         turn_type=TurnType.MESSAGE.value,
+        speaker_role="user",
         query=payload.message.strip(),
-        response=ai_response,
+        response=None,
     )
-    db.add(turn)
+    db.add(user_turn)
+    # Increase context score based on basic length detection
     session.context_score += 12 if len(payload.message.strip()) < 100 else 16
     _sync_session_status(session)
     db.commit()
 
-    loaded_session = _get_session_loaded(workshop_id, db)
-    _sync_session_status(loaded_session)
-    db.commit()
-    return _build_state_response(session=loaded_session, db=db, message=ai_response)
+    # Build the grounded memory context
+    memory_context = build_workshop_memory_context(session, project, quest)
+    base_instruction = get_prompt_registry().compose_prompt("chat.coaching-orchestration")
+    full_instruction = f"{memory_context}\n\n[지침]\n{base_instruction}"
+
+    llm = get_llm_client()
+
+    async def event_stream() -> AsyncIterator[str]:
+        full_response = ""
+        try:
+            async for token in llm.stream_chat(
+                prompt=f"[현재 사용자 메시지]\n{payload.message.strip()}",
+                system_instruction=full_instruction,
+                temperature=0.5,
+            ):
+                full_response += token
+                yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+
+            # Persist assistant answer
+            assistant_turn = WorkshopTurn(
+                session_id=session.id,
+                turn_type=TurnType.MESSAGE.value,
+                speaker_role="assistant",
+                query=full_response.strip(),
+                response=None,
+            )
+            db.add(assistant_turn)
+            db.commit()
+
+            yield f"data: {json.dumps({'status': 'DONE'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.error(f"Workshop chat stream failed: {e}")
+            error_data = json.dumps(
+                {"error": "AI 생성 도중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."},
+                ensure_ascii=False,
+            )
+            yield f"data: {error_data}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/{workshop_id}/references/pin", response_model=WorkshopStateResponse)
