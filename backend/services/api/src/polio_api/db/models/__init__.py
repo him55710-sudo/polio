@@ -15,6 +15,7 @@ from polio_api.db.models.blueprint import Blueprint
 from polio_api.db.models.citation import Citation
 from polio_api.db.models.quest import Quest
 from polio_api.db.models.policy_flag import PolicyFlag
+from polio_api.db.models.payment_order import PaymentOrder
 from polio_api.db.models.response_trace import ResponseTrace
 from polio_api.db.models.review_task import ReviewTask
 from polio_api.db.models.workshop import DraftArtifact, PinnedReference, WorkshopSession, WorkshopTurn
@@ -30,6 +31,7 @@ __all__ = [
     "DraftArtifact",
     "LLMCacheEntry",
     "ParsedDocument",
+    "PaymentOrder",
     "PinnedReference",
     "Project",
     "PolicyFlag",

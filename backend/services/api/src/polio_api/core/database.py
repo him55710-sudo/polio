@@ -31,6 +31,7 @@ def initialize_database() -> None:
         inquiry,
         llm_cache_entry,
         parsed_document,
+        payment_order,
         policy_flag,
         project,
         quest,

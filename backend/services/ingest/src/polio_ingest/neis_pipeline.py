@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
+import importlib
 import logging
 from pathlib import Path
 import re
 import sys
 from typing import Any
 
+import httpx
 import pdfplumber
 
 from polio_ingest.masking import MaskingPipeline
@@ -47,6 +50,43 @@ HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+NEIS_SCORE_HEADER_TOKENS: tuple[str, ...] = (
+    "학년",
+    "학기",
+    "교과",
+    "교과군",
+    "과목",
+    "원점수",
+    "평균",
+    "표준편차",
+    "성취도",
+    "등급",
+    "단위",
+    "수강자수",
+    "석차",
+)
+NEIS_NARRATIVE_TOKENS: tuple[str, ...] = (
+    "세부능력 및 특기사항",
+    "세특",
+    "자율활동",
+    "동아리활동",
+    "진로활동",
+    "봉사활동",
+    "행동특성 및 종합의견",
+    "독서활동",
+)
+NEIS_SECTION_TOKENS: tuple[str, ...] = (
+    "인적·학적사항",
+    "인적 학적사항",
+    "출결상황",
+    "수상경력",
+    "자격증 및 인증 취득상황",
+    "창의적 체험활동",
+    "교과학습발달상황",
+    "행동특성 및 종합의견",
+    "독서활동",
+)
+
 
 @dataclass(slots=True)
 class RouteDecision:
@@ -59,6 +99,20 @@ class RouteDecision:
     metrics: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class ParserProviderResult:
+    provider_name: str
+    provider_trace: dict[str, Any]
+    provider_confidence: float
+    normalized_pages: list[dict[str, Any]]
+    normalized_elements: list[dict[str, Any]]
+    normalized_tables: list[dict[str, Any]]
+    warnings: list[str] = field(default_factory=list)
+    needs_review: bool = False
+    parse_mode: str = "heuristic"
+    raw_artifact: dict[str, Any] = field(default_factory=dict)
+
+
 def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
     page_count = 0
     total_chars = 0
@@ -66,6 +120,10 @@ def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
     image_heavy_pages = 0
     table_like_pages = 0
     mixed_signal_pages = 0
+    score_table_token_hits = 0
+    narrative_token_hits = 0
+    neis_section_token_hits = 0
+    header_line_counter: Counter[str] = Counter()
 
     with pdfplumber.open(file_path) as pdf:
         page_count = len(pdf.pages)
@@ -79,6 +137,7 @@ def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
             char_count = len(text)
             image_count = len(page.images)
             line_count = len(page.lines) + len(page.rects)
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
             looks_like_table = line_count >= 14 or any(
                 token in text for token in ("학년", "학기", "세부능력", "과목", "창의적체험활동")
             )
@@ -92,11 +151,25 @@ def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
                 table_like_pages += 1
             if image_count > 0 and char_count >= 80:
                 mixed_signal_pages += 1
+            if lines:
+                header_line_counter.update(lines[:2])
+
+            for token in NEIS_SCORE_HEADER_TOKENS:
+                score_table_token_hits += text.count(token)
+            for token in NEIS_NARRATIVE_TOKENS:
+                narrative_token_hits += text.count(token)
+            for token in NEIS_SECTION_TOKENS:
+                neis_section_token_hits += text.count(token)
 
     avg_chars_per_page = total_chars / max(page_count, 1)
     image_heavy_ratio = image_heavy_pages / max(page_count, 1)
     table_like_ratio = table_like_pages / max(page_count, 1)
     mixed_ratio = mixed_signal_pages / max(page_count, 1)
+    repeated_header_patterns = sum(
+        1
+        for _, count in header_line_counter.items()
+        if count >= 2
+    )
 
     if image_heavy_ratio >= 0.4 and avg_chars_per_page < 180:
         decision = RouteDecision(
@@ -145,8 +218,455 @@ def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
         "image_heavy_ratio": round(image_heavy_ratio, 3),
         "table_like_ratio": round(table_like_ratio, 3),
         "mixed_ratio": round(mixed_ratio, 3),
+        "embedded_text_density": round(avg_chars_per_page / max(1, 600), 3),
+        "score_table_token_hits": score_table_token_hits,
+        "narrative_token_hits": narrative_token_hits,
+        "neis_section_token_hits": neis_section_token_hits,
+        "repeated_header_patterns": repeated_header_patterns,
     }
     return asdict(decision)
+
+
+def is_neis_candidate(route: dict[str, Any], *, min_confidence: float = 0.62) -> bool:
+    metrics = route.get("metrics", {}) if isinstance(route, dict) else {}
+    score = 0.0
+    section_hits = int(metrics.get("neis_section_token_hits") or 0)
+    score_hits = int(metrics.get("score_table_token_hits") or 0)
+    narrative_hits = int(metrics.get("narrative_token_hits") or 0)
+    table_ratio = float(metrics.get("table_like_ratio") or 0.0)
+    mixed_ratio = float(metrics.get("mixed_ratio") or 0.0)
+    repeated_headers = int(metrics.get("repeated_header_patterns") or 0)
+
+    if section_hits > 0:
+        score += 0.42
+    if score_hits + narrative_hits >= 4:
+        score += 0.2
+    if score_hits > 0 and narrative_hits > 0:
+        score += 0.12
+    if table_ratio >= 0.3:
+        score += 0.12
+    if mixed_ratio >= 0.2:
+        score += 0.08
+    if repeated_headers >= 1:
+        score += 0.06
+    if route.get("document_kind") in {"mixed_or_complex_table", "scanned_or_image_heavy"}:
+        score += 0.05
+    return score >= max(0.05, min(1.0, min_confidence))
+
+
+def _provider_priority(route: dict[str, Any]) -> list[str]:
+    metrics = route.get("metrics", {}) if isinstance(route, dict) else {}
+    score_hits = int(metrics.get("score_table_token_hits") or 0)
+    narrative_hits = int(metrics.get("narrative_token_hits") or 0)
+    table_ratio = float(metrics.get("table_like_ratio") or 0.0)
+    mixed_ratio = float(metrics.get("mixed_ratio") or 0.0)
+
+    if score_hits >= narrative_hits + 2 or table_ratio >= 0.55:
+        return ["extractpdf4j", "opendataloader", "dedoc", "pdfplumber"]
+    if narrative_hits > score_hits and table_ratio < 0.45:
+        return ["dedoc", "opendataloader", "extractpdf4j", "pdfplumber"]
+    if mixed_ratio >= 0.2:
+        return ["opendataloader", "dedoc", "extractpdf4j", "pdfplumber"]
+    return ["opendataloader", "extractpdf4j", "dedoc", "pdfplumber"]
+
+
+def _empty_provider_result(
+    provider_name: str,
+    *,
+    parse_mode: str,
+    provider_trace: dict[str, Any] | None = None,
+    warnings: list[str] | None = None,
+) -> ParserProviderResult:
+    return ParserProviderResult(
+        provider_name=provider_name,
+        provider_trace=provider_trace or {},
+        provider_confidence=0.0,
+        normalized_pages=[],
+        normalized_elements=[],
+        normalized_tables=[],
+        warnings=warnings or [],
+        needs_review=True,
+        parse_mode=parse_mode,
+        raw_artifact={},
+    )
+
+
+def _build_provider_result_from_raw(
+    provider_name: str,
+    *,
+    file_path: Path,
+    route: dict[str, Any],
+    raw_artifact: dict[str, Any],
+    warnings: list[str],
+    parse_mode: str,
+) -> ParserProviderResult:
+    normalized = normalize_odl_payload(raw_artifact, source_file=file_path.name, route=route)
+    return ParserProviderResult(
+        provider_name=provider_name,
+        provider_trace={
+            **(raw_artifact.get("trace", {}) if isinstance(raw_artifact.get("trace"), dict) else {}),
+            "route_decision": route,
+        },
+        provider_confidence=float(normalized.get("parse_confidence", 0.0)),
+        normalized_pages=list(normalized.get("pages", [])),
+        normalized_elements=list(normalized.get("elements", [])),
+        normalized_tables=list(normalized.get("tables", [])),
+        warnings=warnings,
+        needs_review=float(normalized.get("parse_confidence", 0.0)) < 0.6,
+        parse_mode=parse_mode,
+        raw_artifact=raw_artifact,
+    )
+
+
+def _coerce_provider_payload(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return {"pages": value}
+    if isinstance(value, str):
+        text = _normalize_text(value)
+        if not text:
+            return None
+        return {
+            "pages": [
+                {
+                    "page_number": 1,
+                    "elements": [
+                        {
+                            "type": "text",
+                            "text": text,
+                        }
+                    ],
+                }
+            ]
+        }
+    if hasattr(value, "model_dump"):
+        dumped = value.model_dump()
+        if isinstance(dumped, dict):
+            return dumped
+    if hasattr(value, "__dict__"):
+        dumped = dict(value.__dict__)
+        if dumped:
+            return dumped
+    return None
+
+
+def _extract_odl_provider(
+    file_path: Path,
+    *,
+    route: dict[str, Any],
+    odl_enabled: bool,
+) -> ParserProviderResult:
+    parse_mode = str(route.get("parse_mode", "heuristic"))
+    if not odl_enabled:
+        return _empty_provider_result(
+            "opendataloader",
+            parse_mode=parse_mode,
+            warnings=["OpenDataLoader provider is disabled by configuration."],
+        )
+    adapter = OpenDataLoaderAdapter()
+    if not adapter.is_available():
+        return _empty_provider_result(
+            "opendataloader",
+            parse_mode=parse_mode,
+            warnings=["OpenDataLoader is not installed."],
+        )
+
+    try:
+        result = adapter.parse_pdf(
+            file_path,
+            parse_mode=parse_mode,
+            ocr_enabled=bool(route.get("ocr_enabled", False)),
+        )
+    except OpenDataLoaderError as exc:
+        return _empty_provider_result(
+            "opendataloader",
+            parse_mode=parse_mode,
+            warnings=[f"OpenDataLoader unavailable: {exc}"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _empty_provider_result(
+            "opendataloader",
+            parse_mode=parse_mode,
+            warnings=[f"OpenDataLoader parse failed: {exc}"],
+        )
+
+    raw_artifact = {
+        "schema_version": "polio.raw_pdf.v1",
+        "source": "opendataloader",
+        "parse_mode": parse_mode,
+        "ocr_enabled": bool(route.get("ocr_enabled", False)),
+        "annotated_pdf_path": result.annotated_pdf_path,
+        "trace": {
+            **result.trace_metadata,
+            "route_decision": route,
+        },
+        "payload": result.raw_json,
+    }
+    if _count_nested_pages(raw_artifact) == 0:
+        return _empty_provider_result(
+            "opendataloader",
+            parse_mode=parse_mode,
+            warnings=["OpenDataLoader returned no parseable pages."],
+            provider_trace=raw_artifact.get("trace", {}),
+        )
+    return _build_provider_result_from_raw(
+        "opendataloader",
+        file_path=file_path,
+        route=route,
+        raw_artifact=raw_artifact,
+        warnings=[],
+        parse_mode=parse_mode,
+    )
+
+
+def _extract_extractpdf4j_provider(
+    file_path: Path,
+    *,
+    route: dict[str, Any],
+    enabled: bool,
+    base_url: str | None,
+    timeout_seconds: float,
+) -> ParserProviderResult:
+    parse_mode = str(route.get("parse_mode", "heuristic"))
+    if not enabled:
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=["ExtractPDF4J provider is disabled by configuration."],
+        )
+    if not (base_url or "").strip():
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=["ExtractPDF4J provider endpoint is not configured."],
+        )
+
+    try:
+        response = httpx.post(
+            base_url.strip(),
+            files={"file": (file_path.name, file_path.read_bytes(), "application/pdf")},
+            data={
+                "parse_mode": parse_mode,
+                "ocr_enabled": str(bool(route.get("ocr_enabled", False))).lower(),
+            },
+            timeout=max(timeout_seconds, 0.1),
+        )
+    except httpx.HTTPError as exc:
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=[f"ExtractPDF4J sidecar unavailable: {exc.__class__.__name__}"],
+        )
+
+    if response.status_code >= 400:
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=[f"ExtractPDF4J sidecar returned status {response.status_code}."],
+        )
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=["ExtractPDF4J sidecar returned non-JSON content."],
+        )
+
+    parsed_payload = _coerce_provider_payload(payload.get("payload") if isinstance(payload, dict) else payload)
+    if parsed_payload is None:
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=["ExtractPDF4J sidecar returned an unsupported payload shape."],
+        )
+
+    trace = {}
+    if isinstance(payload, dict):
+        for key in ("trace", "metadata", "provider_trace"):
+            candidate = payload.get(key)
+            if isinstance(candidate, dict):
+                trace.update(candidate)
+    raw_artifact = {
+        "schema_version": "polio.raw_pdf.v1",
+        "source": "extractpdf4j",
+        "parse_mode": parse_mode,
+        "ocr_enabled": bool(route.get("ocr_enabled", False)),
+        "trace": {
+            **trace,
+            "route_decision": route,
+        },
+        "payload": parsed_payload,
+    }
+    if _count_nested_pages(raw_artifact) == 0:
+        return _empty_provider_result(
+            "extractpdf4j",
+            parse_mode=parse_mode,
+            warnings=["ExtractPDF4J sidecar returned no parseable pages."],
+            provider_trace=raw_artifact.get("trace", {}),
+        )
+    return _build_provider_result_from_raw(
+        "extractpdf4j",
+        file_path=file_path,
+        route=route,
+        raw_artifact=raw_artifact,
+        warnings=[],
+        parse_mode=parse_mode,
+    )
+
+
+def _extract_dedoc_provider(
+    file_path: Path,
+    *,
+    route: dict[str, Any],
+    enabled: bool,
+) -> ParserProviderResult:
+    parse_mode = str(route.get("parse_mode", "heuristic"))
+    if not enabled:
+        return _empty_provider_result(
+            "dedoc",
+            parse_mode=parse_mode,
+            warnings=["Dedoc provider is disabled by configuration."],
+        )
+    try:
+        module = importlib.import_module("dedoc")
+    except ImportError:
+        return _empty_provider_result(
+            "dedoc",
+            parse_mode=parse_mode,
+            warnings=["Dedoc is not installed."],
+        )
+
+    callables: list[Any] = []
+    for name in ("parse_pdf", "parse_document", "parse"):
+        fn = getattr(module, name, None)
+        if callable(fn):
+            callables.append(fn)
+    for cls_name in ("DedocManager", "DedocParser", "DocumentParser"):
+        cls = getattr(module, cls_name, None)
+        if cls is None:
+            continue
+        try:
+            instance = cls()
+        except Exception:  # noqa: BLE001
+            continue
+        for name in ("parse_pdf", "parse_document", "parse"):
+            fn = getattr(instance, name, None)
+            if callable(fn):
+                callables.append(fn)
+
+    if not callables:
+        return _empty_provider_result(
+            "dedoc",
+            parse_mode=parse_mode,
+            warnings=["Dedoc entrypoint was not found in the installed package."],
+        )
+
+    last_error: Exception | None = None
+    payload_obj: Any = None
+    for fn in callables:
+        for kwargs in (
+            {"file_path": str(file_path)},
+            {"path": str(file_path)},
+            {"source": str(file_path)},
+        ):
+            try:
+                payload_obj = fn(**kwargs)
+                last_error = None
+                break
+            except TypeError as exc:
+                last_error = exc
+                continue
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                continue
+        if last_error is None:
+            break
+
+    if last_error is not None:
+        return _empty_provider_result(
+            "dedoc",
+            parse_mode=parse_mode,
+            warnings=[f"Dedoc parse failed: {last_error.__class__.__name__}"],
+        )
+
+    payload = _coerce_provider_payload(payload_obj)
+    if payload is None:
+        return _empty_provider_result(
+            "dedoc",
+            parse_mode=parse_mode,
+            warnings=["Dedoc returned an unsupported payload shape."],
+        )
+    raw_artifact = {
+        "schema_version": "polio.raw_pdf.v1",
+        "source": "dedoc",
+        "parse_mode": parse_mode,
+        "ocr_enabled": bool(route.get("ocr_enabled", False)),
+        "trace": {
+            "route_decision": route,
+        },
+        "payload": payload,
+    }
+    if _count_nested_pages(raw_artifact) == 0:
+        return _empty_provider_result(
+            "dedoc",
+            parse_mode=parse_mode,
+            warnings=["Dedoc returned no parseable pages."],
+            provider_trace=raw_artifact.get("trace", {}),
+        )
+    return _build_provider_result_from_raw(
+        "dedoc",
+        file_path=file_path,
+        route=route,
+        raw_artifact=raw_artifact,
+        warnings=[],
+        parse_mode=parse_mode,
+    )
+
+
+def _extract_pdfplumber_provider(
+    file_path: Path,
+    *,
+    route: dict[str, Any],
+) -> ParserProviderResult:
+    parse_mode = "fallback"
+    raw_artifact = _extract_pdf_with_pdfplumber(file_path, route=route)
+    return _build_provider_result_from_raw(
+        "pdfplumber",
+        file_path=file_path,
+        route=route,
+        raw_artifact=raw_artifact,
+        warnings=[],
+        parse_mode=parse_mode,
+    )
+
+
+def _provider_result_to_normalized_artifact(
+    provider_result: ParserProviderResult,
+    *,
+    source_file: str,
+    route: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "polio.neis.normalized.v1",
+        "source_file": source_file,
+        "parser_name": provider_result.provider_name,
+        "page_count": len(provider_result.normalized_pages),
+        "pages": provider_result.normalized_pages,
+        "elements": provider_result.normalized_elements,
+        "tables": provider_result.normalized_tables,
+        "markdown_preview": _build_markdown_preview(provider_result.normalized_elements),
+        "parse_confidence": provider_result.provider_confidence,
+        "trace": {
+            "route": route,
+            "raw_trace": provider_result.provider_trace,
+            "normalized_element_count": len(provider_result.normalized_elements),
+            "normalized_table_count": len(provider_result.normalized_tables),
+            "provider_name": provider_result.provider_name,
+        },
+    }
 
 
 def extract_raw_pdf_artifact(

@@ -165,6 +165,17 @@ def ingest_upload_asset(
             chunk_size_chars=settings.upload_chunk_size_chars,
             overlap_chars=settings.upload_chunk_overlap_chars,
             odl_enabled=getattr(settings, "opendataloader_enabled", True),
+            neis_ensemble_enabled=getattr(settings, "neis_ensemble_enabled", True),
+            neis_auto_detect_enabled=getattr(settings, "neis_auto_detect_enabled", True),
+            neis_auto_detect_min_confidence=float(getattr(settings, "neis_auto_detect_min_confidence", 0.62)),
+            neis_extractpdf4j_enabled=getattr(settings, "neis_extractpdf4j_enabled", False),
+            neis_extractpdf4j_base_url=getattr(settings, "neis_extractpdf4j_base_url", None),
+            neis_extractpdf4j_timeout_seconds=float(
+                getattr(settings, "neis_extractpdf4j_timeout_seconds", 8.0)
+            ),
+            neis_dedoc_enabled=getattr(settings, "neis_dedoc_enabled", True),
+            neis_provider_min_quality_score=float(getattr(settings, "neis_provider_min_quality_score", 0.58)),
+            neis_merge_policy=str(getattr(settings, "neis_merge_policy", "conservative_table")),
         )
 
         if document.chunks:

@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     opendataloader_default_mode: str = "heuristic"
     opendataloader_hybrid_ocr_enabled: bool = True
     opendataloader_annotate_pdf: bool = False
+    neis_ensemble_enabled: bool = True
+    neis_auto_detect_enabled: bool = True
+    neis_auto_detect_min_confidence: float = 0.62
+    neis_extractpdf4j_enabled: bool = False
+    neis_extractpdf4j_base_url: str | None = None
+    neis_extractpdf4j_timeout_seconds: float = 8.0
+    neis_dedoc_enabled: bool = True
+    neis_provider_min_quality_score: float = 0.58
+    neis_merge_policy: str = "conservative_table"
     vector_dimensions: int = 1536
     retrieval_candidate_pool_size: int = 24
     retrieval_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -86,6 +95,12 @@ class Settings(BaseSettings):
     auth_social_login_enabled: bool = False
     auth_social_state_secret: str | None = None
     auth_social_state_ttl_seconds: int = 600
+    toss_payments_enabled: bool = False
+    toss_payments_client_key: str | None = None
+    toss_payments_secret_key: str | None = None
+    toss_payments_frontend_base_url: str = "http://localhost:3001"
+    toss_plan_plus_amount: int = 5900
+    toss_plan_pro_amount: int = 9900
 
     # LLM Settings
     llm_provider: str = Field(default="gemini", description="LLM provider: 'gemini' or 'ollama'")
@@ -159,9 +174,31 @@ class Settings(BaseSettings):
             raise ValueError("UPLOAD_MAX_BYTES must be greater than zero.")
         if self.research_fetch_max_bytes <= 0:
             raise ValueError("RESEARCH_FETCH_MAX_BYTES must be greater than zero.")
+        if not 0.0 <= float(self.neis_auto_detect_min_confidence) <= 1.0:
+            raise ValueError("NEIS_AUTO_DETECT_MIN_CONFIDENCE must be between 0 and 1.")
+        if not 0.0 <= float(self.neis_provider_min_quality_score) <= 1.0:
+            raise ValueError("NEIS_PROVIDER_MIN_QUALITY_SCORE must be between 0 and 1.")
+        if self.neis_extractpdf4j_timeout_seconds <= 0:
+            raise ValueError("NEIS_EXTRACTPDF4J_TIMEOUT_SECONDS must be greater than zero.")
+        allowed_merge_policies = {"conservative_table"}
+        normalized_merge_policy = (self.neis_merge_policy or "").strip().lower()
+        if normalized_merge_policy not in allowed_merge_policies:
+            raise ValueError("NEIS_MERGE_POLICY must be 'conservative_table'.")
+        object.__setattr__(self, "neis_merge_policy", normalized_merge_policy)
 
         if self.auth_social_login_enabled and not self.auth_social_state_secret:
             raise ValueError("AUTH_SOCIAL_STATE_SECRET is required when AUTH_SOCIAL_LOGIN_ENABLED=true.")
+        if self.toss_payments_enabled:
+            if not self.toss_payments_client_key:
+                raise ValueError("TOSS_PAYMENTS_CLIENT_KEY is required when TOSS_PAYMENTS_ENABLED=true.")
+            if not self.toss_payments_secret_key:
+                raise ValueError("TOSS_PAYMENTS_SECRET_KEY is required when TOSS_PAYMENTS_ENABLED=true.")
+            if self.toss_plan_plus_amount <= 0:
+                raise ValueError("TOSS_PLAN_PLUS_AMOUNT must be greater than zero.")
+            if self.toss_plan_pro_amount <= 0:
+                raise ValueError("TOSS_PLAN_PRO_AMOUNT must be greater than zero.")
+            if not _is_valid_http_url(self.toss_payments_frontend_base_url):
+                raise ValueError("TOSS_PAYMENTS_FRONTEND_BASE_URL must be a valid http(s) URL.")
 
         if self.app_env != "local":
             if self.app_debug:
@@ -209,6 +246,13 @@ def _is_local_redirect(value: str | None) -> bool:
     parsed = urlparse(value)
     host = (parsed.hostname or "").strip().lower()
     return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def _is_valid_http_url(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 @lru_cache(maxsize=1)

@@ -20,6 +20,15 @@ def parse_uploaded_document(
     chunk_size_chars: int,
     overlap_chars: int,
     odl_enabled: bool = True,
+    neis_ensemble_enabled: bool = True,
+    neis_auto_detect_enabled: bool = True,
+    neis_auto_detect_min_confidence: float = 0.62,
+    neis_extractpdf4j_enabled: bool = False,
+    neis_extractpdf4j_base_url: str | None = None,
+    neis_extractpdf4j_timeout_seconds: float = 8.0,
+    neis_dedoc_enabled: bool = True,
+    neis_provider_min_quality_score: float = 0.58,
+    neis_merge_policy: str = "conservative_table",
 ) -> ParsedDocumentPayload:
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
@@ -28,6 +37,15 @@ def parse_uploaded_document(
             chunk_size_chars=chunk_size_chars,
             overlap_chars=overlap_chars,
             odl_enabled=odl_enabled,
+            neis_ensemble_enabled=neis_ensemble_enabled,
+            neis_auto_detect_enabled=neis_auto_detect_enabled,
+            neis_auto_detect_min_confidence=neis_auto_detect_min_confidence,
+            neis_extractpdf4j_enabled=neis_extractpdf4j_enabled,
+            neis_extractpdf4j_base_url=neis_extractpdf4j_base_url,
+            neis_extractpdf4j_timeout_seconds=neis_extractpdf4j_timeout_seconds,
+            neis_dedoc_enabled=neis_dedoc_enabled,
+            neis_provider_min_quality_score=neis_provider_min_quality_score,
+            neis_merge_policy=neis_merge_policy,
         )
     if suffix in TEXT_EXTENSIONS:
         return parse_text_document(
@@ -44,8 +62,34 @@ def parse_pdf_document(
     chunk_size_chars: int,
     overlap_chars: int,
     odl_enabled: bool = True,
+    neis_ensemble_enabled: bool = True,
+    neis_auto_detect_enabled: bool = True,
+    neis_auto_detect_min_confidence: float = 0.62,
+    neis_extractpdf4j_enabled: bool = False,
+    neis_extractpdf4j_base_url: str | None = None,
+    neis_extractpdf4j_timeout_seconds: float = 8.0,
+    neis_dedoc_enabled: bool = True,
+    neis_provider_min_quality_score: float = 0.58,
+    neis_merge_policy: str = "conservative_table",
 ) -> ParsedDocumentPayload:
-    del odl_enabled
+    if neis_ensemble_enabled:
+        from polio_ingest.neis_pipeline import inspect_pdf_route, is_neis_candidate, parse_pdf_with_neis_pipeline
+
+        route = inspect_pdf_route(file_path)
+        if (not neis_auto_detect_enabled) or is_neis_candidate(route, min_confidence=neis_auto_detect_min_confidence):
+            return parse_pdf_with_neis_pipeline(
+                file_path,
+                chunk_size_chars=chunk_size_chars,
+                overlap_chars=overlap_chars,
+                odl_enabled=odl_enabled,
+                route=route,
+                extractpdf4j_enabled=neis_extractpdf4j_enabled,
+                extractpdf4j_base_url=neis_extractpdf4j_base_url,
+                extractpdf4j_timeout_seconds=neis_extractpdf4j_timeout_seconds,
+                dedoc_enabled=neis_dedoc_enabled,
+                provider_min_quality_score=neis_provider_min_quality_score,
+                merge_policy=neis_merge_policy,
+            )
 
     document = fitz.open(file_path)
     if document.is_encrypted:
