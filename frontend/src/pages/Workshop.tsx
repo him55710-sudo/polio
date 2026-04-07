@@ -78,7 +78,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             );
           }
 
-          return <h3 {...props} className={isUserMessage ? 'mb-3 mt-5 text-base font-bold text-slate-100' : 'mb-3 mt-6 text-lg font-bold text-slate-900'} />;
+          return <h3 {...props} className={isUserMessage ? 'mb-3 mt-5 text-base font-bold text-white' : 'mb-3 mt-6 text-lg font-bold text-slate-900'} />;
         },
         p: ({ children, ...props }) => {
           const text = React.Children.toArray(children).join('');
@@ -94,7 +94,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             );
           }
 
-          return <p {...props} className={isUserMessage ? 'whitespace-pre-wrap text-sm leading-7 text-slate-100' : 'text-sm leading-7 text-slate-700'} />;
+          return <p {...props} className={isUserMessage ? 'whitespace-pre-wrap text-sm leading-7 text-white' : 'text-sm leading-7 text-slate-800'} />;
         },
       }}
     >
@@ -104,7 +104,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
 });
 
 export type QualityLevel = 'low' | 'mid' | 'high';
-type MessageRole = 'user' | 'foli';
+type MessageRole = 'user' | 'foli' | 'assistant' | 'bot';
 
 interface Message {
   id: string;
@@ -351,6 +351,7 @@ const ChatBubble = memo(function ChatBubble({
   selectingTopicId: string | null;
 }) {
   const isUser = message.role === 'user';
+  const isStreaming = !isUser && !message.content;
 
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -363,9 +364,12 @@ const ChatBubble = memo(function ChatBubble({
       </div>
 
       <div
-        className={`max-w-[88%] rounded-2xl border px-4 py-3 shadow-sm ${
-          isUser ? 'border-slate-200 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'
-        }`}
+        className={cn(
+          "max-w-[90%] rounded-2xl border px-4 py-3 shadow-sm transition-all duration-200",
+          isUser 
+            ? 'border-blue-700 bg-blue-600 text-white shadow-blue-100' 
+            : 'border-slate-200 bg-white text-slate-900 shadow-slate-100'
+        )}
       >
         <MemoizedMarkdown content={String(message.content || '')} role={message.role} />
         {message.suggestedContent ? (
