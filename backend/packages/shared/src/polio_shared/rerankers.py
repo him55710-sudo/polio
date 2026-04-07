@@ -7,10 +7,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-try:
-    from sentence_transformers import CrossEncoder
-except ImportError:
-    CrossEncoder = None
+# from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
 TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
@@ -78,7 +75,9 @@ class RerankerService:
         with self._load_lock:
             if self._model is not None or self._fallback_reason is not None:
                 return
-            if CrossEncoder is None:
+            try:
+                from sentence_transformers import CrossEncoder
+            except ImportError:
                 self._fallback_reason = "sentence-transformers CrossEncoder is not installed"
                 return
 

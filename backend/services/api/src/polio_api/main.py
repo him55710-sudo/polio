@@ -262,7 +262,9 @@ def create_app() -> FastAPI:
     return app
 
 
+print("INIT: Creating FastAPI app...")
 app = create_app()
+print("INIT: FastAPI app created successfully.")
 
 
 def run() -> None:

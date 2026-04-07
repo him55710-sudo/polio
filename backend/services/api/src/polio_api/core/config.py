@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     toss_payments_frontend_base_url: str = "http://localhost:3001"
     toss_plan_plus_amount: int = 5900
     toss_plan_pro_amount: int = 9900
+    docling_enabled: bool = True
+    gemini_genai_enabled: bool = False
 
     # LLM Settings
     llm_provider: str = Field(default="gemini", description="LLM provider: 'gemini' or 'ollama'")

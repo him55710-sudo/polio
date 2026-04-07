@@ -82,13 +82,6 @@ def parse_pdf_document(
                 chunk_size_chars=chunk_size_chars,
                 overlap_chars=overlap_chars,
                 odl_enabled=odl_enabled,
-                route=route,
-                extractpdf4j_enabled=neis_extractpdf4j_enabled,
-                extractpdf4j_base_url=neis_extractpdf4j_base_url,
-                extractpdf4j_timeout_seconds=neis_extractpdf4j_timeout_seconds,
-                dedoc_enabled=neis_dedoc_enabled,
-                provider_min_quality_score=neis_provider_min_quality_score,
-                merge_policy=neis_merge_policy,
             )
 
     document = fitz.open(file_path)

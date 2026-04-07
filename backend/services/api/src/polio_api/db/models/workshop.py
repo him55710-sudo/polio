@@ -8,7 +8,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
-from polio_api.core.database import Base
+from polio_api.core.database import Base, utc_now
 from polio_domain.enums import WorkshopStatus, TurnType, QualityLevel
 
 if TYPE_CHECKING:
@@ -16,10 +16,6 @@ if TYPE_CHECKING:
 
 
 json_type = JSON().with_variant(JSONB, "postgresql")
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class WorkshopSession(Base):

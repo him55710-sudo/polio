@@ -5,7 +5,7 @@ import json
 import os
 from typing import Any, AsyncIterator, Type, TypeVar
 
-import google.generativeai as genai
+# import google.generativeai as genai
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -39,7 +39,9 @@ class LLMClient(abc.ABC):
 
 class GeminiClient(LLMClient):
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
+        from google import genai
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = "gemini-2.0-flash"  # default to latest
 
     async def generate_json(
         self,
@@ -48,43 +50,35 @@ class GeminiClient(LLMClient):
         system_instruction: str | None = None,
         temperature: float = 0.2,
     ) -> T:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-pro",
-            system_instruction=system_instruction,
-        )
-        response = await model.generate_content_async(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=response_model,
-                temperature=temperature,
-            ),
+        response = await self.client.models.generate_content_async(
+            model=self.model_name,
+            contents=prompt,
+            config={
+                "system_instruction": system_instruction,
+                "response_mime_type": "application/json",
+                "response_schema": response_model,
+                "temperature": temperature,
+            },
         )
         return response_model.model_validate_json(response.text)
+
     async def stream_chat(
         self,
         prompt: str,
         system_instruction: str | None = None,
         temperature: float = 0.5,
     ) -> AsyncIterator[str]:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-pro",
-            system_instruction=system_instruction,
-        )
-        response_stream = await model.generate_content_async(
-            prompt,
-            stream=True,
-            generation_config=genai.GenerationConfig(
-                temperature=temperature,
-            ),
+        response_stream = await self.client.models.generate_content_stream_async(
+            model=self.model_name,
+            contents=prompt,
+            config={
+                "system_instruction": system_instruction,
+                "temperature": temperature,
+            },
         )
         async for chunk in response_stream:
-            try:
-                if chunk.text:
-                    yield chunk.text
-            except (ValueError, AttributeError):
-                # Handle cases where chunk.text is blocked by safety filters or not available
-                continue
+            if chunk.text:
+                yield chunk.text
 
 
 class OllamaClient(LLMClient):

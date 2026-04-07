@@ -6,11 +6,7 @@ from uuid import uuid4
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from polio_api.core.database import Base
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from polio_api.core.database import Base, utc_now
 
 
 class PaymentOrder(Base):

@@ -1,21 +1,29 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 
-interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
-  open: boolean;
+interface SidebarProps {
+  open?: boolean;
+  className?: string;
+  children: React.ReactNode;
 }
 
-export function Sidebar({ open, className, children, ...props }: SidebarProps) {
+export function Sidebar({ open, className, children }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'absolute inset-y-0 left-0 z-30 flex h-full flex-col border-r border-slate-200 bg-white shadow-xl transition-[width,transform] duration-200 md:relative md:shadow-none',
-        open ? 'w-[min(85vw,20rem)] translate-x-0 md:w-80' : 'w-20 -translate-x-full md:translate-x-0',
+        'fixed inset-y-0 left-0 z-40 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out md:relative md:z-10',
+        open 
+          ? 'w-[280px] translate-x-0' 
+          : 'w-[0px] -translate-x-full md:w-20 md:translate-x-0',
         className,
       )}
-      {...props}
     >
-      {children}
+      <div className={cn(
+        "h-full overflow-hidden transition-opacity duration-200",
+        !open && "md:opacity-100 opacity-0"
+      )}>
+        {children}
+      </div>
     </aside>
   );
 }

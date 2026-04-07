@@ -1,0 +1,16 @@
+{
+  "hosting": {
+    "public": "frontend/dist"
+  },
+  "firestore": {
+    "rules": "frontend/firestore.rules"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "uni-foli",
+        "supportEmail": "him55710@gmail.com"
+      }
+    }
+  }
+}

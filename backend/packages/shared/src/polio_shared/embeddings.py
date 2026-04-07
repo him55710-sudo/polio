@@ -10,10 +10,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    SentenceTransformer = None
+# from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
@@ -105,7 +102,9 @@ class EmbeddingService:
         with self._load_lock:
             if self._model is not None or self._fallback_reason is not None:
                 return
-            if SentenceTransformer is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError:
                 self._fallback_reason = "sentence-transformers is not installed"
                 return
 

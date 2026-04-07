@@ -6,12 +6,8 @@ from uuid import uuid4
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from polio_api.core.database import Base
+from polio_api.core.database import Base, utc_now
 from polio_domain.enums import AsyncJobStatus
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class AsyncJob(Base):

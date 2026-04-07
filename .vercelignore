@@ -1,6 +1,5 @@
 # Exclude local tooling and heavyweight dev artifacts from Vercel uploads
 .agents/
-backend/
 archive/
 docs/
 eval/

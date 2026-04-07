@@ -1,9 +1,13 @@
-from __future__ import annotations
-
+from datetime import datetime, timezone
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from polio_api.core.config import get_settings
+
+
+def utc_now() -> datetime:
+    """Returns a naive UTC datetime for SQLite compatibility."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):

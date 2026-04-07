@@ -3,7 +3,8 @@ from uuid import uuid4
 from sqlalchemy import Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import relationship
 
-from polio_api.core.database import Base
+from polio_api.core.database import Base, utc_now
+
 
 class Blueprint(Base):
     __tablename__ = "blueprints"
@@ -13,8 +14,8 @@ class Blueprint(Base):
     diagnosis_run_id = Column(String, ForeignKey("diagnosis_runs.id"), nullable=True)
     headline = Column(String(500), nullable=True)
     recommended_focus = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     project = relationship("Project", back_populates="blueprints", lazy="joined")
     diagnosis_run = relationship("DiagnosisRun", back_populates="blueprints", lazy="joined")

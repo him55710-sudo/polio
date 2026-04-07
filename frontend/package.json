@@ -49,6 +49,7 @@
     "katex": "^0.16.40",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "polio-monorepo": "file:..",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^15.0.0",

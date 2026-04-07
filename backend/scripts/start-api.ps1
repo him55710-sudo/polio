@@ -13,5 +13,5 @@ if (-not (Test-Path $uvicornPath)) {
 
 $env:PYTHONPATH = "services/api/src;services/worker/src;services/render/src;services/ingest/src;packages/domain/src;packages/shared/src;packages/parsers/src;packages/prompts/src;$env:PYTHONPATH"
 
-& .\.venv\Scripts\uvicorn.exe polio_api.main:app --reload --host 0.0.0.0 --port 8000
+& .\.venv\Scripts\uvicorn.exe polio_api.main:app --host 0.0.0.0 --port 8000
 

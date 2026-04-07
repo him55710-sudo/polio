@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev:infra": "docker-compose up -d",
-    "dev:backend": "cd backend && uv run uvicorn polio_api.main:app --reload --port 8000",
-    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "scripts\\start-api.cmd",
+    "dev:frontend": "scripts\\start-frontend.cmd",
     "dev:all": "npm run dev:infra && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "install:all": "cd frontend && npm install && cd ../backend && uv sync"
+    "install:all": "cd frontend && npm install && scripts\\setup-local.cmd sqlite"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

@@ -1,6 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  ChevronDown, 
+  ChevronRight, 
+  ChevronLeft,
+  Sparkles,
+  Home,
+  CheckCircle,
+  BookOpen,
+  Settings,
+  User,
+  LogOut
+} from 'lucide-react';
 import { UniFoliaLogo } from '../UniFoliaLogo';
 import { Badge, Button } from '../ui';
 import { appNavSections, isNavItemActive } from './nav-config';
@@ -80,93 +92,95 @@ export function AppSidebar({
 
   return (
     <Sidebar open={isOpen} aria-label="앱 주요 메뉴">
-      <div className="hidden h-20 items-center gap-2 border-b border-slate-100 px-4 md:flex">
-        <Link to="/app" className="min-w-0 flex-1">
-          {isOpen ? <UniFoliaLogo size="md" subtitle={null} /> : <UniFoliaLogo size="sm" subtitle={null} markOnly />}
-        </Link>
-        <Button variant="ghost" size="icon" aria-label={isOpen ? '사이드바 축소' : '사이드바 확장'} onClick={onToggle}>
-          {isOpen ? <X size={18} /> : <Menu size={18} />}
-        </Button>
+      {/* Desktop Toggle Button */}
+      <div className="absolute -right-3 top-6 z-50 hidden md:block">
+        <button 
+          onClick={onToggle}
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm hover:bg-slate-50 transition-colors"
+        >
+          {isOpen ? <ChevronLeft size={14} className="text-slate-600" /> : <ChevronRight size={14} className="text-slate-600" />}
+        </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {appNavSections.map(section => {
-          const activeSection = section.items.some(item => isNavItemActive(pathname, item.path));
-          const sectionOpen = !isOpen ? true : (openSections[section.key] ?? activeSection);
-
-          return (
-            <div key={section.key} className="mb-4">
-              {isOpen ? (
-                <button
-                  type="button"
-                  onClick={() => handleSectionToggle(section.key)}
-                  className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
-                  aria-expanded={sectionOpen}
-                >
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{section.label}</p>
-                    <p className="text-xs font-medium text-slate-400">{section.hint}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeSection ? <Badge tone="info">현재</Badge> : null}
-                    {sectionOpen ? <ChevronDown size={15} className="text-slate-400" /> : <ChevronRight size={15} className="text-slate-400" />}
-                  </div>
-                </button>
-              ) : null}
-
-              <div className={cn('space-y-1.5', !sectionOpen && isOpen && 'hidden')}>
-                {section.items.map(item => {
-                  const active = isNavItemActive(pathname, item.path);
-                  const Icon = item.icon;
-
-                  return (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      onClick={onCloseMobile}
-                      className={cn(
-                        'group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors',
-                        active ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
-                        !isOpen && 'justify-center px-0',
-                      )}
-                    >
-                      <Icon size={18} className={cn(active ? 'text-blue-700' : 'text-slate-400 group-hover:text-slate-700')} />
-                      {isOpen ? (
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-bold">{item.label}</p>
-                          <p className="truncate text-xs font-medium text-slate-400">{item.hint}</p>
-                        </div>
-                      ) : null}
-                    </NavLink>
-                  );
-                })}
-              </div>
-
-              {isOpen && !sectionOpen && activeSection ? (
-                <p className="px-2 text-xs font-semibold text-slate-400">현재 진행 중인 메뉴입니다.</p>
-              ) : null}
+      <div className={cn("flex flex-col h-full", !isOpen && "items-center")}>
+        {/* Logo Section */}
+        <div className={cn("p-6 mb-2", !isOpen && "px-2 py-6")}>
+          <div className="flex items-center gap-3">
+            <div className="flex bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-200">
+              <Sparkles size={20} />
             </div>
-          );
-        })}
-      </nav>
+            {isOpen && <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Poli</span>}
+          </div>
+        </div>
 
-      <div className="border-t border-slate-100 bg-slate-50/50 p-3">
-        {isOpen ? (
-          <Link to="/" className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">
-            <ArrowLeft size={14} />
-            공개 페이지
-          </Link>
-        ) : null}
+        <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-6">
+          {appNavSections.map(section => {
+            const activeSection = section.items.some(item => isNavItemActive(pathname, item.path));
+            const sectionOpen = !isOpen ? true : (openSections[section.key] ?? activeSection);
 
-        <SidebarAccountBlock
-          userName={userName}
-          userPhotoUrl={userPhotoUrl}
-          isGuestSession={isGuestSession}
-          isExpanded={isOpen}
-          onLogout={onLogout}
-        />
+            return (
+              <div key={section.key} className="space-y-1">
+                {isOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSectionToggle(section.key)}
+                    className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
+                    aria-expanded={sectionOpen}
+                  >
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2rem] text-slate-400">{section.label}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {sectionOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                    </div>
+                  </button>
+                ) : (
+                   <div className="h-px w-8 bg-slate-100 mx-auto my-4" />
+                )}
+
+                <div className={cn('space-y-1', !sectionOpen && isOpen && 'hidden')}>
+                  {section.items.map(item => {
+                    const active = isNavItemActive(pathname, item.path);
+                    const Icon = item.icon;
+
+                    return (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        onClick={onCloseMobile}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200',
+                          active 
+                            ? 'bg-blue-600 text-white shadow-md shadow-blue-100 font-semibold' 
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
+                          !isOpen && 'justify-center px-0 h-10 w-10 mx-auto',
+                        )}
+                      >
+                        <Icon size={18} className={cn(active ? 'text-white' : 'text-slate-400 group-hover:text-slate-700')} />
+                        {isOpen && (
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate">{item.label}</p>
+                          </div>
+                        )}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+
+        <div className="mt-auto border-t border-slate-100 p-4">
+          <SidebarAccountBlock
+            userName={userName}
+            userPhotoUrl={userPhotoUrl}
+            isGuestSession={isGuestSession}
+            isExpanded={isOpen}
+            onLogout={onLogout}
+          />
+        </div>
       </div>
     </Sidebar>
   );
 }
-
