@@ -86,6 +86,10 @@ def test_pdf_analysis_uses_dedicated_model(monkeypatch) -> None:
     assert metadata is not None
     assert metadata["engine"] == "llm"
     assert metadata["model"] == "gemma4-pdf"
+    assert metadata["requested_pdf_analysis_provider"] == "ollama"
+    assert metadata["actual_pdf_analysis_provider"] == "ollama"
+    assert metadata["fallback_used"] is False
+    assert isinstance(metadata["processing_duration_ms"], int)
     assert metadata["summary"]
     assert len(metadata["page_insights"]) >= 1
 
@@ -105,6 +109,8 @@ def test_pdf_analysis_falls_back_without_crashing(monkeypatch) -> None:
     assert metadata["engine"] == "fallback"
     assert metadata["attempted_provider"] == "ollama"
     assert metadata["attempted_model"] == "gemma4-pdf"
+    assert metadata["actual_pdf_analysis_provider"] == "heuristic"
+    assert metadata["fallback_used"] is True
     assert metadata["failure_reason"]
     assert metadata["summary"]
     assert len(metadata["page_insights"]) >= 1
@@ -126,6 +132,8 @@ def test_pdf_analysis_recovers_from_text_only_llm(monkeypatch) -> None:
     assert metadata["attempted_provider"] == "ollama"
     assert metadata["attempted_model"] == "gemma4-pdf"
     assert metadata["recovered_from_text_fallback"] is True
+    assert metadata["fallback_used"] is True
+    assert metadata["fallback_reason"] == "recovered_from_text_fallback"
     assert metadata["summary"]
     assert len(metadata["page_insights"]) >= 1
     assert metadata["page_insights"][0]["page_number"] == 1

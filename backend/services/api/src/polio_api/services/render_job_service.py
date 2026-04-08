@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import tempfile
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,6 +28,8 @@ from polio_render.template_registry import (
     get_template,
     list_templates,
 )
+from polio_shared.paths import to_stored_path
+from polio_shared.storage import get_storage_provider
 
 logger = logging.getLogger("polio.api.render_jobs")
 
@@ -220,11 +224,30 @@ def process_render_job(db: Session, job_id: str) -> RenderJob | None:
                 hide_internal_provenance_on_final_export=job.hide_internal_provenance_on_final_export,
             ),
         )
-        artifact = dispatch_render(context)
+        # Generate output path
+        ext = job.render_format.lower()
+        destination_path = to_stored_path(
+            Path("exports") / "render_exports" / project.id / f"job_{job.id}.{ext}"
+        )
 
-        job.status = RenderStatus.COMPLETED.value
-        job.output_path = artifact.relative_path
-        job.result_message = artifact.message
+        storage = get_storage_provider()
+
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        try:
+            artifact = dispatch_render(context, tmp_path)
+            
+            # Persist to storage
+            content = tmp_path.read_bytes()
+            final_path = storage.store(content, destination_path)
+
+            job.status = RenderStatus.COMPLETED.value
+            job.output_path = final_path
+            job.result_message = artifact.message
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
     except Exception:  # noqa: BLE001
         logger.exception("Render job failed: %s", job.id)
         job.status = RenderStatus.FAILED.value

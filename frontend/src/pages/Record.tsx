@@ -72,6 +72,8 @@ interface DocumentStatusResponse {
   content_text: string;
   content_markdown: string;
   parse_metadata: {
+    source_storage_provider?: string;
+    source_storage_key?: string;
     chunk_count?: number;
     table_count?: number;
     warnings?: string[];
@@ -90,6 +92,14 @@ interface DocumentStatusResponse {
       attempted_provider?: string;
       attempted_model?: string;
       recovered_from_text_fallback?: boolean;
+      requested_pdf_analysis_provider?: string;
+      requested_pdf_analysis_model?: string;
+      actual_pdf_analysis_provider?: string;
+      actual_pdf_analysis_model?: string;
+      pdf_analysis_engine?: string;
+      fallback_used?: boolean;
+      fallback_reason?: string;
+      processing_duration_ms?: number;
       summary?: string;
       key_points?: string[];
       evidence_gaps?: string[];

@@ -193,6 +193,19 @@ def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
         return SimpleNamespace(id="trace-1"), []
 
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        lambda: {
+            "requested_llm_provider": "ollama",
+            "requested_llm_model": "gemma4-test",
+            "actual_llm_provider": "ollama",
+            "actual_llm_model": "gemma4-test",
+            "llm_profile_used": "standard",
+            "should_use_llm": True,
+            "fallback_used": False,
+            "fallback_reason": None,
+        },
+    )
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
@@ -276,6 +289,19 @@ def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
         return SimpleNamespace(id="trace-2"), []
 
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        lambda: {
+            "requested_llm_provider": "gemini",
+            "requested_llm_model": "gemini-1.5-pro",
+            "actual_llm_provider": None,
+            "actual_llm_model": None,
+            "llm_profile_used": "standard",
+            "should_use_llm": False,
+            "fallback_used": True,
+            "fallback_reason": "llm_unavailable",
+        },
+    )
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
     monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))

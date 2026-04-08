@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
@@ -21,8 +20,7 @@ class PptxRenderer(BaseRenderer):
     extension = ".pptx"
     implementation_level = "python-pptx"
 
-    def render(self, context: RenderBuildContext) -> RenderArtifact:
-        output_path = self.prepare_output_path(context)
+    def render(self, context: RenderBuildContext, output_path: str | Path) -> RenderArtifact:
         self._build_presentation(context, output_path)
 
         relative_path = to_stored_path(output_path)

@@ -17,8 +17,7 @@ class HwpxRenderer(BaseRenderer):
     extension = ".hwpx"
     implementation_level = "template"
 
-    def render(self, context: RenderBuildContext) -> RenderArtifact:
-        output_path = self.prepare_output_path(context)
+    def render(self, context: RenderBuildContext, output_path: str | Path) -> RenderArtifact:
         message = self._render_hwpx(context, output_path)
 
         relative_path = to_stored_path(output_path)

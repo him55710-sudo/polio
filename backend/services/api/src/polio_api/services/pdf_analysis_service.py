@@ -40,19 +40,54 @@ def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any]
     if parsed.source_extension.lower() != ".pdf":
         return None
 
+    started_at = datetime.now(timezone.utc)
     page_items = _extract_page_items(parsed)
     heuristic = _build_heuristic_analysis(parsed=parsed, page_items=page_items)
-    model_name = _resolve_pdf_analysis_model_name()
-    provider_name = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
+    requested_model = _resolve_pdf_analysis_model_name()
+    requested_provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
+
+    def _base_metadata(
+        *,
+        engine: str,
+        actual_provider: str,
+        actual_model: str,
+        fallback_used: bool,
+        fallback_reason: str | None = None,
+    ) -> dict[str, Any]:
+        duration_ms = int(
+            max(
+                0.0,
+                (datetime.now(timezone.utc) - started_at).total_seconds() * 1000.0,
+            )
+        )
+        payload: dict[str, Any] = {
+            "provider": actual_provider,
+            "model": actual_model,
+            "engine": engine,
+            "pdf_analysis_engine": engine,
+            "generated_at": _utc_iso(),
+            "requested_pdf_analysis_provider": requested_provider,
+            "requested_pdf_analysis_model": requested_model,
+            "actual_pdf_analysis_provider": actual_provider,
+            "actual_pdf_analysis_model": actual_model,
+            "fallback_used": fallback_used,
+            "processing_duration_ms": duration_ms,
+        }
+        if fallback_reason:
+            payload["fallback_reason"] = fallback_reason
+        return payload
 
     if not page_items:
         return {
-            "provider": provider_name,
-            "model": model_name,
-            "engine": "fallback",
-            "generated_at": _utc_iso(),
-            "attempted_provider": provider_name,
-            "attempted_model": model_name,
+            **_base_metadata(
+                engine="fallback",
+                actual_provider="heuristic",
+                actual_model="heuristic",
+                fallback_used=True,
+                fallback_reason="No extractable PDF page text was available for LLM analysis.",
+            ),
+            "attempted_provider": requested_provider,
+            "attempted_model": requested_model,
             "failure_reason": "No extractable PDF page text was available for LLM analysis.",
             **heuristic,
         }
@@ -71,10 +106,12 @@ def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any]
         )
         normalized = _normalize_llm_response(llm_response=llm_response, heuristic=heuristic, page_items=page_items)
         return {
-            "provider": provider_name,
-            "model": model_name,
-            "engine": "llm",
-            "generated_at": _utc_iso(),
+            **_base_metadata(
+                engine="llm",
+                actual_provider=requested_provider,
+                actual_model=requested_model,
+                fallback_used=False,
+            ),
             **normalized,
         }
     except Exception as exc:
@@ -96,22 +133,28 @@ def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any]
                 page_items=page_items,
             )
             return {
-                "provider": provider_name,
-                "model": model_name,
-                "engine": "llm",
-                "generated_at": _utc_iso(),
-                "attempted_provider": provider_name,
-                "attempted_model": model_name,
+                **_base_metadata(
+                    engine="llm",
+                    actual_provider=requested_provider,
+                    actual_model=requested_model,
+                    fallback_used=True,
+                    fallback_reason="recovered_from_text_fallback",
+                ),
+                "attempted_provider": requested_provider,
+                "attempted_model": requested_model,
                 "recovered_from_text_fallback": True,
                 **normalized,
             }
         return {
-            "provider": provider_name,
-            "model": model_name,
-            "engine": "fallback",
-            "generated_at": _utc_iso(),
-            "attempted_provider": provider_name,
-            "attempted_model": model_name,
+            **_base_metadata(
+                engine="fallback",
+                actual_provider="heuristic",
+                actual_model="heuristic",
+                fallback_used=True,
+                fallback_reason=failure_reason,
+            ),
+            "attempted_provider": requested_provider,
+            "attempted_model": requested_model,
             "failure_reason": failure_reason,
             **heuristic,
         }

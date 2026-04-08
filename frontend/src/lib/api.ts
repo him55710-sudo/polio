@@ -46,10 +46,6 @@ export function shouldUseSynchronousApiJobs() {
       // Local runs commonly skip a dedicated worker process.
       return true;
     }
-    if (/\.vercel\.app$/i.test(hostname)) {
-      // Vercel deployments often run without a separate worker process.
-      return true;
-    }
   }
   return false;
 }

@@ -12,11 +12,8 @@ class BaseRenderer(ABC):
     implementation_level = "stub"
 
     @abstractmethod
-    def render(self, context: RenderBuildContext) -> RenderArtifact:
+    def render(self, context: RenderBuildContext, output_path: Path) -> RenderArtifact:
+        """
+        Renders the content to the specified output_path.
+        """
         raise NotImplementedError
-
-    def prepare_output_path(self, context: RenderBuildContext) -> Path:
-        target_dir = get_export_root() / context.project_id / context.job_id
-        target_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"{slugify(context.draft_title)}{self.extension}"
-        return target_dir / filename

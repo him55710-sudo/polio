@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -36,7 +36,9 @@ from polio_api.services.diagnosis_report_service import (
     generate_consultant_report_artifact,
     get_latest_report_artifact_for_run,
     get_report_artifact_by_id,
+    load_report_artifact_pdf_bytes,
     report_artifact_file_path,
+    report_artifact_storage_key,
 )
 from polio_api.services.diagnosis_service import (
     DiagnosisCitation,
@@ -307,7 +309,7 @@ async def download_consultant_report_pdf_route(
     force_regenerate: bool = Query(default=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     run = _get_run_for_user(db, diagnosis_id, current_user.id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis run not found.")
@@ -338,7 +340,7 @@ async def download_consultant_report_pdf_route(
         or bool(artifact.include_appendix) != include_appendix
         or bool(artifact.include_citations) != include_citations
         or (template_id is not None and artifact.template_id != template_id)
-        or report_artifact_file_path(artifact) is None
+        or (report_artifact_storage_key(artifact) is None and report_artifact_file_path(artifact) is None)
     ):
         artifact = await generate_consultant_report_artifact(
             db,
@@ -352,6 +354,17 @@ async def download_consultant_report_pdf_route(
         )
 
     output_path = report_artifact_file_path(artifact)
+    storage_bytes = load_report_artifact_pdf_bytes(artifact)
+    if storage_bytes is not None:
+        filename = f"consultant-diagnosis-{run.id}-v{artifact.version}.pdf"
+        return Response(
+            content=storage_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
     if output_path is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

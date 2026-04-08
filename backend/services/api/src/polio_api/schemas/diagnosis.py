@@ -143,8 +143,11 @@ class ConsultantDiagnosisArtifactResponse(BaseModel):
     include_citations: bool
     status: DiagnosisReportStatus
     version: int
+    storage_provider: str | None = None
+    storage_key: str | None = None
     generated_file_path: str | None = None
     download_url: str | None = None
+    execution_metadata: dict[str, Any] | None = None
     error_message: str | None = None
     payload: ConsultantDiagnosisReport | None = None
     created_at: datetime

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from polio_api.core.config import get_settings
-from polio_api.core.llm import LLMRequestError, get_llm_client, get_llm_temperature
+from polio_api.core.llm import GeminiClient, LLMRequestError, OllamaClient, get_llm_client, get_llm_temperature
 from polio_api.core.security import sanitize_public_error
 from polio_api.db.models.diagnosis_report_artifact import DiagnosisReportArtifact
 from polio_api.db.models.diagnosis_run import DiagnosisRun
@@ -31,7 +33,7 @@ from polio_api.services.prompt_registry import get_prompt_registry
 from polio_domain.enums import RenderFormat
 from polio_render.diagnosis_report_pdf_renderer import render_consultant_diagnosis_pdf
 from polio_render.template_registry import get_template
-from polio_shared.paths import get_export_root, resolve_project_path, to_stored_path
+from polio_shared.storage import get_storage_provider, get_storage_provider_name
 
 
 logger = logging.getLogger("polio.api.diagnosis_report")
@@ -46,6 +48,11 @@ _REPORT_FAILURE_FALLBACK = "Diagnosis report generation failed. Retry after chec
 class _ConsultantNarrativePayload(BaseModel):
     executive_summary: str = Field(min_length=1, max_length=1600)
     final_consultant_memo: str = Field(min_length=1, max_length=1400)
+
+
+class _NarrativeGenerationResult(BaseModel):
+    narrative: _ConsultantNarrativePayload
+    execution_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def resolve_consultant_report_template_id(
@@ -89,16 +96,51 @@ def get_report_artifact_by_id(
     return db.scalar(stmt)
 
 
-def report_artifact_file_path(artifact: DiagnosisReportArtifact) -> Path | None:
+def report_artifact_file_path(artifact: DiagnosisReportArtifact) -> Path | str | None:
     if not artifact.generated_file_path:
         return None
+    return artifact.generated_file_path
+
+
+def report_artifact_storage_key(artifact: DiagnosisReportArtifact) -> str | None:
+    value = (artifact.storage_key or "").strip()
+    if value:
+        return value
+    legacy = (artifact.generated_file_path or "").strip()
+    if not legacy:
+        return None
+    legacy_path = Path(legacy)
+    if legacy_path.is_absolute():
+        return None
+    return legacy
+
+
+def report_artifact_execution_metadata(artifact: DiagnosisReportArtifact) -> dict[str, Any] | None:
+    raw = (artifact.execution_metadata_json or "").strip()
+    if not raw:
+        return None
     try:
-        resolved = resolve_project_path(artifact.generated_file_path)
+        decoded = json.loads(raw)
     except Exception:  # noqa: BLE001
         return None
-    if not resolved.exists() or not resolved.is_file():
+    if isinstance(decoded, dict):
+        return decoded
+    return None
+
+
+def load_report_artifact_pdf_bytes(artifact: DiagnosisReportArtifact) -> bytes | None:
+    key = report_artifact_storage_key(artifact)
+    if not key:
         return None
-    return resolved
+
+    storage = get_storage_provider(get_settings())
+    if not storage.exists(key):
+        return None
+    try:
+        return storage.retrieve(key)
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to retrieve diagnosis report artifact from storage key=%s", key)
+        return None
 
 
 def build_report_artifact_response(
@@ -115,7 +157,7 @@ def build_report_artifact_response(
             logger.warning("Failed to decode diagnosis report payload artifact=%s: %s", artifact.id, exc)
 
     download_url = None
-    if artifact.generated_file_path:
+    if report_artifact_storage_key(artifact):
         download_url = (
             f"{settings.api_prefix}/diagnosis/{artifact.diagnosis_run_id}/report.pdf"
             f"?artifact_id={artifact.id}"
@@ -135,8 +177,11 @@ def build_report_artifact_response(
         include_citations=bool(artifact.include_citations),
         status=report_status,  # type: ignore[arg-type]
         version=artifact.version,
+        storage_provider=artifact.storage_provider,
+        storage_key=report_artifact_storage_key(artifact),
         generated_file_path=artifact.generated_file_path,
         download_url=download_url,
+        execution_metadata=report_artifact_execution_metadata(artifact),
         error_message=artifact.error_message,
         payload=payload,
         created_at=artifact.created_at,
@@ -155,6 +200,8 @@ async def generate_consultant_report_artifact(
     include_citations: bool,
     force_regenerate: bool,
 ) -> DiagnosisReportArtifact:
+    settings = get_settings()
+    storage = get_storage_provider(settings)
     resolved_template_id = resolve_consultant_report_template_id(
         report_mode=report_mode,
         template_id=template_id,
@@ -165,16 +212,17 @@ async def generate_consultant_report_artifact(
         report_mode=report_mode,
     )
 
-    if (
-        not force_regenerate
-        and latest_for_mode is not None
-        and latest_for_mode.status == "READY"
-        and latest_for_mode.template_id == resolved_template_id
-        and bool(latest_for_mode.include_appendix) == include_appendix
-        and bool(latest_for_mode.include_citations) == include_citations
-        and report_artifact_file_path(latest_for_mode) is not None
-    ):
-        return latest_for_mode
+    if not force_regenerate and latest_for_mode is not None:
+        existing_key = report_artifact_storage_key(latest_for_mode)
+        if (
+            latest_for_mode.status == "READY"
+            and latest_for_mode.template_id == resolved_template_id
+            and bool(latest_for_mode.include_appendix) == include_appendix
+            and bool(latest_for_mode.include_citations) == include_citations
+            and existing_key
+            and storage.exists(existing_key)
+        ):
+            return latest_for_mode
 
     if not run.result_payload:
         raise ValueError("Diagnosis is not complete yet.")
@@ -183,6 +231,7 @@ async def generate_consultant_report_artifact(
     documents = list_documents_for_project(db, project.id)
     latest_version = latest_for_mode.version if latest_for_mode is not None else 0
     next_version = latest_version + 1
+    started_at = time.perf_counter()
 
     try:
         report = await build_consultant_report_payload(
@@ -195,20 +244,42 @@ async def generate_consultant_report_artifact(
             include_citations=include_citations,
             documents=documents,
         )
-        output_path = _build_report_output_path(
-            project_id=project.id,
-            diagnosis_run_id=run.id,
-            report_mode=report_mode,
-            version=next_version,
+        report_json = report.model_dump(mode="json")
+        report_json_str = report.model_dump_json()
+        execution_metadata_raw = report_json.get("render_hints", {}).get("execution_metadata")
+        execution_metadata = execution_metadata_raw if isinstance(execution_metadata_raw, dict) else {}
+
+        stored_path = (
+            f"exports/diagnosis_reports/{project.id}/{run.id}/"
+            f"consultant-diagnosis-{report_mode}-v{next_version}.pdf"
         )
-        render_consultant_diagnosis_pdf(
-            report_payload=report.model_dump(mode="json"),
-            output_path=output_path,
-            report_mode=report_mode,
-            template_id=resolved_template_id,
-            include_appendix=include_appendix,
-            include_citations=include_citations,
-        )
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        try:
+            render_consultant_diagnosis_pdf(
+                report_payload=report_json,
+                output_path=tmp_path,
+                report_mode=report_mode,
+                template_id=resolved_template_id,
+                include_appendix=include_appendix,
+                include_citations=include_citations,
+            )
+            with open(tmp_path, "rb") as f:
+                storage.store(f.read(), stored_path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+        duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
+        execution_metadata = {
+            **execution_metadata,
+            "storage_provider": get_storage_provider_name(storage),
+            "storage_key": stored_path,
+            "processing_duration_ms": duration_ms,
+        }
+
         artifact = DiagnosisReportArtifact(
             diagnosis_run_id=run.id,
             project_id=project.id,
@@ -219,12 +290,30 @@ async def generate_consultant_report_artifact(
             include_citations=include_citations,
             status="READY",
             version=next_version,
-            report_payload_json=report.model_dump_json(),
-            generated_file_path=to_stored_path(output_path),
+            report_payload_json=report_json_str,
+            storage_provider=get_storage_provider_name(storage),
+            storage_key=stored_path,
+            generated_file_path=stored_path,
+            execution_metadata_json=json.dumps(execution_metadata, ensure_ascii=False),
             error_message=None,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Consultant diagnosis report generation failed for run=%s", run.id)
+        duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
+        execution_metadata = {
+            "requested_llm_provider": (settings.llm_provider or "gemini").strip().lower(),
+            "requested_llm_model": (
+                settings.ollama_render_model
+                or settings.ollama_model
+                or "gemma4"
+            ) if (settings.llm_provider or "").strip().lower() == "ollama" else "gemini-1.5-pro",
+            "actual_llm_provider": "deterministic_fallback",
+            "actual_llm_model": "deterministic_fallback",
+            "llm_profile_used": "render",
+            "fallback_used": True,
+            "fallback_reason": sanitize_public_error(str(exc), fallback=_REPORT_FAILURE_FALLBACK),
+            "processing_duration_ms": duration_ms,
+        }
         artifact = DiagnosisReportArtifact(
             diagnosis_run_id=run.id,
             project_id=project.id,
@@ -241,7 +330,10 @@ async def generate_consultant_report_artifact(
                 report_mode=report_mode,
                 template_id=resolved_template_id,
             ),
+            storage_provider=get_storage_provider_name(storage),
+            storage_key=None,
             generated_file_path=None,
+            execution_metadata_json=json.dumps(execution_metadata, ensure_ascii=False),
             error_message=sanitize_public_error(str(exc), fallback=_REPORT_FAILURE_FALLBACK),
         )
 
@@ -272,12 +364,28 @@ async def build_consultant_report_payload(
         evidence_items=evidence_items,
     )
     roadmap = _build_roadmap(result=result, uncertainty_notes=uncertainty_notes)
-    narratives = await _generate_narratives(
+    narratives_result_raw = await _generate_narratives(
         project=project,
         result=result,
         document_structure=document_structure,
         uncertainty_notes=uncertainty_notes,
     )
+    if isinstance(narratives_result_raw, _NarrativeGenerationResult):
+        narratives_result = narratives_result_raw
+    else:
+        narratives_result = _NarrativeGenerationResult(
+            narrative=_ConsultantNarrativePayload.model_validate(narratives_result_raw),
+            execution_metadata={
+                "requested_llm_provider": None,
+                "requested_llm_model": None,
+                "actual_llm_provider": None,
+                "actual_llm_model": None,
+                "llm_profile_used": "render",
+                "fallback_used": None,
+                "fallback_reason": None,
+            },
+        )
+    narratives = narratives_result.narrative
 
     sections = _build_sections(
         result=result,
@@ -309,7 +417,7 @@ async def build_consultant_report_payload(
     if include_citations:
         appendix_notes.append("인용 부록에는 주장-근거 연결 검증을 위한 출처 라인이 포함됩니다.")
 
-    return ConsultantDiagnosisReport(
+    report_payload = ConsultantDiagnosisReport(
         diagnosis_run_id=run.id,
         project_id=project.id,
         report_mode=report_mode,
@@ -331,8 +439,18 @@ async def build_consultant_report_payload(
             "visual_tone": "consultant_premium",
             "include_appendix": include_appendix,
             "include_citations": include_citations,
+            "execution_metadata": {
+                **narratives_result.execution_metadata,
+                "diagnosis_backbone_requested_llm_provider": result.requested_llm_provider,
+                "diagnosis_backbone_requested_llm_model": result.requested_llm_model,
+                "diagnosis_backbone_actual_llm_provider": result.actual_llm_provider,
+                "diagnosis_backbone_actual_llm_model": result.actual_llm_model,
+                "diagnosis_backbone_fallback_used": result.fallback_used,
+                "diagnosis_backbone_fallback_reason": result.fallback_reason,
+            },
         },
     )
+    return report_payload
 
 
 def _build_target_context(*, project: Project, result: DiagnosisResultPayload, documents: list[Any]) -> str:
@@ -556,9 +674,25 @@ async def _generate_narratives(
     result: DiagnosisResultPayload,
     document_structure: dict[str, Any],
     uncertainty_notes: list[str],
-) -> _ConsultantNarrativePayload:
+) -> _NarrativeGenerationResult:
     fallback_summary = _build_fallback_executive_summary(result=result)
     fallback_memo = _build_fallback_final_memo(result=result)
+    settings = get_settings()
+    requested_provider = (settings.llm_provider or "gemini").strip().lower()
+    requested_model = (
+        (settings.ollama_render_model or settings.ollama_model or "gemma4").strip()
+        if requested_provider == "ollama"
+        else "gemini-1.5-pro"
+    )
+    fallback_execution = {
+        "requested_llm_provider": requested_provider,
+        "requested_llm_model": requested_model,
+        "actual_llm_provider": "deterministic_fallback",
+        "actual_llm_model": "deterministic_fallback",
+        "llm_profile_used": "render",
+        "fallback_used": True,
+        "fallback_reason": "llm_unavailable",
+    }
 
     context_payload = {
         "project_title": project.title,
@@ -591,18 +725,52 @@ async def _generate_narratives(
             system_instruction=system_instruction,
             temperature=get_llm_temperature(profile="render"),
         )
-        return _ConsultantNarrativePayload(
-            executive_summary=response.executive_summary.strip() or fallback_summary,
-            final_consultant_memo=response.final_consultant_memo.strip() or fallback_memo,
+        actual_provider = "ollama" if isinstance(llm, OllamaClient) else "gemini" if isinstance(llm, GeminiClient) else requested_provider
+        actual_model = (
+            llm.model
+            if isinstance(llm, OllamaClient)
+            else llm.model_name
+            if isinstance(llm, GeminiClient)
+            else requested_model
+        )
+        provider_fallback_used = actual_provider != requested_provider or actual_model != requested_model
+        fallback_reason = "provider_auto_fallback" if provider_fallback_used else None
+        return _NarrativeGenerationResult(
+            narrative=_ConsultantNarrativePayload(
+                executive_summary=response.executive_summary.strip() or fallback_summary,
+                final_consultant_memo=response.final_consultant_memo.strip() or fallback_memo,
+            ),
+            execution_metadata={
+                "requested_llm_provider": requested_provider,
+                "requested_llm_model": requested_model,
+                "actual_llm_provider": actual_provider,
+                "actual_llm_model": actual_model,
+                "llm_profile_used": "render",
+                "fallback_used": provider_fallback_used,
+                "fallback_reason": fallback_reason,
+            },
         )
     except (LLMRequestError, RuntimeError, ValueError) as exc:
         logger.warning("Consultant narrative fallback applied: %s", exc)
+        fallback_execution["fallback_reason"] = getattr(exc, "limited_reason", None) or sanitize_public_error(
+            str(exc),
+            fallback="llm_unavailable",
+            max_length=120,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Unexpected consultant narrative error. Fallback applied: %s", exc)
+        fallback_execution["fallback_reason"] = sanitize_public_error(
+            str(exc),
+            fallback="llm_unavailable",
+            max_length=120,
+        )
 
-    return _ConsultantNarrativePayload(
-        executive_summary=fallback_summary,
-        final_consultant_memo=fallback_memo,
+    return _NarrativeGenerationResult(
+        narrative=_ConsultantNarrativePayload(
+            executive_summary=fallback_summary,
+            final_consultant_memo=fallback_memo,
+        ),
+        execution_metadata=fallback_execution,
     )
 
 
@@ -813,19 +981,6 @@ def _build_appendix_notes(documents: list[Any], document_structure: dict[str, An
     for item in document_structure.get("uncertain_items", [])[:5]:
         notes.append(f"구조 추정 불확실 항목: {item}")
     return _dedupe(notes, limit=20)
-
-
-def _build_report_output_path(
-    *,
-    project_id: str,
-    diagnosis_run_id: str,
-    report_mode: DiagnosisReportMode,
-    version: int,
-) -> Path:
-    root = get_export_root() / "diagnosis_reports" / project_id / diagnosis_run_id
-    root.mkdir(parents=True, exist_ok=True)
-    mode_suffix = "premium10p" if report_mode == "premium_10p" else "compact"
-    return root / f"consultant-diagnosis-{mode_suffix}-v{version}.pdf"
 
 
 def _build_failed_report_payload(

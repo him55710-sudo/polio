@@ -194,6 +194,14 @@ class DiagnosisResult(BaseModel):
     policy_codes: list[str] = Field(default_factory=list)
     review_required: bool = False
     response_trace_id: str | None = None
+    requested_llm_provider: str | None = None
+    requested_llm_model: str | None = None
+    actual_llm_provider: str | None = None
+    actual_llm_model: str | None = None
+    llm_profile_used: str | None = None
+    fallback_used: bool | None = None
+    fallback_reason: str | None = None
+    processing_duration_ms: int | None = None
 
 
 @dataclass(frozen=True)

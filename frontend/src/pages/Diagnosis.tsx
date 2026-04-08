@@ -57,8 +57,18 @@ interface DiagnosisDocumentStatus {
   latest_async_job_status?: string | null;
   parse_metadata?: {
     chunk_count?: number;
+    source_storage_provider?: string;
+    source_storage_key?: string;
     pdf_analysis?: {
       summary?: string;
+      requested_pdf_analysis_provider?: string;
+      requested_pdf_analysis_model?: string;
+      actual_pdf_analysis_provider?: string;
+      actual_pdf_analysis_model?: string;
+      pdf_analysis_engine?: string;
+      fallback_used?: boolean;
+      fallback_reason?: string;
+      processing_duration_ms?: number;
     };
   };
   latest_async_job_error?: string | null;
@@ -1075,6 +1085,28 @@ export function Diagnosis() {
                       </div>
                     </SurfaceCard>
                   ) : null}
+
+                  <SurfaceCard tone="muted" padding="sm" className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">LLM execution</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                        requested: {diagnosisResult.requested_llm_provider || 'unknown'} / {diagnosisResult.requested_llm_model || 'unknown'}
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                        actual: {diagnosisResult.actual_llm_provider || 'unknown'} / {diagnosisResult.actual_llm_model || 'unknown'}
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                        profile: {diagnosisResult.llm_profile_used || 'standard'}
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                        fallback: {String(diagnosisResult.fallback_used ?? false)}
+                        {diagnosisResult.fallback_reason ? ` (${diagnosisResult.fallback_reason})` : ''}
+                      </div>
+                    </div>
+                    <p className="text-xs font-semibold text-slate-500">
+                      duration: {diagnosisResult.processing_duration_ms ?? 'n/a'}ms
+                    </p>
+                  </SurfaceCard>
 
                   {diagnosisResult.section_analysis?.length ? (
                     <div className="space-y-2">

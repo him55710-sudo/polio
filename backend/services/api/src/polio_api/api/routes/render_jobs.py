@@ -1,7 +1,8 @@
 from pathlib import Path
+from mimetypes import guess_type
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from polio_api.api.deps import get_current_user, get_db
@@ -22,6 +23,7 @@ from polio_api.services.render_job_service import (
 )
 from polio_domain.enums import RenderFormat
 from polio_shared.paths import get_export_root, resolve_project_path
+from polio_shared.storage import get_storage_provider
 
 router = APIRouter(prefix="/render-jobs")
 
@@ -95,10 +97,22 @@ def download_render_job_route(
     job_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     job = get_render_job_for_owner(db, job_id, current_user.id)
     if not job or not job.output_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.")
+
+    storage = get_storage_provider(get_settings())
+    if storage.exists(job.output_path):
+        content = storage.retrieve(job.output_path)
+        filename = Path(job.output_path).name
+        media_type = guess_type(filename)[0] or "application/octet-stream"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     output_path = _resolve_render_output_path(job.output_path)
     return FileResponse(path=output_path, filename=output_path.name)
 

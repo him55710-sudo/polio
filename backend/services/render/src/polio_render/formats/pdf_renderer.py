@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -32,8 +33,7 @@ class PdfRenderer(BaseRenderer):
     extension = ".pdf"
     implementation_level = "reportlab"
 
-    def render(self, context: RenderBuildContext) -> RenderArtifact:
-        output_path = self.prepare_output_path(context)
+    def render(self, context: RenderBuildContext, output_path: str | Path) -> RenderArtifact:
         self._build_pdf(context, output_path)
 
         relative_path = to_stored_path(output_path)

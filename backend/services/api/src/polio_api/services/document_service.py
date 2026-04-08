@@ -29,7 +29,11 @@ from polio_domain.enums import (
     UploadStatus,
 )
 from polio_ingest import can_ingest_file, parse_uploaded_document
-from polio_shared.paths import resolve_stored_path
+from polio_shared.storage import (
+    get_storage_provider,
+    get_storage_provider_name,
+    materialize_storage_path_once,
+)
 
 IN_PROGRESS_DOCUMENT_STATUSES = {
     DocumentProcessingStatus.MASKING.value,
@@ -161,14 +165,24 @@ def ingest_upload_asset(
     if not prepared:
         mark_document_processing(db, document, upload_asset)
 
-    source_path = resolve_stored_path(upload_asset.stored_path)
-    if not source_path.exists():
-        message = f"Source file not found: {source_path}"
+    settings = get_settings()
+    storage = get_storage_provider(settings)
+    if not storage.exists(upload_asset.stored_path):
+        message = f"Source file not found in storage: {upload_asset.stored_path}"
         _mark_document_failed(db, document, upload_asset, message, masking_failed=True)
         raise FileNotFoundError(message)
 
-    settings = get_settings()
+    source_path: Path | None = None
+    cleanup_source_path = False
     try:
+        source_path, cleanup_source_path = materialize_storage_path_once(
+            storage,
+            upload_asset.stored_path,
+            suffix=Path(upload_asset.original_filename or upload_asset.stored_path).suffix,
+        )
+        if source_path is None:
+            raise FileNotFoundError(f"Source file not found in storage: {upload_asset.stored_path}")
+
         parsed = parse_uploaded_document(
             source_path,
             chunk_size_chars=settings.upload_chunk_size_chars,
@@ -217,6 +231,8 @@ def ingest_upload_asset(
             "analysis_artifact": parsed.analysis_artifact,
             "parse_confidence": parsed.parse_confidence,
             "needs_review": parsed.needs_review,
+            "source_storage_provider": get_storage_provider_name(storage),
+            "source_storage_key": upload_asset.stored_path,
         }
 
         # Advanced Student Record Parsing Pipeline
@@ -305,6 +321,9 @@ def ingest_upload_asset(
     except Exception as exc:  # noqa: BLE001
         _mark_document_failed(db, document, upload_asset, str(exc), masking_failed=True)
         raise
+    finally:
+        if cleanup_source_path and source_path is not None and source_path.exists():
+            source_path.unlink()
 
 
 def parse_document_by_id(

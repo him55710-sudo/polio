@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import uuid
 import logging
+import tempfile
+from pathlib import Path
 
 from polio_api.api.deps import get_db, get_current_user
 from polio_api.core.rate_limit import rate_limit
@@ -247,6 +249,7 @@ class ExportRequest(BaseModel):
 def export_project_document(
     project_id: str,
     payload: ExportRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: None = Depends(rate_limit(bucket="project_export", limit=10, window_seconds=300, guest_limit=2)),
@@ -284,19 +287,27 @@ def export_project_document(
         ),
     )
 
+    with tempfile.NamedTemporaryFile(suffix=f".{payload.render_format.value}", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+
     try:
-        artifact = dispatch_render(context)
+        artifact = dispatch_render(context, tmp_path)
         media_type = {
             RenderFormat.HWPX: "application/vnd.hancom.hwpx",
             RenderFormat.PDF: "application/pdf",
             RenderFormat.PPTX: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         }[payload.render_format]
+        
+        background_tasks.add_task(lambda p: p.unlink() if p.exists() else None, tmp_path)
+
         return FileResponse(
-            path=artifact.absolute_path,
+            path=tmp_path,
             filename=f"{template.id}_{project_id}.{payload.render_format.value}",
             media_type=media_type,
         )
     except Exception as exc:
+        if tmp_path.exists():
+            tmp_path.unlink()
         logger.exception("Project export failed: %s", project_id)
         raise HTTPException(
             status_code=500,

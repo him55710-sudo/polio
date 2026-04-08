@@ -118,6 +118,11 @@ def _apply_schema_evolution() -> None:
             "progress_stage": "progress_stage VARCHAR(64)",
             "progress_message": "progress_message TEXT",
         },
+        "diagnosis_report_artifacts": {
+            "storage_provider": "storage_provider VARCHAR(32)",
+            "storage_key": "storage_key TEXT",
+            "execution_metadata_json": "execution_metadata_json TEXT",
+        },
     }
 
     with engine.begin() as connection:

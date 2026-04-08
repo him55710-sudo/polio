@@ -21,6 +21,14 @@ def _sanitize_parse_metadata(value: object) -> dict[str, object]:
     if isinstance(table_count, int) and table_count >= 0:
         safe["table_count"] = table_count
 
+    source_storage_provider = str(value.get("source_storage_provider") or "").strip()
+    if source_storage_provider:
+        safe["source_storage_provider"] = source_storage_provider[:32]
+
+    source_storage_key = str(value.get("source_storage_key") or "").strip()
+    if source_storage_key:
+        safe["source_storage_key"] = source_storage_key[:600]
+
     warnings = value.get("warnings")
     if isinstance(warnings, list):
         safe["warnings"] = [
@@ -98,6 +106,42 @@ def _sanitize_parse_metadata(value: object) -> dict[str, object]:
         engine = str(pdf_analysis.get("engine") or "").strip()
         if engine:
             safe_pdf_analysis["engine"] = engine[:20]
+
+        requested_provider = str(pdf_analysis.get("requested_pdf_analysis_provider") or "").strip()
+        if requested_provider:
+            safe_pdf_analysis["requested_pdf_analysis_provider"] = requested_provider[:40]
+
+        requested_model = str(pdf_analysis.get("requested_pdf_analysis_model") or "").strip()
+        if requested_model:
+            safe_pdf_analysis["requested_pdf_analysis_model"] = requested_model[:80]
+
+        actual_provider = str(pdf_analysis.get("actual_pdf_analysis_provider") or "").strip()
+        if actual_provider:
+            safe_pdf_analysis["actual_pdf_analysis_provider"] = actual_provider[:40]
+
+        actual_model = str(pdf_analysis.get("actual_pdf_analysis_model") or "").strip()
+        if actual_model:
+            safe_pdf_analysis["actual_pdf_analysis_model"] = actual_model[:80]
+
+        actual_engine = str(pdf_analysis.get("pdf_analysis_engine") or "").strip()
+        if actual_engine:
+            safe_pdf_analysis["pdf_analysis_engine"] = actual_engine[:20]
+
+        fallback_used = pdf_analysis.get("fallback_used")
+        if isinstance(fallback_used, bool):
+            safe_pdf_analysis["fallback_used"] = fallback_used
+
+        fallback_reason = str(pdf_analysis.get("fallback_reason") or "").strip()
+        if fallback_reason:
+            safe_pdf_analysis["fallback_reason"] = sanitize_public_error(
+                fallback_reason,
+                fallback=_DOCUMENT_ERROR_FALLBACK,
+                max_length=220,
+            )
+
+        processing_duration_ms = pdf_analysis.get("processing_duration_ms")
+        if isinstance(processing_duration_ms, int) and processing_duration_ms >= 0:
+            safe_pdf_analysis["processing_duration_ms"] = processing_duration_ms
 
         generated_at = str(pdf_analysis.get("generated_at") or "").strip()
         if generated_at:

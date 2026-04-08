@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from polio_domain.enums import RenderFormat
 from polio_render.formats.base import BaseRenderer
 from polio_render.formats.hwpx_renderer import HwpxRenderer
@@ -13,7 +15,7 @@ RENDERERS: dict[RenderFormat, type[BaseRenderer]] = {
 }
 
 
-def dispatch_render(context: RenderBuildContext) -> RenderArtifact:
+def dispatch_render(context: RenderBuildContext, output_path: str | Path) -> RenderArtifact:
     renderer_cls = RENDERERS[context.render_format]
     renderer = renderer_cls()
-    return renderer.render(context)
+    return renderer.render(context, output_path)

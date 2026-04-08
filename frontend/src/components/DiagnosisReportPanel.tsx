@@ -63,6 +63,7 @@ export function DiagnosisReportPanel({ diagnosisRunId }: DiagnosisReportPanelPro
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const selectedMode = useMemo(() => MODE_OPTIONS.find((item) => item.value === mode) ?? MODE_OPTIONS[0], [mode]);
+  const executionMeta = (artifact?.execution_metadata ?? null) as Record<string, unknown> | null;
 
   const loadExistingArtifact = useCallback(async () => {
     setIsLoading(true);
@@ -264,6 +265,21 @@ export function DiagnosisReportPanel({ diagnosisRunId }: DiagnosisReportPanelPro
                   </p>
                 </div>
               ))}
+            </div>
+            <div className="grid gap-2 text-xs font-semibold text-slate-600 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                storage: {artifact.storage_provider || 'unknown'} / {artifact.storage_key || 'n/a'}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                llm: {String(executionMeta?.actual_llm_provider || 'unknown')} / {String(executionMeta?.actual_llm_model || 'unknown')}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                fallback: {String(executionMeta?.fallback_used ?? false)}
+                {executionMeta?.fallback_reason ? ` (${String(executionMeta.fallback_reason)})` : ''}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                duration: {String(executionMeta?.processing_duration_ms ?? 'n/a')}ms
+              </div>
             </div>
           </SurfaceCard>
         ) : null}

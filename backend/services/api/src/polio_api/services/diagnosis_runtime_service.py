@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -9,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from polio_api.core.config import get_settings
+from polio_api.core.llm import GeminiClient, OllamaClient, get_llm_client
 from polio_api.db.models.diagnosis_run import DiagnosisRun
 from polio_api.db.models.project import Project
 from polio_api.db.models.response_trace import ResponseTrace
@@ -31,7 +33,7 @@ from polio_api.services.diagnosis_service import (
 from polio_api.services.document_service import list_chunks_for_project, list_documents_for_project
 from polio_api.services.project_service import get_project
 from polio_api.services.student_record_feature_service import extract_student_record_features
-from polio_shared.paths import resolve_stored_path
+from polio_shared.storage import get_storage_provider
 
 
 RAW_POLICY_SCAN_EXTENSIONS = {".txt", ".md", ".csv", ".json"}
@@ -110,6 +112,7 @@ def combine_project_text(project_id: str, db: Session) -> tuple[list[Any], str]:
 
 def build_policy_scan_text(documents: list) -> str:
     parts: list[str] = []
+    storage = get_storage_provider(get_settings())
     for document in documents:
         if document.content_text or document.content_markdown:
             parts.append(document.content_text or document.content_markdown or "")
@@ -118,7 +121,7 @@ def build_policy_scan_text(documents: list) -> str:
         if not stored_path or source_extension not in RAW_POLICY_SCAN_EXTENSIONS:
             continue
         try:
-            raw_text = resolve_stored_path(stored_path).read_text(encoding="utf-8")
+            raw_text = storage.retrieve(stored_path).decode("utf-8", errors="ignore")
         except Exception:
             continue
         if raw_text.strip():
@@ -138,17 +141,50 @@ def get_run_with_relations(db: Session, run_id: str) -> DiagnosisRun | None:
     )
 
 
-def _diagnosis_llm_strategy() -> tuple[bool, str]:
+def _diagnosis_llm_strategy() -> dict[str, Any]:
     settings = get_settings()
-    provider = (settings.llm_provider or "gemini").strip().lower()
-    has_real_gemini_key = bool(settings.gemini_api_key and settings.gemini_api_key != "DUMMY_KEY")
+    requested_provider = (settings.llm_provider or "gemini").strip().lower()
+    requested_model = (
+        (settings.ollama_standard_model or settings.ollama_model or "gemma4").strip()
+        if requested_provider == "ollama"
+        else "gemini-1.5-pro"
+    )
+    base = {
+        "requested_llm_provider": requested_provider,
+        "requested_llm_model": requested_model,
+        "llm_profile_used": "standard",
+        "actual_llm_provider": None,
+        "actual_llm_model": None,
+        "should_use_llm": False,
+        "fallback_used": True,
+        "fallback_reason": "llm_unavailable",
+    }
 
-    if provider == "ollama":
-        model = (settings.ollama_model or "ollama").strip() or "ollama"
-        return True, model
-    if provider == "gemini" and has_real_gemini_key:
-        return True, "gemini-1.5-pro"
-    return False, "grounded-fallback"
+    try:
+        llm = get_llm_client(profile="standard")
+    except Exception as exc:  # noqa: BLE001
+        base["fallback_reason"] = f"client_init_failed:{type(exc).__name__}"
+        return base
+
+    if isinstance(llm, OllamaClient):
+        actual_provider = "ollama"
+        actual_model = llm.model
+    elif isinstance(llm, GeminiClient):
+        actual_provider = "gemini"
+        actual_model = llm.model_name
+    else:
+        actual_provider = requested_provider
+        actual_model = requested_model
+
+    provider_fallback_used = actual_provider != requested_provider or actual_model != requested_model
+    return {
+        **base,
+        "actual_llm_provider": actual_provider,
+        "actual_llm_model": actual_model,
+        "should_use_llm": True,
+        "fallback_used": provider_fallback_used,
+        "fallback_reason": "provider_auto_fallback" if provider_fallback_used else None,
+    }
 
 
 def _merge_unique(items: list[str], extra: list[str], *, limit: int) -> list[str]:
@@ -211,11 +247,14 @@ async def run_diagnosis_run(
 
     documents, full_text = combine_project_text(project_id, db)
     chunks = list_chunks_for_project(db, project_id)
+    started_at = time.perf_counter()
 
     policy_scan_text = build_policy_scan_text(documents) or full_text
     diagnosis_input_text = full_text[:MAX_DIAGNOSIS_LLM_INPUT_CHARS]
     semantic_input_text = full_text[:MAX_SEMANTIC_INPUT_CHARS]
-    should_use_llm, model_name = _diagnosis_llm_strategy()
+    llm_strategy = _diagnosis_llm_strategy()
+    should_use_llm = bool(llm_strategy.get("should_use_llm"))
+    model_name = str(llm_strategy.get("actual_llm_model") or "grounded-fallback")
 
     run.status_message = "검색된 문서들의 정책 준수 여부를 검토하고 있습니다..."
     db.commit()
@@ -290,6 +329,10 @@ async def run_diagnosis_run(
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM diagnosis failed for run %s. Falling back: %s", run.id, exc)
             model_name = "grounded-fallback"
+            llm_strategy["actual_llm_provider"] = "deterministic_fallback"
+            llm_strategy["actual_llm_model"] = "grounded-fallback"
+            llm_strategy["fallback_used"] = True
+            llm_strategy["fallback_reason"] = f"generation_failed:{type(exc).__name__}"
             result = build_grounded_diagnosis_result(
                 project_title=project.title,
                 target_major=target_major,
@@ -299,6 +342,8 @@ async def run_diagnosis_run(
                 full_text=diagnosis_input_text or full_text,
             )
     else:
+        llm_strategy["actual_llm_provider"] = "deterministic_fallback"
+        llm_strategy["actual_llm_model"] = "grounded-fallback"
         result = build_grounded_diagnosis_result(
             project_title=project.title,
             target_major=target_major,
@@ -309,6 +354,17 @@ async def run_diagnosis_run(
 
         )
     _apply_structured_backbone(result=result, sheet=scoring_sheet)
+    processing_duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
+    result.requested_llm_provider = str(llm_strategy.get("requested_llm_provider") or "")
+    result.requested_llm_model = str(llm_strategy.get("requested_llm_model") or "")
+    result.actual_llm_provider = str(llm_strategy.get("actual_llm_provider") or "")
+    result.actual_llm_model = str(llm_strategy.get("actual_llm_model") or "")
+    result.llm_profile_used = str(llm_strategy.get("llm_profile_used") or "standard")
+    result.fallback_used = bool(llm_strategy.get("fallback_used"))
+    result.fallback_reason = (
+        str(llm_strategy.get("fallback_reason") or "").strip() or None
+    )
+    result.processing_duration_ms = processing_duration_ms
 
     trace, citation_records = create_response_trace(
         db,

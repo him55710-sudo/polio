@@ -265,6 +265,14 @@ export interface DiagnosisResultPayload {
   policy_codes?: string[];
   review_required?: boolean;
   response_trace_id?: string | null;
+  requested_llm_provider?: string | null;
+  requested_llm_model?: string | null;
+  actual_llm_provider?: string | null;
+  actual_llm_model?: string | null;
+  llm_profile_used?: string | null;
+  fallback_used?: boolean | null;
+  fallback_reason?: string | null;
+  processing_duration_ms?: number | null;
 }
 
 export interface StoredDiagnosis {
@@ -368,8 +376,11 @@ export interface ConsultantDiagnosisArtifactResponse {
   include_citations: boolean;
   status: 'READY' | 'FAILED';
   version: number;
+  storage_provider?: string | null;
+  storage_key?: string | null;
   generated_file_path?: string | null;
   download_url?: string | null;
+  execution_metadata?: Record<string, unknown> | null;
   error_message?: string | null;
   payload?: ConsultantDiagnosisReport | null;
   created_at: string;

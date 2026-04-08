@@ -6,7 +6,7 @@ import re
 from typing import Annotated
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from polio_shared.paths import find_project_root, resolve_runtime_path
 
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./storage/runtime/polio.db?check_same_thread=False&timeout=30"
     database_echo: bool = False
     database_auto_create_tables: bool = True
+    allow_production_sqlite: bool = False
     postgres_enable_pgvector: bool = True
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3001"]
@@ -106,12 +107,31 @@ class Settings(BaseSettings):
     gemini_genai_enabled: bool = False
 
     # Storage Settings
-    polio_storage_provider: str = Field(default="local", description="Storage provider: 'local' or 's3'")
-    polio_storage_root: str | None = None
-    s3_endpoint_url: str | None = None
-    s3_access_key_id: str | None = None
-    s3_secret_access_key: str | None = None
-    s3_bucket_name: str | None = None
+    polio_storage_provider: str = Field(
+        default="local",
+        validation_alias=AliasChoices("POLIO_STORAGE_PROVIDER", "OBJECT_STORAGE_PROVIDER"),
+        description="Storage provider: 'local' or 's3'",
+    )
+    polio_storage_root: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("POLIO_STORAGE_ROOT", "LOCAL_OBJECT_STORE_PATH"),
+    )
+    s3_endpoint_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_ENDPOINT_URL", "OBJECT_STORAGE_ENDPOINT"),
+    )
+    s3_access_key_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_ACCESS_KEY_ID", "OBJECT_STORAGE_ACCESS_KEY"),
+    )
+    s3_secret_access_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_SECRET_ACCESS_KEY", "OBJECT_STORAGE_SECRET_KEY"),
+    )
+    s3_bucket_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_BUCKET_NAME", "OBJECT_STORAGE_BUCKET"),
+    )
     s3_region_name: str | None = None
 
     # LLM Settings
@@ -263,6 +283,15 @@ class Settings(BaseSettings):
                             f"{provider.upper()} redirect URI must not target localhost outside local development."
                         )
 
+        vercel_env = (os.getenv("VERCEL_ENV") or "").strip().lower()
+        strict_runtime = self.serverless_runtime or vercel_env in {"production", "preview"}
+        if strict_runtime and self.app_env not in {"local", "test"} and _is_sqlite_database_url(self.database_url):
+            if not self.allow_production_sqlite:
+                raise ValueError(
+                    "SQLite runtime database is blocked for deployed environments. "
+                    "Set DATABASE_URL to a Postgres endpoint, or set ALLOW_PRODUCTION_SQLITE=true only as a temporary emergency override."
+                )
+
         normalized_storage_provider = (self.polio_storage_provider or "").strip().lower()
         object.__setattr__(self, "polio_storage_provider", normalized_storage_provider or "local")
         if self.polio_storage_provider == "s3":
@@ -324,6 +353,11 @@ def _is_valid_http_url(value: str | None) -> bool:
         return False
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _is_sqlite_database_url(value: str | None) -> bool:
+    normalized = (value or "").strip().lower()
+    return normalized.startswith("sqlite:")
 
 
 @lru_cache(maxsize=1)
