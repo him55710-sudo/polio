@@ -25,7 +25,7 @@ class DiagnosisResultPayload(DiagnosisResult):
 class DiagnosisGuidedPlanRequest(BaseModel):
     direction_id: str = Field(min_length=1, max_length=80)
     topic_id: str = Field(min_length=1, max_length=80)
-    page_count: int = Field(ge=1, le=20)
+    page_count: int = Field(ge=5, le=20)
     export_format: Literal["pdf", "pptx", "hwpx"]
     template_id: str = Field(min_length=1, max_length=80)
     include_provenance_appendix: bool = False

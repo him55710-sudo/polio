@@ -3,8 +3,10 @@ import { CheckCircle2, LogOut, Mail, RefreshCw, ShieldCheck, Sparkles, Trash2, U
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useAuthStore } from '../store/authStore';
 import { api } from '../lib/api';
 import { PageHeader, PrimaryButton, SecondaryButton, SectionCard, StatusBadge, SurfaceCard, WorkflowNotice } from '../components/primitives';
+import { FileText, Info } from 'lucide-react';
 
 interface UserSettings {
   autoSaveDrafts: boolean;
@@ -72,6 +74,7 @@ function SettingToggleRow({
 export function Settings() {
   const navigate = useNavigate();
   const { user, isGuestSession, signInWithGoogle, logout } = useAuth();
+  const backendUser = useAuthStore(state => state.user);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
 
@@ -151,6 +154,25 @@ export function Settings() {
     toast.success('설정을 기본값으로 초기화했어요.');
   };
 
+  const handleToggleMarketing = async (enabled: boolean) => {
+    try {
+      await api.post('/api/v1/users/onboarding/profile', {
+        marketing_agreed: enabled
+      });
+      await useAuthStore.getState().fetchProfile();
+      toast.success(enabled ? '마케팅 정보 수신에 동의했어요.' : '마케팅 정보 수신을 거부했어요.');
+    } catch (error) {
+      toast.error('설정 저장에 실패했어요.');
+    }
+  };
+
+  const handleRequestDataDeletion = () => {
+    if (window.confirm('정말로 모든 개인정보와 활동 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+      navigate('/contact', { state: { subject: '개인정보 삭제 요청', content: `계정 ID: ${user?.uid}\n이메일: ${user?.email}\n\n위 계정의 모든 데이터를 삭제해 주세요.` } });
+      toast('문의 허브로 연결해 드렸습니다. 내용을 확인 후 전송해 주세요.', { icon: 'ℹ️' });
+    }
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <PageHeader
@@ -208,8 +230,43 @@ export function Settings() {
             enabled={settings.notifyOnExport}
             onToggle={() => toggle('notifyOnExport')}
           />
+          <SettingToggleRow
+            title="마케팅 정보 수신"
+            description="새로운 기능과 혜택 소식을 받아볼 수 있어요."
+            enabled={backendUser?.marketing_agreed || false}
+            onToggle={() => handleToggleMarketing(!backendUser?.marketing_agreed)}
+          />
         </SectionCard>
       </div>
+
+      <SectionCard title="법적 안내 및 약관" description="Uni Folia의 서비스 운영 정책과 개인정보 보호 원칙을 확인할 수 있어요." eyebrow="정책">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <SecondaryButton onClick={() => window.open('/legal/terms', '_blank')} className="justify-start">
+            <FileText size={16} />
+            이용약관
+          </SecondaryButton>
+          <SecondaryButton onClick={() => window.open('/legal/privacy', '_blank')} className="justify-start">
+            <ShieldCheck size={16} />
+            개인정보처리방침
+          </SecondaryButton>
+          <SecondaryButton onClick={() => window.open('/legal/refund', '_blank')} className="justify-start">
+            <RefreshCw size={16} />
+            환불 정책
+          </SecondaryButton>
+          <SecondaryButton onClick={() => window.open('/legal/marketing', '_blank')} className="justify-start">
+            <Mail size={16} />
+            마케팅 정보 수신 안내
+          </SecondaryButton>
+          <SecondaryButton onClick={() => window.open('/legal/youth', '_blank')} className="justify-start">
+            <UserCircle2 size={16} />
+            청소년 보호 정책
+          </SecondaryButton>
+          <SecondaryButton onClick={() => window.open('/legal/cookies', '_blank')} className="justify-start">
+            <Info size={16} />
+            쿠키 사용 안내
+          </SecondaryButton>
+        </div>
+      </SectionCard>
 
       <SectionCard title="진단 및 데이터 관리" description="서버 상태 확인과 로컬 데이터 정리를 할 수 있어요." eyebrow="관리">
         <WorkflowNotice tone="info" title="중요 안내" description="보관함 초기화는 내 기기(브라우저)에 저장된 데이터만 지워요." />
@@ -231,6 +288,10 @@ export function Settings() {
             <Trash2 size={16} />
             보관함 초기화
           </PrimaryButton>
+          <SecondaryButton onClick={handleRequestDataDeletion} className="sm:col-span-2 border-red-100 text-red-600 hover:bg-red-50">
+            <Trash2 size={16} />
+            개인정보 및 모든 데이터 삭제 요청
+          </SecondaryButton>
         </div>
 
         <SurfaceCard tone="muted" padding="sm">

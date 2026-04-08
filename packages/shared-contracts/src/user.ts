@@ -10,6 +10,7 @@ export interface UserProfile {
   career: string | null;
   admission_type: string | null;
   interest_universities: string[];
+  marketing_agreed: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ export interface OnboardingProfileUpdateRequest {
   track?: string | null;
   career?: string | null;
   interest_universities?: string[] | null;
+  marketing_agreed?: boolean | null;
 }
 
 export type OnboardingProfileUpdateResponse = UserProfile;

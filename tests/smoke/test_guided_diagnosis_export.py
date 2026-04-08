@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
+
+from pypdf import PdfReader
 
 from polio_api.services.prompt_registry import get_prompt_registry
 from tests.smoke.helpers import make_client
@@ -81,8 +84,10 @@ def test_guided_diagnosis_returns_structured_choices(tmp_path: Path) -> None:
         first_direction = result["recommended_directions"][0]
         assert first_direction["topic_candidates"]
         assert first_direction["page_count_options"]
+        assert all(option["page_count"] >= 5 for option in first_direction["page_count_options"])
         assert first_direction["format_recommendations"]
         assert first_direction["template_candidates"]
+        assert result["recommended_default_action"]["page_count"] >= 5
         default_direction = next(
             direction
             for direction in result["recommended_directions"]
@@ -109,10 +114,13 @@ def test_guided_plan_template_render_flow(tmp_path: Path) -> None:
         result = diagnosis["result_payload"]
         direction = result["recommended_directions"][0]
         format_choice = next(
-            (item for item in direction["format_recommendations"] if item.get("recommended")),
+            (item for item in direction["format_recommendations"] if item["format"] == "pdf"),
             direction["format_recommendations"][0],
         )
-        template_choice = direction["template_candidates"][0]
+        template_choice = next(
+            (item for item in direction["template_candidates"] if "pdf" in item["supported_formats"]),
+            direction["template_candidates"][0],
+        )
 
         guided_plan = client.post(
             f"/api/v1/diagnosis/{diagnosis['id']}/guided-plan",
@@ -133,6 +141,7 @@ def test_guided_plan_template_render_flow(tmp_path: Path) -> None:
         assert outline["sections"]
         assert outline["template_id"] == template_choice["id"]
         assert outline["include_provenance_appendix"] is True
+        assert outline["page_count"] >= 5
 
         render_job = client.post(
             "/api/v1/render-jobs",
@@ -160,6 +169,8 @@ def test_guided_plan_template_render_flow(tmp_path: Path) -> None:
         download = client.get(processed_payload["download_url"])
         assert download.status_code == 200, download.text
         assert download.content
+        pdf_reader = PdfReader(BytesIO(download.content))
+        assert len(pdf_reader.pages) >= 5
 
 
 def test_guided_plan_rejects_choices_outside_structured_options(tmp_path: Path) -> None:

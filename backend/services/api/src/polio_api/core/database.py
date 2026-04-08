@@ -63,6 +63,7 @@ def _apply_schema_evolution() -> None:
             "target_university": "target_university VARCHAR(200)",
             "target_major": "target_major VARCHAR(200)",
             "interest_universities": "interest_universities JSON",
+            "marketing_agreed": "marketing_agreed BOOLEAN DEFAULT 0 NOT NULL",
         },
         "projects": {
             "owner_user_id": "owner_user_id VARCHAR(36)",

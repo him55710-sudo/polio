@@ -27,6 +27,11 @@ const Diagnosis = lazy(() => import('./pages/Diagnosis').then(m => ({ default: m
 const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
 const TermsOfService = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.TermsOfService })));
 const PrivacyPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.PrivacyPolicy })));
+const RefundPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.RefundPolicy })));
+const CookiesPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.CookiesPolicy })));
+const MarketingPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.MarketingPolicy })));
+const YouthPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.YouthPolicy })));
+const DataDeletionPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.DataDeletionPolicy })));
 
 function PageLoader() {
   return (
@@ -129,8 +134,17 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/faq" element={<Faq />} />
                 <Route path="/contact" element={<Contact />} />
-                <Route path="/terms" element={<TermsOfService />} />
-                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="legal/terms" element={<TermsOfService />} />
+                <Route path="legal/privacy" element={<PrivacyPolicy />} />
+                <Route path="legal/refund" element={<RefundPolicy />} />
+                <Route path="legal/cookies" element={<CookiesPolicy />} />
+                <Route path="legal/marketing" element={<MarketingPolicy />} />
+                <Route path="legal/youth" element={<YouthPolicy />} />
+                <Route path="legal/data-deletion" element={<DataDeletionPolicy />} />
+                
+                {/* Legacy redirect routes */}
+                <Route path="/terms" element={<LegacyRouteRedirect to="/legal/terms" />} />
+                <Route path="/privacy" element={<LegacyRouteRedirect to="/legal/privacy" />} />
               </Route>
 
               <Route path="/auth" element={<Auth />} />

@@ -36,6 +36,16 @@ function toAuthMessage(error: unknown): string {
 export function Auth() {
   const { isAuthenticated, signInWithGoogle, signInWithKakao, signInWithNaver, signInAsGuest } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState<'google' | 'kakao' | 'naver' | 'guest' | null>(null);
+  
+  const [agreements, setAgreements] = useState({
+    terms: false,
+    privacy: false,
+    age: false,
+    marketing: false,
+  });
+
+  const allRequiredAgreed = agreements.terms && agreements.privacy && agreements.age;
+
   const missingFirebaseKeys = useMemo(() => getFirebaseMissingKeys(), []);
 
   if (isAuthenticated) {
@@ -49,6 +59,7 @@ export function Auth() {
   const onGoogleLogin = async () => {
     if (isSigningIn !== null) return;
     setIsSigningIn('google');
+    localStorage.setItem('polio_pending_marketing_consent', agreements.marketing ? 'true' : 'false');
     try {
       await signInWithGoogle();
     } catch (error) {
@@ -61,6 +72,7 @@ export function Auth() {
   const onKakaoLogin = async () => {
     if (isSigningIn !== null) return;
     setIsSigningIn('kakao');
+    localStorage.setItem('polio_pending_marketing_consent', agreements.marketing ? 'true' : 'false');
     try {
       await signInWithKakao();
     } catch (error) {
@@ -73,6 +85,7 @@ export function Auth() {
   const onNaverLogin = async () => {
     if (isSigningIn !== null) return;
     setIsSigningIn('naver');
+    localStorage.setItem('polio_pending_marketing_consent', agreements.marketing ? 'true' : 'false');
     try {
       await signInWithNaver();
     } catch (error) {
@@ -85,6 +98,7 @@ export function Auth() {
   const onGuestLogin = async () => {
     if (isSigningIn !== null) return;
     setIsSigningIn('guest');
+    localStorage.setItem('polio_pending_marketing_consent', agreements.marketing ? 'true' : 'false');
     try {
       await signInAsGuest();
     } catch (error) {
@@ -222,11 +236,78 @@ export function Auth() {
               </div>
             ) : null}
 
+            {/* Legal Agreements */}
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:mt-8">
+              <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-4">
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    checked={agreements.terms && agreements.privacy && agreements.age && agreements.marketing}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setAgreements({ terms: checked, privacy: checked, age: checked, marketing: checked });
+                    }}
+                  />
+                  <span className="text-sm font-black text-slate-900">전체 동의하기</span>
+                </label>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      checked={agreements.age}
+                      onChange={(e) => setAgreements(prev => ({ ...prev, age: e.target.checked }))}
+                    />
+                    <span className="text-sm font-medium text-slate-700">[필수] 만 14세 이상입니다</span>
+                  </label>
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      checked={agreements.terms}
+                      onChange={(e) => setAgreements(prev => ({ ...prev, terms: e.target.checked }))}
+                    />
+                    <span className="text-sm font-medium text-slate-700">[필수] 이용약관 동의</span>
+                  </label>
+                  <Link to="/legal/terms" target="_blank" className="text-xs font-bold text-slate-400 hover:text-blue-600">보기</Link>
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      checked={agreements.privacy}
+                      onChange={(e) => setAgreements(prev => ({ ...prev, privacy: e.target.checked }))}
+                    />
+                    <span className="text-sm font-medium text-slate-700">[필수] 개인정보 수집 및 이용 동의</span>
+                  </label>
+                  <Link to="/legal/privacy" target="_blank" className="text-xs font-bold text-slate-400 hover:text-blue-600">보기</Link>
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      checked={agreements.marketing}
+                      onChange={(e) => setAgreements(prev => ({ ...prev, marketing: e.target.checked }))}
+                    />
+                    <span className="text-sm font-medium text-slate-700">[선택] 마케팅 정보 수신 동의</span>
+                  </label>
+                  <Link to="/legal/marketing" target="_blank" className="text-xs font-bold text-slate-400 hover:text-blue-600">보기</Link>
+                </div>
+              </div>
+            </div>
+
             <div className="mt-6 space-y-3 sm:mt-8">
               <button
                 type="button"
                 onClick={onGoogleLogin}
-                disabled={isSigningIn !== null}
+                disabled={isSigningIn !== null || !allRequiredAgreed}
                 className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-black text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
                 <img src="https://www.google.com/favicon.ico" alt="" className="h-5 w-5" />
@@ -236,7 +317,7 @@ export function Auth() {
               <button
                 type="button"
                 onClick={onKakaoLogin}
-                disabled={isSigningIn !== null}
+                disabled={isSigningIn !== null || !allRequiredAgreed}
                 className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border-none bg-[#FEE500] px-5 py-3.5 text-sm font-black text-[#191919] shadow-sm transition-all hover:bg-[#FADA0A] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
                 <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" alt="" className="h-5 w-5" />
@@ -246,7 +327,7 @@ export function Auth() {
               <button
                 type="button"
                 onClick={onNaverLogin}
-                disabled={isSigningIn !== null}
+                disabled={isSigningIn !== null || !allRequiredAgreed}
                 className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border-none bg-[#03C75A] px-5 py-3.5 text-sm font-black text-white shadow-sm transition-all hover:bg-[#02b351] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
                 <img src="https://upload.wikimedia.org/wikipedia/commons/2/21/Naver_favicon_%282021%29.svg" alt="" className="h-4 w-4" />
@@ -256,7 +337,7 @@ export function Auth() {
               <button
                 type="button"
                 onClick={onGuestLogin}
-                disabled={isSigningIn !== null}
+                disabled={isSigningIn !== null || !allRequiredAgreed}
                 className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3.5 text-sm font-black text-blue-700 shadow-sm transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
                 <User size={18} />
@@ -264,6 +345,7 @@ export function Auth() {
                 <ArrowRight size={18} className="absolute right-5 text-blue-400 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
               </button>
             </div>
+
 
             <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5 sm:mt-8 sm:rounded-[28px]">
               <div className="flex items-center gap-3">

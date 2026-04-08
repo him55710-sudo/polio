@@ -61,6 +61,16 @@ export function DiagnosisGuidedChoicePanel({
   const [lastRenderJob, setLastRenderJob] = useState<RenderJobRead | null>(null);
   const [includeProvenanceAppendix, setIncludeProvenanceAppendix] = useState(false);
   const [hideInternalProvenance, setHideInternalProvenance] = useState(true);
+  const waitForRenderJobResult = async (jobId: string, maxAttempts = 15): Promise<RenderJobRead | null> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const current = await api.get<RenderJobRead>(`/api/v1/render-jobs/${jobId}`);
+      if (current.download_url || current.status === 'failed' || current.status === 'succeeded') {
+        return current;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    }
+    return null;
+  };
 
   const selectedDirection = useMemo<RecommendedDirection | null>(
     () => directions.find((item) => item.id === selectedDirectionId) ?? null,
@@ -199,10 +209,24 @@ export function DiagnosisGuidedChoicePanel({
       let resolved = created;
       if (useSynchronousApiJobs) {
         resolved = await api.post<RenderJobRead>(`/api/v1/render-jobs/${created.id}/process`);
+      } else {
+        try {
+          resolved = await api.post<RenderJobRead>(`/api/v1/render-jobs/${created.id}/process`);
+        } catch {
+          // Fallback to queue mode when inline processing is unavailable.
+        }
+        if (!resolved.download_url) {
+          const eventual = await waitForRenderJobResult(created.id);
+          if (eventual) {
+            resolved = eventual;
+          }
+        }
       }
       setLastRenderJob(resolved);
       if (resolved.download_url) {
         window.open(resolved.download_url, '_blank', 'noopener,noreferrer');
+      } else if (resolved.status === 'failed') {
+        toast.error(resolved.result_message || 'The export job failed.');
       } else {
         toast.success('Export job queued.');
       }

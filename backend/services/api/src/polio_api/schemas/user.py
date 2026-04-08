@@ -17,6 +17,7 @@ class UserProfileRead(BaseModel):
     career: str | None
     admission_type: str | None
     interest_universities: list[str] = Field(default_factory=list)
+    marketing_agreed: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +33,7 @@ class UserProfileUpdate(BaseModel):
     track: str | None = Field(default=None, max_length=100)
     career: str | None = Field(default=None, max_length=200)
     interest_universities: list[str] | None = Field(default=None, max_length=20)
+    marketing_agreed: bool | None = Field(default=None)
 
 
 class UserGoalsUpdate(BaseModel):

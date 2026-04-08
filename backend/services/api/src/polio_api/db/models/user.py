@@ -27,6 +27,7 @@ class User(Base):
     career: Mapped[str | None] = mapped_column(String(200), nullable=True)
     admission_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     interest_universities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    marketing_agreed: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
 

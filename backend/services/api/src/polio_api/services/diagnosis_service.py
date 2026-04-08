@@ -90,7 +90,7 @@ class TopicCandidate(BaseModel):
 class PageCountOption(BaseModel):
     id: str
     label: str
-    page_count: int = Field(ge=1, le=20)
+    page_count: int = Field(ge=5, le=20)
     rationale: str
 
 
@@ -142,7 +142,7 @@ class RecommendedDirection(BaseModel):
 class RecommendedDefaultAction(BaseModel):
     direction_id: str
     topic_id: str
-    page_count: int = Field(ge=1, le=20)
+    page_count: int = Field(ge=5, le=20)
     export_format: Literal["pdf", "pptx", "hwpx"]
     template_id: str
     rationale: str
@@ -164,7 +164,7 @@ class GuidedDraftOutline(BaseModel):
     export_format: Literal["pdf", "pptx", "hwpx"]
     template_id: str
     template_label: str
-    page_count: int
+    page_count: int = Field(ge=5, le=20)
     include_provenance_appendix: bool = False
     hide_internal_provenance_on_final_export: bool = True
     draft_id: str | None = None
@@ -434,19 +434,110 @@ def _risk_level_from_axes(gap_axes: list[GapAxis]) -> Literal["safe", "warning",
 def _page_count_options_for_complexity(complexity: DirectionComplexity) -> list[PageCountOption]:
     if complexity == "lighter":
         return [
-            PageCountOption(id="compact_2", label="2 pages", page_count=2, rationale="Best for one grounded claim and one short reflection."),
-            PageCountOption(id="focused_3", label="3 pages", page_count=3, rationale="Adds space for one evidence section without overexpanding."),
+            PageCountOption(
+                id="compact_5",
+                label="5 pages",
+                page_count=5,
+                rationale="The minimum diagnosis export length keeps claim, evidence, and reflection auditable.",
+            ),
+            PageCountOption(
+                id="focused_6",
+                label="6 pages",
+                page_count=6,
+                rationale="Adds one extra page for clearer evidence and next-step framing.",
+            ),
         ]
     if complexity == "deeper":
         return [
-            PageCountOption(id="full_5", label="5 pages", page_count=5, rationale="Fits a full method-analysis-reflection arc."),
-            PageCountOption(id="extended_6", label="6 pages", page_count=6, rationale="Useful when comparison or timeline detail matters."),
+            PageCountOption(
+                id="full_6",
+                label="6 pages",
+                page_count=6,
+                rationale="Fits a deeper method-analysis-reflection arc with room for limitations.",
+            ),
+            PageCountOption(
+                id="extended_7",
+                label="7 pages",
+                page_count=7,
+                rationale="Useful when comparison or timeline detail needs dedicated sections.",
+            ),
         ]
     return [
-        PageCountOption(id="balanced_3", label="3 pages", page_count=3, rationale="Enough room for question, evidence, and reflection."),
-        PageCountOption(id="balanced_4", label="4 pages", page_count=4, rationale="Adds one more section for method or comparison."),
-        PageCountOption(id="balanced_5", label="5 pages", page_count=5, rationale="Best when the inquiry needs a fuller arc."),
+        PageCountOption(
+            id="balanced_5",
+            label="5 pages",
+            page_count=5,
+            rationale="Balanced baseline for question, evidence, method, and reflection.",
+        ),
+        PageCountOption(
+            id="balanced_6",
+            label="6 pages",
+            page_count=6,
+            rationale="Adds one section for comparison, limitation, or next-step depth.",
+        ),
     ]
+
+
+def _normalize_direction_page_count_options(direction: RecommendedDirection) -> None:
+    normalized: list[PageCountOption] = []
+    seen: set[int] = set()
+    for option in direction.page_count_options:
+        if option.page_count < 5:
+            continue
+        if option.page_count in seen:
+            continue
+        seen.add(option.page_count)
+        normalized.append(
+            PageCountOption(
+                id=option.id or f"{direction.id}_{option.page_count}",
+                label=option.label or f"{option.page_count} pages",
+                page_count=option.page_count,
+                rationale=option.rationale or "Diagnosis exports require at least five pages.",
+            )
+        )
+
+    if not normalized:
+        normalized = _page_count_options_for_complexity(direction.complexity)
+    direction.page_count_options = normalized
+
+
+def _normalize_guided_choice_constraints(result: DiagnosisResult) -> None:
+    if not result.recommended_directions:
+        result.recommended_default_action = None
+        return
+
+    for direction in result.recommended_directions:
+        _normalize_direction_page_count_options(direction)
+
+    fallback_default = _recommended_default_action_from_directions(result.recommended_directions)
+    current_default = result.recommended_default_action
+    if current_default is None:
+        result.recommended_default_action = fallback_default
+        return
+
+    direction = next((item for item in result.recommended_directions if item.id == current_default.direction_id), None)
+    if direction is None:
+        result.recommended_default_action = fallback_default
+        return
+
+    topic_ids = {item.id for item in direction.topic_candidates}
+    page_counts = {item.page_count for item in direction.page_count_options}
+    formats = {item.format for item in direction.format_recommendations}
+    template_ids = {
+        item.id
+        for item in direction.template_candidates
+        if current_default.export_format in item.supported_formats
+    }
+
+    is_valid = (
+        current_default.topic_id in topic_ids
+        and current_default.page_count in page_counts
+        and current_default.page_count >= 5
+        and current_default.export_format in formats
+        and current_default.template_id in template_ids
+    )
+    if not is_valid:
+        result.recommended_default_action = fallback_default
 
 
 def _format_recommendations_for_axis(axis_key: GapAxisKey, complexity: DirectionComplexity) -> list[FormatRecommendation]:
@@ -680,7 +771,7 @@ def _build_guided_diagnosis(*, project_title: str, target_major: str | None, tar
     gap_axes = _infer_gap_axes(full_text=full_text, target_major=target_major, target_university=target_university, career_direction=career_direction)
     directions = _recommended_directions_from_axes(gap_axes=gap_axes, major_label=major_label, project_title=project_title)
     risk_level = _risk_level_from_axes(gap_axes)
-    return DiagnosisResult(
+    result = DiagnosisResult(
         headline=(
             f"For {major_label}, the record is {'grounded enough to move carefully' if risk_level == 'safe' else 'still missing a few defendable pieces'}; "
             "the next action should tighten evidence and direction rather than increase polish."
@@ -700,6 +791,8 @@ def _build_guided_diagnosis(*, project_title: str, target_major: str | None, tar
         recommended_directions=directions,
         recommended_default_action=_recommended_default_action_from_directions(directions),
     )
+    _normalize_guided_choice_constraints(result)
+    return result
 
 
 def build_grounded_diagnosis_result(
@@ -725,6 +818,7 @@ def _hydrate_guided_fields(
     full_text: str,
 ) -> DiagnosisResult:
     if result.gap_axes and result.recommended_directions and result.diagnosis_summary is not None:
+        _normalize_guided_choice_constraints(result)
         return result
     fallback = build_grounded_diagnosis_result(project_title=project_title, target_major=target_major, target_university=target_university, career_direction=career_direction, document_count=1, full_text=full_text)
     if not result.diagnosis_summary:
@@ -745,6 +839,7 @@ def _hydrate_guided_fields(
         result.action_plan = fallback.action_plan
     if not result.recommended_focus:
         result.recommended_focus = fallback.recommended_focus
+    _normalize_guided_choice_constraints(result)
     return result
 
 
@@ -1060,11 +1155,13 @@ def build_guided_outline_plan(
         raise ValueError("Selected topic is not available for this direction.")
     if page_count not in {item.page_count for item in direction.page_count_options}:
         raise ValueError("Selected page count is not available for this direction.")
+    if page_count < 5:
+        raise ValueError("Diagnosis exports require at least 5 pages.")
     if export_format not in {item.format for item in direction.format_recommendations}:
         raise ValueError("Selected export format is not available for this direction.")
 
     template = get_template(template_id, render_format=RenderFormat(export_format))
-    section_limit = min(len(template.section_schema), max(3, page_count + 1))
+    section_limit = min(len(template.section_schema), max(5, page_count + 1))
     section_keys = list(template.section_schema[:section_limit])
     citation_hooks = [citation.source_label for citation in result.citations[:2]]
     sections = [
@@ -1161,7 +1258,7 @@ def _guided_choice_contract_block() -> str:
             "- gap_axes: use only conceptual_depth, inquiry_continuity, evidence_density, process_explanation, subject_major_alignment",
             "- recommended_directions: adaptive count from 2 to 5 based on actual diagnosis complexity",
             "- topic_candidates: 2 to 4 realistic, evidence-aware options per direction",
-            "- page_count_options: short, finishable options matched to evidence density and direction complexity",
+            "- page_count_options: every option must be between 5 and 20 pages",
             "- format_recommendations: use only pdf, pptx, hwpx",
             "- template_candidates: use only runtime-provided template ids",
             "- recommended_default_action: pick one coherent default that references ids already present inside recommended_directions",

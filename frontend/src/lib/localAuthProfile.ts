@@ -51,6 +51,7 @@ function buildBaseProfile(firebaseUser: Pick<FirebaseUser, 'uid' | 'email' | 'di
     career: null,
     admission_type: null,
     interest_universities: [],
+    marketing_agreed: false,
     created_at: now,
     updated_at: now,
   };
@@ -78,6 +79,7 @@ function normalizeLocalProfile(
     career: sanitizeText(value.career, 200) || null,
     admission_type: sanitizeText(value.admission_type, 100) || null,
     interest_universities: sanitizeInterestUniversities(value.interest_universities),
+    marketing_agreed: typeof value.marketing_agreed === 'boolean' ? value.marketing_agreed : base.marketing_agreed,
     created_at: sanitizeText(value.created_at, 40) || base.created_at,
     updated_at: sanitizeText(value.updated_at, 40) || base.updated_at,
   };
@@ -136,6 +138,8 @@ export function updateLocalAuthProfile(
       payload.interest_universities !== undefined
         ? sanitizeInterestUniversities(payload.interest_universities)
         : base.interest_universities,
+    marketing_agreed:
+      payload.marketing_agreed !== undefined ? Boolean(payload.marketing_agreed) : base.marketing_agreed,
     updated_at: now,
   };
 

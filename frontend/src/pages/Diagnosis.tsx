@@ -113,6 +113,7 @@ export function Diagnosis() {
   const { goals, setGoals, submitGoals } = useOnboardingStore();
   const preselectedProjectId = searchParams.get('project_id')?.trim() || null;
   const autoLoadedProjectRef = useRef<string | null>(null);
+  const diagnosisProcessKickoffRef = useRef<Set<string>>(new Set());
 
   const [step, setStep] = useState<DiagnosisStep>('GOALS');
   const [goalList, setGoalList] = useState<Array<{ id: string; university: string; major: string }>>([]);
@@ -187,6 +188,25 @@ export function Diagnosis() {
     setTimingPhases(createInitialTimingPhases());
   }, []);
 
+  const triggerInlineDiagnosisProcessing = useCallback(
+    (jobId: string) => {
+      if (!jobId || useSynchronousApiJobs) return;
+      const kickoffCache = diagnosisProcessKickoffRef.current;
+      if (kickoffCache.has(jobId)) return;
+      kickoffCache.add(jobId);
+
+      void api.post<AsyncJobRead>(`/api/v1/jobs/${jobId}/process`)
+        .then((processed) => {
+          setDiagnosisJob((previous) => (previous && previous.id !== processed.id ? previous : processed));
+        })
+        .catch(() => {
+          // Allow a later retry kick if processing endpoint is temporarily unavailable.
+          kickoffCache.delete(jobId);
+        });
+    },
+    [useSynchronousApiJobs],
+  );
+
   useEffect(() => {
     if (!user) return;
 
@@ -240,6 +260,9 @@ export function Diagnosis() {
     (run: DiagnosisRunResponse) => {
       const payload = mergeDiagnosisPayload(run);
       if (!payload) return false;
+      if (run.async_job_id) {
+        diagnosisProcessKickoffRef.current.delete(run.async_job_id);
+      }
 
       finishTimingPhase('diagnosis', 'done', '진단 생성 완료');
       setProjectId(run.project_id);
@@ -288,6 +311,16 @@ export function Diagnosis() {
         }
       }
       setDiagnosisJob(job);
+      if (!job && run.async_job_id) {
+        triggerInlineDiagnosisProcessing(run.async_job_id);
+      }
+      if (job?.status === 'succeeded' || job?.status === 'failed') {
+        diagnosisProcessKickoffRef.current.delete(job.id);
+      }
+      if (job?.status === 'queued' || job?.status === 'retrying') {
+        diagnosisProcessKickoffRef.current.delete(job.id);
+        triggerInlineDiagnosisProcessing(job.id);
+      }
 
       if (isDiagnosisComplete(run)) {
         const completed = completeDiagnosis(run);
@@ -316,7 +349,7 @@ export function Diagnosis() {
 
       return false;
     },
-    [completeDiagnosis, finishTimingPhase],
+    [completeDiagnosis, finishTimingPhase, triggerInlineDiagnosisProcessing],
   );
 
   useEffect(() => {
@@ -370,6 +403,7 @@ export function Diagnosis() {
         toast.success('재시도를 즉시 처리했습니다.');
       } else {
         setDiagnosisRunId(diagnosisRun.id);
+        triggerInlineDiagnosisProcessing(retried.id);
         toast.success('재시도를 요청했습니다.');
       }
     } catch (error) {
@@ -379,7 +413,7 @@ export function Diagnosis() {
     } finally {
       setIsRetryingDiagnosis(false);
     }
-  }, [beginTimingPhase, diagnosisRun, finishTimingPhase, isRetryingDiagnosis, syncDiagnosisRun, useSynchronousApiJobs]);
+  }, [beginTimingPhase, diagnosisRun, finishTimingPhase, isRetryingDiagnosis, syncDiagnosisRun, triggerInlineDiagnosisProcessing, useSynchronousApiJobs]);
 
   const startDiagnosisForProject = useCallback(
     async (activeProjectId: string): Promise<boolean> => {
@@ -416,9 +450,12 @@ export function Diagnosis() {
       }
 
       setDiagnosisRunId(run.id);
+      if (run.async_job_id) {
+        triggerInlineDiagnosisProcessing(run.async_job_id);
+      }
       return true;
     },
-    [completeDiagnosis, finishTimingPhase, useSynchronousApiJobs],
+    [completeDiagnosis, finishTimingPhase, triggerInlineDiagnosisProcessing, useSynchronousApiJobs],
   );
 
   useEffect(() => {
@@ -469,6 +506,9 @@ export function Diagnosis() {
             }
           } else {
             setDiagnosisRunId(latestRun.id);
+            if (latestRun.async_job_id) {
+              triggerInlineDiagnosisProcessing(latestRun.async_job_id);
+            }
             toast.success('진행 중이던 진단 작업을 이어서 보여드릴게요.', { id: loadingId });
             return;
           }
@@ -495,7 +535,7 @@ export function Diagnosis() {
     return () => {
       cancelled = true;
     };
-  }, [completeDiagnosis, failRunningTimingPhases, preselectedProjectId, startDiagnosisForProject]);
+  }, [completeDiagnosis, failRunningTimingPhases, preselectedProjectId, startDiagnosisForProject, triggerInlineDiagnosisProcessing]);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {

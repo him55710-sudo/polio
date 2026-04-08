@@ -44,6 +44,7 @@ def onboarding_my_profile(
         track=payload.track,
         career=payload.career,
         interest_universities=payload.interest_universities,
+        marketing_agreed=payload.marketing_agreed,
     )
     return UserProfileRead.model_validate(user)
 

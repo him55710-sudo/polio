@@ -30,6 +30,21 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const profile = await api.get<UserProfile>('/api/v1/users/me');
       set({ user: profile, isAuthenticated: true, isLoading: false });
+
+      // Sync marketing consent if pending
+      const pendingConsent = localStorage.getItem('polio_pending_marketing_consent');
+      if (pendingConsent !== null) {
+        const agreed = pendingConsent === 'true';
+        try {
+          await api.post('/api/v1/users/onboarding/profile', { marketing_agreed: agreed });
+          localStorage.removeItem('polio_pending_marketing_consent');
+          set((state) => ({
+            user: state.user ? { ...state.user, marketing_agreed: agreed } : null
+          }));
+        } catch (err) {
+          console.error('Failed to sync marketing consent:', err);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
       const currentAuthUser = auth?.currentUser;

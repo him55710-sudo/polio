@@ -15,6 +15,7 @@ def update_user_profile(
     track: str | None,
     career: str | None,
     interest_universities: list[str] | None = None,
+    marketing_agreed: bool | None = None,
 ) -> User:
     if grade is not None:
         user.grade = grade.strip()
@@ -22,6 +23,8 @@ def update_user_profile(
         user.track = track.strip()
     if career is not None:
         user.career = career.strip()
+    if marketing_agreed is not None:
+        user.marketing_agreed = marketing_agreed
     if interest_universities is not None:
         user.interest_universities = _normalize_interest_universities(interest_universities, user.target_university)
     db.add(user)
