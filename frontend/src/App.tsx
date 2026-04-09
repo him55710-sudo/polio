@@ -67,8 +67,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const hasRequiredTargets = Boolean(dbUser?.target_university && dbUser?.target_major);
   const requiresOnboarding = Boolean(dbUser) && !hasRequiredTargets;
   const isFullyOnboarded = Boolean(dbUser?.grade && dbUser?.track && dbUser?.target_university && dbUser?.target_major);
+  const isDiagnosisRoute = location.pathname === '/app/diagnosis' || location.pathname === '/diagnosis';
 
-  if (requiresOnboarding && location.pathname !== '/onboarding') {
+  if (requiresOnboarding && location.pathname !== '/onboarding' && !isDiagnosisRoute) {
     return <Navigate to="/onboarding" replace />;
   }
 
