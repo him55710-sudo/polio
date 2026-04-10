@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, ArrowRight, CheckCircle2, FileUp, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, FileUp, Plus, Settings2, Trash2, Zap } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -48,6 +48,28 @@ const PARSE_POLL_INTERVAL_MS = 1500;
 const PARSE_TIMEOUT_MS = 3 * 60 * 1000;
 
 type DocumentLifecycleStatus = 'uploaded' | 'masking' | 'parsing' | 'retrying' | 'parsed' | 'partial' | 'failed';
+
+function formatStatusLabel(status: DocumentLifecycleStatus): string {
+  switch (status) {
+    case 'uploaded':
+      return '업로드 완료';
+    case 'masking':
+      return '보안 처리(마스킹) 중';
+    case 'parsing':
+      return '생활기록부 내용 분석 중';
+    case 'retrying':
+      return '재분석 시도 중';
+    case 'parsed':
+      return '분석 완료';
+    case 'partial':
+      return '분석 완료 (일부 경고)';
+    case 'failed':
+      return '분석 실패';
+    default:
+      return '대기 중';
+  }
+}
+
 type TimingPhaseKey = 'upload' | 'parse' | 'diagnosis';
 
 interface DiagnosisDocumentStatus {
@@ -91,9 +113,9 @@ const PARSE_TERMINAL_STATUSES = new Set<DocumentLifecycleStatus>(['parsed', 'par
 
 function createInitialTimingPhases(): TimingPhaseMap {
   return {
-    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '내용 전송' },
-    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '정보 추출 중' },
-    diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: 'AI 종합 진단' },
+    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '데이터 전송 중' },
+    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '생활기록부 정보 추출 중' },
+    diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: 'AI 기반 맞춤형 진단 중' },
   };
 }
 
@@ -136,7 +158,12 @@ export function Diagnosis() {
   const diagnosisProcessKickoffRef = useRef<Set<string>>(new Set());
   const parseProcessKickoffRef = useRef<Set<string>>(new Set());
 
-  const [step, setStep] = useState<DiagnosisStep>(() => (preselectedProjectId ? 'ANALYSING' : 'GOALS'));
+  const [step, setStep] = useState<DiagnosisStep>(() => {
+    if (preselectedProjectId) return 'ANALYSING';
+    // If user already has targets, default to UPLOAD step
+    if (user?.target_university && user?.target_major) return 'UPLOAD';
+    return 'GOALS';
+  });
   const [goalList, setGoalList] = useState<Array<{ id: string; university: string; major: string }>>([]);
   const [isEditingGoals, setIsEditingGoals] = useState(false);
   const [univInput, setUnivInput] = useState('');
@@ -881,14 +908,14 @@ export function Diagnosis() {
     step === 'GOALS' ? '진단 목표 확인' :
     step === 'UPLOAD' ? '생활기록부 등록' :
     step === 'ANALYSING' ? '기록 정밀 분석 중' :
-    step === 'RESULT' ? '종합 진단 보고서' :
+    step === 'RESULT' ? 'AI 정밀 진단 보고서' :
     '확인 필요';
 
   const headerDescription =
-    step === 'GOALS' ? '목표 대학교와 학과를 확인하고 맞춤 정밀 진단을 시작합니다.' :
-    step === 'UPLOAD' ? '생기부 PDF를 등록하시면 개인정보 보호 처리 후 분석을 진행합니다.' :
-    step === 'ANALYSING' ? '나의 기록을 꼼꼼히 읽고 지원 전략에 필요한 근거들을 분석 중입니다.' :
-    step === 'RESULT' ? '강점, 보완점, 향후 발전 방향이 포함된 종합 리포트입니다.' :
+    step === 'GOALS' ? '목표 대학교와 학과를 기반으로 입시 경쟁력을 정밀하게 분석합니다.' :
+    step === 'UPLOAD' ? '생활기록부 PDF를 등록하시면 개인정보 보호 처리 후 AI 분석을 시작합니다.' :
+    step === 'ANALYSING' ? '나의 기록을 꼼꼼히 읽고 지원 전략에 필요한 합격 근거를 도출하고 있습니다.' :
+    step === 'RESULT' ? '생기부의 강점, 보완점, 그리고 합격을 위한 구체적인 액션 플랜입니다.' :
     '문제가 발생했습니다. 다시 시도해 주세요.';
 
   const timingPhaseItems = [
@@ -899,24 +926,48 @@ export function Diagnosis() {
   const shouldShowTimingDashboard = timingPhaseItems.some((phase) => phase.startedAt !== null);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 py-4">
-      <PageHeader eyebrow="진단" title={headerTitle} description={headerDescription} />
-      {shouldShowProgressRail ? <StepIndicator items={stepItems} /> : null}
+    <div className="mx-auto max-w-6xl space-y-8 py-8 animate-in fade-in duration-700">
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#004aad] to-[#0070f3] p-8 md:p-12 shadow-2xl shadow-blue-500/20">
+        <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl animate-pulse" />
+        <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-cyan-400/20 blur-3xl" />
+        
+        <div className="relative z-10 space-y-4">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 backdrop-blur-md ring-1 ring-white/20">
+            <Sparkles size={14} className="text-cyan-300" />
+            <span className="text-sm font-bold tracking-tight text-cyan-50">PREMIUM AI ANALYSIS</span>
+          </div>
+          <h1 className="text-4xl font-black tracking-tight text-white md:text-5xl lg:leading-[1.15]">
+            {headerTitle}
+          </h1>
+          <p className="max-w-2xl text-lg font-medium leading-relaxed text-blue-100/80">
+            {headerDescription}
+          </p>
+        </div>
+      </div>
+
+      {shouldShowProgressRail ? (
+        <div className="px-4">
+          <StepIndicator items={stepItems} />
+        </div>
+      ) : null}
+
       {shouldShowProgressRail && shouldShowTimingDashboard ? (
-        <ProcessTimingDashboard
-          phases={timingPhaseItems}
-          title="실시간 진단 현황"
-          description="현재 진행 중인 분석 단계를 상세히 보여드립니다"
-        />
+        <div className="animate-in slide-in-from-top-4 duration-500">
+          <ProcessTimingDashboard
+            phases={timingPhaseItems}
+            title="실시간 진단 현황"
+            description="데이터 마스킹과 정밀 분석이 실시간으로 진행 중입니다"
+          />
+        </div>
       ) : null}
 
       <AnimatePresence mode="wait">
         {step === 'GOALS' ? (
-          <motion.div key="goals" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+          <motion.div key="goals" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="space-y-6">
             <SectionCard
               title="목표 대학 및 학과 선택"
-              description="온보딩에서 설정한 목표를 확인합니다. 수정이 필요한 경우 여기서 변경할 수 있습니다."
-              className="border-none bg-white/40 shadow-xl backdrop-blur-xl"
+              description="설정한 목표를 바탕으로 생기부를 분석합니다. 대학별 인재상에 맞춰 정밀하게 진단합니다."
+              className="border-none bg-white/60 shadow-xl backdrop-blur-2xl ring-1 ring-white/50"
               actions={
                 !isEditingGoals ? (
                   <SecondaryButton data-testid="diagnosis-edit-goals" onClick={() => setIsEditingGoals(true)}>
@@ -1098,24 +1149,34 @@ export function Diagnosis() {
         ) : null}
 
         {step === 'UPLOAD' ? (
-          <motion.div key="upload" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+          <motion.div key="upload" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }}>
             <SectionCard
-              title="PDF 생기부 등록"
-              description="서류 1개(최대 50MB)를 등록하시면 자동으로 정밀 분석을 거쳐 진단 보고서를 생성합니다."
-              className="overflow-hidden border-none bg-white/40 shadow-xl backdrop-blur-xl"
+              title="생활기록부 PDF 등록"
+              description="생기부 1개(최대 50MB)를 등록하시면 개인정보 보호 처리 후 AI가 꼼꼼히 읽어봅니다."
+              className="overflow-hidden border-none bg-white/60 shadow-xl backdrop-blur-2xl ring-1 ring-white/50"
+              actions={
+                <SecondaryButton 
+                  size="sm" 
+                  onClick={() => setStep('GOALS')}
+                  className="bg-white/50 border-white/50 backdrop-blur-sm"
+                >
+                  <Settings2 size={14} className="mr-1.5" />
+                  목표 대학 수정
+                </SecondaryButton>
+              }
             >
-              <div className="grid gap-3 rounded-2xl bg-[#004aad]/5 p-5 sm:grid-cols-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#004aad] text-[12px] font-bold text-white">1</div>
-                  <p className="text-sm font-bold text-slate-700">생활기록부 등록</p>
+              <div className="grid gap-3 rounded-2xl bg-blue-50/50 p-6 sm:grid-cols-3 ring-1 ring-blue-100">
+                <div className="flex flex-col gap-1 items-center text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#004aad] text-xs font-bold text-white shadow-lg shadow-blue-500/20">1</div>
+                  <p className="text-sm font-black text-slate-800">기록 등록</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#004aad] text-[12px] font-bold text-white">2</div>
-                  <p className="text-sm font-bold text-slate-700">내용 정밀 분석</p>
+                <div className="flex flex-col gap-1 items-center text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-500">2</div>
+                  <p className="text-sm font-bold text-slate-400">정밀 분석</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#004aad] text-[12px] font-bold text-white">3</div>
-                  <p className="text-sm font-bold text-slate-700">진단 결과 확인</p>
+                <div className="flex flex-col gap-1 items-center text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-500">3</div>
+                  <p className="text-sm font-bold text-slate-400">결과 확인</p>
                 </div>
               </div>
 
@@ -1153,10 +1214,11 @@ export function Diagnosis() {
                   </div>
 
                   <h3 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-                    생기부 PDF 파일을 <span className="text-[#004aad]">마우스로 끌어서</span> 놓으세요
+                    생활기록부를 <span className="text-[#004aad]">이곳에 놓아주세요</span>
                   </h3>
-                  <p className="mt-4 max-w-md text-lg font-medium text-slate-500">
-                    파일을 선택하거나 드래그하면 즉시 정밀 진단이 시작됩니다. (최대 50MB 가능)
+                  <p className="mt-4 max-w-md text-lg font-medium text-slate-500 leading-relaxed">
+                    파일을 드래그하거나 버튼을 클릭하여 업로드하면 <br className="hidden sm:block" />
+                    즉시 AI 맞춤 진단이 시작됩니다.
                   </p>
 
                   <button
@@ -1230,10 +1292,10 @@ export function Diagnosis() {
           <motion.div key="result" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
             <SectionCard
               title={diagnosisResult.headline}
-              description="AI가 분석한 나의 생기부 경쟁력 핵심 요약입니다."
-              eyebrow="정밀 진단 결과"
+              description="나의 입시 경쟁력을 요약한 AI 종합 진정 분석 리포트입니다."
+              eyebrow="AI 진단 리포트"
               data-testid="diagnosis-result-panel"
-              className="border-none bg-white shadow-2xl"
+              className="border-none bg-white shadow-2xl ring-1 ring-slate-200/50"
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-black shadow-lg ${
@@ -1263,7 +1325,7 @@ export function Diagnosis() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
                       <CheckCircle2 size={18} />
                     </div>
-                    <span className="text-lg font-black italic">Strengths.</span>
+                    <span className="text-lg font-black italic">핵심 강점</span>
                     <span className="text-sm font-bold opacity-60">나의 생기부 강점</span>
                   </div>
                   <ul className="space-y-3">
@@ -1281,7 +1343,7 @@ export function Diagnosis() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-500 text-white shadow-lg shadow-rose-500/20">
                       <AlertTriangle size={18} />
                     </div>
-                    <span className="text-lg font-black italic">Gap Points.</span>
+                    <span className="text-lg font-black italic">보완 포인트</span>
                     <span className="text-sm font-bold opacity-60">보완이 필요한 부분</span>
                   </div>
                   <ul className="space-y-3">
@@ -1305,7 +1367,7 @@ export function Diagnosis() {
                       <Zap size={20} fill="currentColor" />
                     </div>
                     <div>
-                      <h4 className="text-lg font-black">Next Action.</h4>
+                      <h4 className="text-lg font-black">실행 과제</h4>
                       <p className="text-sm font-bold text-slate-400">합격을 위한 향후 액션 플랜</p>
                     </div>
                   </div>
@@ -1527,7 +1589,11 @@ export function Diagnosis() {
                               <StatusBadge status={axis.severity === 'low' ? 'success' : axis.severity === 'medium' ? 'warning' : 'danger'}>
                                 {axis.band === 'safe' ? '안정' : axis.band === 'warning' ? '주의' : '부족'}
                               </StatusBadge>
-                              <StatusBadge status="neutral">{axis.score}점</StatusBadge>
+                              {axis.status === 'processing' ? (
+                                <StatusBadge status="active">진행 중</StatusBadge>
+                              ) : (
+                                <StatusBadge status="neutral">대기 중</StatusBadge>
+                              )}
                             </div>
                           </div>
                           <p className="text-base font-medium leading-7 text-slate-600">{axis.rationale}</p>

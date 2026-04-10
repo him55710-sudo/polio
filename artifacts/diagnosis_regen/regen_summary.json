@@ -1,0 +1,20 @@
+{
+  "output_pdf": "C:\\Users\\임현수\\Downloads\\diagnosis-regenerated-premium-10p.pdf",
+  "named_output_pdf": "C:/Users/<user>/Downloads/<student-name>_consultant_report.pdf",
+  "output_pdf_pages": 10,
+  "evidence_bank_count": 82,
+  "evidence_bank_unique_pages": 22,
+  "report_visible_unique_anchor_labels": 24,
+  "report_visible_unique_pages": 22,
+  "report_sections": [
+    "executive_summary",
+    "record_baseline_dashboard",
+    "narrative_timeline",
+    "evidence_cards",
+    "strength_analysis",
+    "risk_analysis",
+    "major_fit",
+    "interview_questions",
+    "roadmap"
+  ]
+}

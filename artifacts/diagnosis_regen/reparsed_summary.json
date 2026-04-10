@@ -1,0 +1,28 @@
+{
+  "source_pdf": "C:\\Users\\임현수\\Downloads\\임현수 생기부 파일.pdf",
+  "missing_required_sections": [],
+  "reanalysis_required": false,
+  "coverage_score": 1.0,
+  "evidence_bank_count": 82,
+  "evidence_bank_unique_pages": 22,
+  "contradiction_check": {
+    "passed": true,
+    "items": []
+  },
+  "coverage_check": {
+    "required_sections": [
+      "student_info",
+      "attendance",
+      "awards",
+      "creative_activities",
+      "volunteer",
+      "grades_subjects",
+      "subject_special_notes",
+      "reading",
+      "behavior_general_comments"
+    ],
+    "missing_required_sections": [],
+    "coverage_score": 1.0,
+    "reanalysis_required": false
+  }
+}

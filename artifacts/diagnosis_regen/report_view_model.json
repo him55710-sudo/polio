@@ -1,0 +1,776 @@
+{
+  "diagnosis_run_id": "local-regen-run",
+  "project_id": "local-project",
+  "report_mode": "premium_10p",
+  "template_id": "consultant_diagnosis_premium_10p",
+  "title": "User Record Diagnosis 전문 컨설턴트 진단서",
+  "subtitle": "학생부 근거 기반 진단 · 리스크 명시 · 실행 로드맵",
+  "student_target_context": "학생: 미확인 | 프로젝트: User Record Diagnosis | 목표 대학: Seoul National University | 목표 전공: Architecture | 분석 문서 수: 1",
+  "generated_at": "2026-04-10T17:26:14.710800Z",
+  "score_blocks": [
+    {
+      "key": "major_fit",
+      "label": "전공 적합성",
+      "score": 58,
+      "band": "mid",
+      "interpretation": "건축 전공 연계 근거의 직접성과 연속성",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "inquiry_depth",
+      "label": "탐구 깊이",
+      "score": 53,
+      "band": "mid",
+      "interpretation": "문제설정-방법-결과-확장의 깊이",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "inquiry_continuity",
+      "label": "탐구 연속성",
+      "score": 55,
+      "band": "mid",
+      "interpretation": "학년 간 주제의 연속성과 심화 흐름",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "evidence_density",
+      "label": "근거 밀도",
+      "score": 52,
+      "band": "mid",
+      "interpretation": "주장 대비 원문 근거 앵커의 밀도",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "process_explanation",
+      "label": "과정 설명력",
+      "score": 54,
+      "band": "mid",
+      "interpretation": "과정·방법·한계·개선의 설명 충실도",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "design_spatial_thinking",
+      "label": "설계·공간 사고",
+      "score": 95,
+      "band": "high",
+      "interpretation": "구조·재료·환경 중심 설계 사고",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "academic_base",
+      "label": "학업 기반",
+      "score": 81,
+      "band": "high",
+      "interpretation": "교과 성취와 세특 근거의 안정성",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    },
+    {
+      "key": "leadership_collaboration",
+      "label": "리더십·협업",
+      "score": 47,
+      "band": "low",
+      "interpretation": "협업·공동체·책임 신호",
+      "uncertainty_note": "고유 근거 앵커 4개 확인"
+    }
+  ],
+  "score_groups": [
+    {
+      "group": "student_evaluation",
+      "title": "학생 평가 점수",
+      "blocks": [
+        {
+          "key": "major_fit",
+          "label": "전공 적합성",
+          "score": 58,
+          "band": "mid",
+          "interpretation": "건축 전공 연계 근거의 직접성과 연속성",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "inquiry_depth",
+          "label": "탐구 깊이",
+          "score": 53,
+          "band": "mid",
+          "interpretation": "문제설정-방법-결과-확장의 깊이",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "inquiry_continuity",
+          "label": "탐구 연속성",
+          "score": 55,
+          "band": "mid",
+          "interpretation": "학년 간 주제의 연속성과 심화 흐름",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "evidence_density",
+          "label": "근거 밀도",
+          "score": 52,
+          "band": "mid",
+          "interpretation": "주장 대비 원문 근거 앵커의 밀도",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "process_explanation",
+          "label": "과정 설명력",
+          "score": 54,
+          "band": "mid",
+          "interpretation": "과정·방법·한계·개선의 설명 충실도",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "design_spatial_thinking",
+          "label": "설계·공간 사고",
+          "score": 95,
+          "band": "high",
+          "interpretation": "구조·재료·환경 중심 설계 사고",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "academic_base",
+          "label": "학업 기반",
+          "score": 81,
+          "band": "high",
+          "interpretation": "교과 성취와 세특 근거의 안정성",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        },
+        {
+          "key": "leadership_collaboration",
+          "label": "리더십·협업",
+          "score": 47,
+          "band": "low",
+          "interpretation": "협업·공동체·책임 신호",
+          "uncertainty_note": "고유 근거 앵커 4개 확인"
+        }
+      ],
+      "gating_status": "ok",
+      "note": "모든 점수는 최소 2개 이상의 고유 근거 앵커를 기준으로 산출되었습니다."
+    },
+    {
+      "group": "system_quality",
+      "title": "시스템 품질 점수",
+      "blocks": [
+        {
+          "key": "parse_coverage",
+          "label": "파싱 커버리지",
+          "score": 100,
+          "band": "high",
+          "interpretation": "필수 정규화 섹션 추출 커버리지",
+          "uncertainty_note": null
+        },
+        {
+          "key": "citation_coverage",
+          "label": "인용 커버리지",
+          "score": 17,
+          "band": "low",
+          "interpretation": "근거 페이지 분산과 인용 연결도",
+          "uncertainty_note": null
+        },
+        {
+          "key": "evidence_uniqueness",
+          "label": "근거 고유성",
+          "score": 100,
+          "band": "high",
+          "interpretation": "중복 인용 과다 여부",
+          "uncertainty_note": null
+        },
+        {
+          "key": "contradiction_check",
+          "label": "모순 검증",
+          "score": 100,
+          "band": "high",
+          "interpretation": "섹션 누락/밀도 상태 모순 검증",
+          "uncertainty_note": null
+        },
+        {
+          "key": "redaction_safety",
+          "label": "비식별 안전성",
+          "score": 100,
+          "band": "high",
+          "interpretation": "민감정보 노출 위험 점검",
+          "uncertainty_note": null
+        }
+      ],
+      "gating_status": "ok",
+      "note": "시스템 품질 점수는 학생 평가 점수와 분리되어 해석됩니다."
+    }
+  ],
+  "sections": [
+    {
+      "id": "executive_summary",
+      "title": "Executive Summary",
+      "subtitle": "한 줄 판정 · 강점 3 · 리스크 3",
+      "body_markdown": "- 한 줄 판정: 전공 적합성은 높고 연속성도 확인되지만, 서사 축이 분산되어 있어 '재난/기후 대응형 지속가능 건축' 한 줄로 통합이 필요합니다.\n- Technical/structural/material/environment themes appear continuously across pages.\n- Architecture-related topic continuity is visible across grade-level contexts.\n- Process-oriented activity traces exist in creative activities and subject notes.\n- Narrative diffusion risk: multiple strong traces are not yet unified into one storyline.\n- Design language and user-experience framing evidence is thinner than technical evidence.\n- Formal reading section density remains limited compared with subject-note traces.\n- 최우선 액션: Unify around climate/disaster-responsive sustainable architecture storyline",
+      "evidence_items": [
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-01-attendance-1",
+          "page_number": 1,
+          "excerpt": "5년 2월 7일 우신고등학교 제3학년 졸업 특기사항 2. 출 결 상 황 결석일수 지각 조퇴 결과 학년 수업일수 특기사항 질병 미인정 기타 질병 미인정 기타 질병 미인정 기타 질병 미인정 기타 1 191 . . . 1 . . . . . . . . 원격수업일수 9일 2 190 1 . . 2 . . 3 . . .",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "수상경력 | 학생부 앵커 ev-02-awards-9",
+          "page_number": 2,
+          "excerpt": "학년 참가대상 수 상 명 등급(위) 수상연월일 수여기관 (학기) (참가인원) 1 2 자기주도역량상 2022.12.30. 우신고등학교장 1.2학년(469명) 1 교과우수상(운동과 건강) 2023.07.19. 우신고등학교장 수강자 2 2 봉사상 2023.11.30. 우신고등학교장 전교생(7",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-03-attendance-18",
+          "page_number": 3,
+          "excerpt": "생들이 진로활동 43 주도적으로 아이디어를 모으고, 타교 탐방을 하고, 결과물을 제출함. 이런 과정을 통해 공간 조성과 설계 및 건축에 대한 구체적인 체험을 하고 진로를 탐색하는 데 도움을 얻음. 제56기 비전스쿨에 참여해 진로 진학에 대한 로드맵 작성을 통해 사명과 비전을 세우고 비전 발표회에서 비전선언문",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": []
+    },
+    {
+      "id": "record_baseline_dashboard",
+      "title": "Academic & Record Baseline Dashboard",
+      "subtitle": "학생 평가 점수와 시스템 품질 점수 분리",
+      "body_markdown": "- 학생: 미확인 | 프로젝트: User Record Diagnosis | 목표 대학: Seoul National University | 목표 전공: Architecture | 분석 문서 수: 1\n- 분석 신뢰도: 100%\n- [학생 평가 점수]\n- 전공 적합성: 58점 (mid)\n- 탐구 깊이: 53점 (mid)\n- 탐구 연속성: 55점 (mid)\n- 근거 밀도: 52점 (mid)\n- 과정 설명력: 54점 (mid)\n- 설계·공간 사고: 95점 (high)\n- 학업 기반: 81점 (high)\n- 리더십·협업: 47점 (low)\n- [시스템 품질 점수]\n- 파싱 커버리지: 100점 (high)\n- 인용 커버리지: 17점 (low)\n- 근거 고유성: 100점 (high)\n- 모순 검증: 100점 (high)\n- 섹션 커버리지 누락: 없음",
+      "evidence_items": [
+        {
+          "source_label": "창의적 체험활동 | 학생부 앵커 ev-04-creative_activities-23",
+          "page_number": 4,
+          "excerpt": "기후 등 다양한 요소를 고려하여 실제로 활용할 수 있는 기술을 탐색하 자율활동 89 며 우수한 자료 활용 능력을 드러냄. 학생회 문화행사부 부원으로서 리더십 캠프, 학업 독려 사업, 언어 폭력 예방 캠페인, 교내축구한마당 등 타 부서와의 긴밀한 협력을 통 해 학생회 사업을 완수함. 학교 연합 음악제에서 학교간",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "창의적 체험활동 | 학생부 앵커 ev-05-creative_activities-27",
+          "page_number": 5,
+          "excerpt": "와 유사하게 구현한 점에서 해당 분야의 전문성이 매우 우수함을 확인 3 자율활동 46 함. 장치의 설계 및 조립을 주도적으로 진행하였으며 기능성과 심미성을 모두 갖춘 제 품을 만들 수 있도록 큰 역할을 함. 1학기 학급 회장(2024. 03.01-08.15.) 으로서 다 리찢기 시합에서 계획을 수립 하고 발표하",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": [
+        "행동특성",
+        "수상경력"
+      ]
+    },
+    {
+      "id": "narrative_timeline",
+      "title": "Narrative Timeline",
+      "subtitle": "학년별 관심 진화 흐름",
+      "body_markdown": "- 1학년 → 기초 탐색과 주제 발견\n- 2학년 → 구조/재료/환경 테마 심화\n- 3학년 → 전공 연계 스토리 통합 필요\n- 1학년\n- 2022\n- 2학년\n- 2023\n- 2024\n- 2학기",
+      "evidence_items": [
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-06-attendance-32",
+          "page_number": 6,
+          "excerpt": "제 상황과 거의 비슷하게 문제 상황을 설정 하는 모습이 인상적임. 실험 결과를 토대로 구조물과 토양 유실에 대한 관계를 일목요 연하게 정리하여 발표를 진행함. 해당 활동을 통해 학생의 과학적 탐구능력이 매우 우 수함을 확인하였으며 건축 분야에 대한 관심도와 열정이 그 누구보다 뛰어남을 확인 함. 희망분야 건",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-07-grades_subjects-38",
+          "page_number": 7,
+          "excerpt": "8.21. (학교)우신고등학교 봉사활동 소양 및 태도교육 1 10 6. 교과학습발달상황 [1학년] 원점수/과목평균 성취도 학기 교과 과목 단위수 석차등급 비고 (표준편차) (수강자수) 국어 국어 4 84/64.1(15.9) B(240) 2 수학 수학 4 94/63.1(23.5) A(240) 2 영어 영어 4 89/57",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": []
+    },
+    {
+      "id": "evidence_cards",
+      "title": "Evidence Cards",
+      "subtitle": "핵심 근거 6개 카드",
+      "body_markdown": "- [카드 1] p.1 | 원문: 5년 2월 7일 우신고등학교 제3학년 졸업 특기사항 2. 출 결 상 황 결석일수 지각 조퇴 결과 학년 수업일수… | 해석: 건축 탐구 | 의미: 건축 | 리스크: 설명 확장 필요\n- [카드 2] p.1 | 원문: 7일 우신고등학교 제3학년 졸업 특기사항 2. 출 결 상 황 결석일수 지각 조퇴 결과 학년 수업일수 특기사항… | 해석: 건축 탐구 | 의미: 건축 | 리스크: 설명 확장 필요\n- [카드 3] p.1 | 원문: . 3. 수 상 경 력 학년 참가대상 수 상 명 등급(위) 수상연월일 수여기관 (학기) (참가인원) 교과우수상… | 해석: 건축 탐구 | 의미: 건축 | 리스크: 설명 확장 필요\n- [카드 4] p.1 | 원문: . . . . 3. 수 상 경 력 학년 참가대상 수 상 명 등급(위) 수상연월일 수여기관 (학기) (참가인원)… | 해석: 건축 탐구 | 의미: 건축 | 리스크: 설명 확장 필요\n- [카드 5] p.1 | 원문: 1 5 20 임남혁 2 6 22 김혜원 3 8 20 유선종 1. 인적·학적사항 성명 : 임현수 성별 : 남 주… | 해석: 건축 탐구 | 의미: 건축 | 리스크: 설명 확장 필요\n- [카드 6] p.1 | 원문: (학교생활기록부II) 졸업 대장 번호 28256 구분 학과 반 번호 담임성명 학년 1 5 20 임남혁 2 6… | 해석: 건축 탐구 | 의미: 건축 | 리스크: 설명 확장 필요",
+      "evidence_items": [
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-08-grades_subjects-43",
+          "page_number": 8,
+          "excerpt": "원점수/과목평균 성취도 학기 교과 과목 단위수 석차등급 비고 (표준편차) (수강자수) 국어 국어 4 89/67.0(17.5) A(236) 2 수학 수학 4 88/62.6(20.2) A(236) 2 영어 영어 4 86/58.5(25.4) A(236) 3 한",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-09-grades_subjects-46",
+          "page_number": 9,
+          "excerpt": "과목 세 부 능 력 및 특 기 사 항 그룹을 형성하여 교과 교사의 조언을 얻어 학습하고자 하는 능동적인 면모가 있음. 영어 교과 학습 도우미에 자원하여 학사 기간 동안 교과 교사와 원활히 소통하며 학우들을 위한 영어 학습 활동에 매우 성",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-10-attendance-47",
+          "page_number": 10,
+          "excerpt": "는 조에서 주도적인 역할을 하며 정확한 변인 통제와 더불어 올바른 실험 결과를 얻어내는 탐구심을 보임. (1학기)기술·가정: 건축 분야에 진로 희망을 가지고 있어서, 못된 건축(이경훈)을 읽고, 파워포인트를 활용하여 발표함. 실 제 우리나라에 있는 건축물들의 구조와 디자인에 대한 설명 및 건축용어에 대한 상",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-11-grades_subjects-50",
+          "page_number": 11,
+          "excerpt": "자기만의 개성 넘치는 양질의 작품을 창작함. [2학년] 원점수/과목평균 성취도 학기 교과 과목 단위수 석차등급 비고 (표준편차) (수강자수) 국어 문학 4 78/66.9(15.9) A(243) 4 수학 수학Ⅰ 4 87/63.0(18.2) A(243) 2 영어 영어Ⅰ 4 89/63.7(23.2) A(243) 3",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [
+        "원문에 없는 수상·성취·실험 결과는 생성하지 않습니다."
+      ],
+      "additional_verification_needed": []
+    },
+    {
+      "id": "strength_analysis",
+      "title": "Strength Analysis",
+      "subtitle": "상위 강점 진단",
+      "body_markdown": "- Technical/structural/material/environment themes appear continuously across pages.\n- Architecture-related topic continuity is visible across grade-level contexts.\n- Process-oriented activity traces exist in creative activities and subject notes.\n- 확인된 강점은 'Technical/structural/material/environment themes appear continuously across pages.'이며 근거 연결성을 유지해야 합니다.\n- 세특 신호:특기사항\n- 탐방 전 관심 분야를 기준으로 모둠을 이뤄 해당 학 과의 교육과정과 추후 진로를 조사하고 일정을 스스로 계획하고 실행함.",
+      "evidence_items": [
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-12-grades_subjects-54",
+          "page_number": 12,
+          "excerpt": "이수단위 합계 44 과목 세 부 능 력 및 특 기 사 항 독서: 건축에 대한 관심을 바탕으로 관련 도서인 ‘김종훈의 세계 현대건축 여행(김종훈)’을 선정하여 읽고 궁금한 질문과 주 제에 적합한 하위 주제들을 생성하여 주제 탐구 독서를 진행하였음. 유명한 기",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-13-attendance-56",
+          "page_number": 13,
+          "excerpt": ": 중화 적정 실험을 제시된 순서에 따라 수행하며 중화 적정 과정과 그 결과를 이용하여 농도를 모르는 용액의 농도를 구하는 과정을 이해함. 자유주제탐구로 건축용 접착제에 대해 발표함. 특히 접착제와 관련된 화학반응으로 접착제의 주성분 인 수지나 접착제의 부가제가 고분자 체인을 형성하는 폴리머화 반응을 강조하",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-14-grades_subjects-59",
+          "page_number": 14,
+          "excerpt": "설계 및 3D 모델링의 부피 계산을 사례로 제시함. <진로 선택 과목> 성취도 성취도별 학기 교과 과목 단위수 원점수/과목평균 비고 (수강자수) 분포비율 수학 기하 2 91/75.3 A(128) A(50.0) B(23.4) C(26.6) 사회(역사/도 1 사회문제 탐구 4 81/74.9 A(80) A(43.8",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": []
+    },
+    {
+      "id": "risk_analysis",
+      "title": "Risk Analysis",
+      "subtitle": "상위 리스크 진단",
+      "body_markdown": "- Narrative diffusion risk: multiple strong traces are not yet unified into one storyline.\n- Design language and user-experience framing evidence is thinner than technical evidence.\n- Formal reading section density remains limited compared with subject-note traces.\n- 핵심 리스크는 전공 부적합이 아니라 서사 분산입니다.\n- 행동특성\n- 수상경력",
+      "evidence_items": [
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-15-grades_subjects-61",
+          "page_number": 15,
+          "excerpt": "과목 세 부 능 력 및 특 기 사 항 연결하여 설명함. 타원 형태의 당구대에서는 초점을 지나게 치면 다른 초점에 있는 공을 맞히는 이유에 대해서 입사각과 반사 각, 타원의 성질을 이용하여 파악함. 태양열 에너지를 생산하는 기계의 반사판",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-16-grades_subjects-62",
+          "page_number": 16,
+          "excerpt": "와 응원을 하는 모습을 보여주어 귀감이 됨. [3학년] 원점수/과목평균 성취도 학기 교과 과목 단위수 석차등급 비고 (표준편차) (수강자수) 국어 화법과 작문 3 87/57.9(25.8) A(185) 2 수학 미적분 3 77/61.7(20.9) A(123) 4 수학 확률과 통계 3 79/50.5(20.9) B",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-17-grades_subjects-66",
+          "page_number": 17,
+          "excerpt": "과목 세 부 능 력 및 특 기 사 항 으로써 트러스 구조의 재료 사용을 최소화하고 주어진 하중 조건에서 구조의 안전성을 확보할 수 있음을 논리적으로 추론함. 본교 미적분캠프에 성실히 참여하며 푸리에 변환에 대해 심도 있게 탐구함. 푸리에",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [
+        "검증되지 않은 합격 예측/보장 문구 금지"
+      ],
+      "additional_verification_needed": [
+        "구조 추정 불확실: PDF 분석이 LLM 실패 후 휴리스틱 fallback으로 생성되었습니다.",
+        "구조 추정 불확실: behavior_opinion 섹션이 weak 상태로 분류되었습니다.",
+        "구조 추정 불확실: PDF 요약이 heuristic fallback으로 생성되었습니다."
+      ]
+    },
+    {
+      "id": "major_fit",
+      "title": "Target-Major Fit Interpretation",
+      "subtitle": "서울대 건축 지망 기준 해석",
+      "body_markdown": "- 전공 적합성 해석은 '학년 참가대상 수 상 명 등급(위) 수상연월일 수여기관 (학기) (참가인원) 1 2 자기주도역량상 2022.12.30. 우신고등학교장 1.2학년(469명) 1 교과우수상(운동과 건강) 2023.07.19. 우신고등학교장 수강자 2 2 봉사상 2023.11.30. 우신고등학교장 전교생(710명) 3 1 봉사상 2024.0…' 근거를 기준으로 보수적으로 제시합니다.\n- 강점 축: 기술/구조/재료/환경 테마의 누적\n- 보완 축: 디자인 언어·사용자 경험·공간 인문 프레이밍\n- 권장 통합 서사: 재난/기후 대응형 지속가능 건축\n- 학년 참가대상 수 상 명 등급(위) 수상연월일 수여기관 (학기) (참가인원) 1 2 자기주도역량상 2022.12.30. 우신고등학교장 1.2학년(469명) 1 교과우수상(운동과 건강) 2023.07.19. 우신고등학교장 수강자 2 2 봉사상 2023.11.30. 우신고등학교장 전교생(710명) 3 1 봉사상 2024.0…\n- 창 의 적 체 험 활 동 상 황 학년 영역 시간 특기사항 (수학심화탐구반)(33시간) 수학 심화주제 탐구 시간에 항상 적극적으로 조사하고 참여 함. 유클리드 호제법, 파스칼의 삼각형, 실수와 복소수의 차이점, 오일러 파이 함수, 채색수, 유클리드 기하학, 행렬, 가우스 소거법, 선대칭 및 점대칭 도형 등의 주제를 탐 구…",
+      "evidence_items": [
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-18-attendance-68",
+          "page_number": 18,
+          "excerpt": "면서 수학의 필요성을 이해함. 주제 탐구 윤리의 중요성을 인지하고 연구 결과를 표절하거나 탐구의 본질 을 입증하기 위해 데이터를 조작하는 행위 등은 부당한 행위임을 각인함. 타인의 연구 속 내용이거나 그림, 도표, 통계적 자 료 등은 인용 자료임을 기록하도록 지도함. '유한요소 해석에 대한 건축학적 고찰'이",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "교과학습발달상황 | 학생부 앵커 ev-19-grades_subjects-71",
+          "page_number": 19,
+          "excerpt": "내용도 쉽게 풀어서 설명하는 것으로 보아 관련 내용의 우수한 이해도와 성취도가 있는 것으로 판단됨. 이를 적용하여 건 축물에서 사용되는 건축 방법, 도구를 이용하는 것을 설명하는 것으로 융합적 사고 능력이 우수한 학생으로 보여짐. 실제 건 축물과 유사하게 복합 도형의 무게 중심을 찾는 간단한 실험을 직접 제",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-20-attendance-73",
+          "page_number": 20,
+          "excerpt": "연도별 출산 율 데이터를 수집하고, 선형 회귀 모델로 분석함. 분석을 결과로 서울시 각 지역의 인구 변화에 대한 상관관계를 탐구함. 저 출산 문제, 경제적 요인, 교육비, 이주 문제 등 다양한 요소가 인구 변화에 큰 영향을 주며, 이러한 분석을 통해 미래 도시 계 획 수립에 중요한 기초 자료가 될 것임을",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": [
+        "디자인 언어·사용자 경험 관련 근거 카드 보강"
+      ]
+    },
+    {
+      "id": "interview_questions",
+      "title": "Probable Interview Questions",
+      "subtitle": "면접 예상 질문",
+      "body_markdown": "- 지속가능 건축에 관심을 갖게 된 구체적 계기는 무엇인가요?\n- 재난·기후 대응 관점에서 본인의 탐구를 한 문장으로 설명해 보세요.\n- 구조/재료 선택에서 어떤 기준으로 판단했는지 설명해 보세요.\n- 사용자 경험이나 공간 인문 관점에서 보완하고 싶은 점은 무엇인가요?\n- 교과 세특의 탐구를 실제 설계 사고로 연결한 사례가 있나요?\n- 향후 6개월 동안 스토리라인을 강화하기 위한 실행 계획은 무엇인가요?\n- 근거 기반 확인 질문: 진로 신호:진로\n- 근거 기반 확인 질문: 진로 신호:진학",
+      "evidence_items": [
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-21-attendance-75",
+          "page_number": 21,
+          "excerpt": "이끌어냄. 이러한 특성은 학업 성취뿐만 아니라 다양한 도전에서 성공적인 결과를 기대하게 하며, 앞으로의 발전 가능성을 높여줌. 학업 면에서도 3 스스로 계획을 세우고 체계적으로 학습을 실천하는 모습이 돋보임. 1학기 학급 회장(2024.03.01.~2024.",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "인적사항 | 학생부 앵커 ev-22-student_info-82",
+          "page_number": 22,
+          "excerpt": "2025-000700 학 교 생 활 기 록 부 성 명 임현수 인적 사항 주민등록번호 060526-******* 위 사람의 학교생활기록부 사본임을 증명합니다. 2025년 3월 22일 우 신 고 등 학 교 장 담당부서 우신고등학교 담 당 자 김은영 전화번호 02-2610-1507 우신고등학교 2025년 3월 22일 2",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": []
+    },
+    {
+      "id": "roadmap",
+      "title": "Action Roadmap",
+      "subtitle": "1개월 · 3개월 · 6개월 실행 계획",
+      "body_markdown": "- 로드맵은 1개월 정합성 정리, 3개월 보완축 개선, 6개월 전공 스토리 완성 순으로 운영합니다.\n- 1개월: 근거 정합성 정리\n- - Map 6 core anchors into one storyline arc\n- - Add 2 UX/spatial-humanities framing anchors\n- - Connect book traces in subject notes to formal reading evidence\n- 3개월: 보완 축 집중 개선\n- - Narrative diffusion risk: multiple strong traces are not yet unified into one storyline.\n- - Design language and user-experience framing evidence is thinner than technical evidence.\n- - Formal reading section density remains limited compared with subject-note traces.\n- 6개월: 전공 적합성 스토리 완성\n- - 주제 확장: Climate/disaster-responsive sustainable architecture\n- - 주제 확장: Material and structural decision tradeoffs\n- - 주제 확장: Human-centered spatial framing",
+      "evidence_items": [
+        {
+          "source_label": "출결상황 | 학생부 앵커 ev-01-attendance-2",
+          "page_number": 1,
+          "excerpt": "7일 우신고등학교 제3학년 졸업 특기사항 2. 출 결 상 황 결석일수 지각 조퇴 결과 학년 수업일수 특기사항 질병 미인정 기타 질병 미인정 기타 질병 미인정 기타 질병 미인정 기타 1 191 . . . 1 . . . . . . . . 원격수업일수 9일 2 190 1 . . 2 . . 3 . . . . .",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        },
+        {
+          "source_label": "수상경력 | 학생부 앵커 ev-01-awards-3",
+          "page_number": 1,
+          "excerpt": ". 3. 수 상 경 력 학년 참가대상 수 상 명 등급(위) 수상연월일 수여기관 (학기) (참가인원) 교과우수상(통합사회) 2022.12.30. 우신고등학교장 수강자 1 2 봉사상 2022.12.30. 우신고등학교장 1학년(238명) 우신고등학교 2025년 3월 22일 1/22 반 8 번호 20 이름 임현수",
+          "relevance_score": 1.84,
+          "support_status": "verified"
+        }
+      ],
+      "unsupported_claims": [],
+      "additional_verification_needed": []
+    }
+  ],
+  "roadmap": [
+    {
+      "horizon": "1_month",
+      "title": "1개월: 근거 정합성 정리",
+      "actions": [
+        "Map 6 core anchors into one storyline arc",
+        "Add 2 UX/spatial-humanities framing anchors",
+        "Connect book traces in subject notes to formal reading evidence"
+      ],
+      "success_signals": [
+        "핵심 주장-근거 매핑표 완성",
+        "근거 미확인 문장에 '추가 확인 필요' 명시"
+      ],
+      "caution_notes": [
+        "구조 추정 불확실: PDF 분석이 LLM 실패 후 휴리스틱 fallback으로 생성되었습니다.",
+        "구조 추정 불확실: behavior_opinion 섹션이 weak 상태로 분류되었습니다."
+      ]
+    },
+    {
+      "horizon": "3_months",
+      "title": "3개월: 보완 축 집중 개선",
+      "actions": [
+        "Narrative diffusion risk: multiple strong traces are not yet unified into one storyline.",
+        "Design language and user-experience framing evidence is thinner than technical evidence.",
+        "Formal reading section density remains limited compared with subject-note traces."
+      ],
+      "success_signals": [
+        "약점 축(연속성/근거밀도/과정설명) 최소 1개 이상 개선 확인",
+        "정량 또는 관찰 근거가 포함된 사례 추가"
+      ],
+      "caution_notes": [
+        "활동 사실을 과장하지 말고 실제 수행 범위만 기록"
+      ]
+    },
+    {
+      "horizon": "6_months",
+      "title": "6개월: 전공 적합성 스토리 완성",
+      "actions": [
+        "주제 확장: Climate/disaster-responsive sustainable architecture",
+        "주제 확장: Material and structural decision tradeoffs",
+        "주제 확장: Human-centered spatial framing"
+      ],
+      "success_signals": [
+        "전공-교과-활동 연결 문장이 자연스럽게 이어짐",
+        "최종 보고서 초안에서 unsupported claim 비율 감소"
+      ],
+      "caution_notes": [
+        "합격 가능성 단정 문구 금지",
+        "검증 불가 성취는 보류"
+      ]
+    }
+  ],
+  "citations": [],
+  "uncertainty_notes": [
+    "구조 추정 불확실: PDF 분석이 LLM 실패 후 휴리스틱 fallback으로 생성되었습니다.",
+    "구조 추정 불확실: behavior_opinion 섹션이 weak 상태로 분류되었습니다.",
+    "구조 추정 불확실: PDF 요약이 heuristic fallback으로 생성되었습니다."
+  ],
+  "final_consultant_memo": "최종 코멘트: 현재 자료만으로도 방향성은 충분히 도출됩니다. 다만 'Unify around climate/disaster-responsive sustainable architecture storyline'를 우선 과제로 두고, 'Map 6 core anchors into one storyline arc'를 실행해 문장-근거 정합성을 먼저 끌어올리는 것이 안전합니다. 합격 예측성 문구나 검증되지 않은 성취 서술은 배제하고, 근거가 확보된 문장부터 완성도를 높이십시오.",
+  "appendix_notes": [],
+  "render_hints": {
+    "a4": true,
+    "minimum_pages": 10,
+    "visual_tone": "consultant_premium",
+    "include_appendix": true,
+    "include_citations": true,
+    "analysis_confidence_score": 1.0,
+    "one_line_verdict": "본 진단은 'SNU Architecture evidence-grounded diagnosis'를 중심으로 학생부 근거를 재검토했습니다. 확인된 강점은 'Technical/structural/material/environment themes appear continuo…",
+    "public_appendix_enabled": false,
+    "public_citations_enabled": false,
+    "section_order": [
+      "executive_summary",
+      "record_baseline_dashboard",
+      "narrative_timeline",
+      "evidence_cards",
+      "strength_analysis",
+      "risk_analysis",
+      "major_fit",
+      "interview_questions",
+      "roadmap"
+    ],
+    "design_contract": {
+      "contract_id": "diagnosis_report_premium_v2",
+      "template_id": "consultant_diagnosis_premium_10p",
+      "mode": "premium_10p",
+      "figma_mapping": {
+        "mcp_available": true,
+        "source": "figma_mcp",
+        "access_level": "view",
+        "mapping_status": "code_first_contract_with_figma_reference",
+        "note": "Figma MCP availability confirmed. Renderer consumes deterministic code contract mapped to template registry."
+      },
+      "canvas": {
+        "page_size": "A4",
+        "margins": {
+          "left": 46,
+          "right": 46,
+          "top": 44,
+          "bottom": 50
+        },
+        "minimum_pages": 10
+      },
+      "typography": {
+        "cover_label": {
+          "font_size": 9,
+          "leading": 12,
+          "weight": "medium"
+        },
+        "cover_title": {
+          "font_size": 26,
+          "leading": 32,
+          "weight": "bold"
+        },
+        "cover_subtitle": {
+          "font_size": 11,
+          "leading": 16,
+          "weight": "regular"
+        },
+        "section_heading": {
+          "font_size": 17,
+          "leading": 22,
+          "weight": "bold"
+        },
+        "section_subtitle": {
+          "font_size": 9.5,
+          "leading": 13,
+          "weight": "regular"
+        },
+        "body": {
+          "font_size": 10.4,
+          "leading": 15.6,
+          "weight": "regular"
+        },
+        "meta": {
+          "font_size": 8.6,
+          "leading": 12,
+          "weight": "regular"
+        },
+        "caption": {
+          "font_size": 8.2,
+          "leading": 11.5,
+          "weight": "medium"
+        }
+      },
+      "spacing": {
+        "cover_block_gap": 10,
+        "section_gap": 8,
+        "paragraph_gap": 5,
+        "list_item_gap": 3,
+        "card_padding": 9,
+        "table_cell_padding": 5
+      },
+      "colors": {
+        "brand_primary": "#1E3A5F",
+        "brand_secondary": "#2B4F7B",
+        "text_primary": "#0F172A",
+        "text_secondary": "#334155",
+        "text_muted": "#526173",
+        "line_soft": "#D7DEE8",
+        "surface_soft": "#F8FAFC",
+        "surface_panel": "#F1F5F9",
+        "surface_warning": "#FFF7ED",
+        "line_warning": "#FDBA74",
+        "surface_evidence": "#EEF2FF",
+        "line_evidence": "#C7D2FE"
+      },
+      "section_hierarchy": {
+        "required_order": [
+          "executive_summary",
+          "record_baseline_dashboard",
+          "narrative_timeline",
+          "evidence_cards",
+          "strength_analysis",
+          "risk_analysis",
+          "major_fit",
+          "interview_questions",
+          "roadmap"
+        ],
+        "section_groups": [
+          [
+            "executive_summary"
+          ],
+          [
+            "record_baseline_dashboard"
+          ],
+          [
+            "narrative_timeline"
+          ],
+          [
+            "evidence_cards"
+          ],
+          [
+            "strength_analysis"
+          ],
+          [
+            "risk_analysis"
+          ],
+          [
+            "major_fit"
+          ],
+          [
+            "interview_questions"
+          ],
+          [
+            "roadmap"
+          ]
+        ],
+        "template_registry_section_schema": [
+          "executive_summary",
+          "record_baseline_dashboard",
+          "narrative_timeline",
+          "evidence_cards",
+          "strength_analysis",
+          "risk_analysis",
+          "major_fit",
+          "interview_questions",
+          "roadmap"
+        ]
+      },
+      "card_hierarchy": {
+        "cover_meta": {
+          "tone": "quiet_panel",
+          "border": "line_soft"
+        },
+        "evidence_card": {
+          "tone": "evidence",
+          "border": "line_evidence"
+        },
+        "uncertainty_card": {
+          "tone": "warning",
+          "border": "line_warning"
+        },
+        "score_table": {
+          "header_tone": "surface_panel",
+          "grid": "line_soft"
+        }
+      },
+      "components": {
+        "ReportCover": {
+          "variant": "premium_editorial"
+        },
+        "SummaryCard": {
+          "variant": "executive"
+        },
+        "MetricCard": {
+          "variant": "dashboard"
+        },
+        "EvidenceCard": {
+          "variant": "four-line"
+        },
+        "StorylineTimeline": {
+          "variant": "grade_progression"
+        },
+        "RiskCard": {
+          "variant": "caution"
+        },
+        "ActionRoadmap": {
+          "variant": "1m_3m_6m"
+        },
+        "InterviewQuestionCard": {
+          "variant": "prompt_list"
+        },
+        "ConfidenceBadge": {
+          "variant": "coverage_score"
+        },
+        "CitationChip": {
+          "variant": "page_anchor"
+        }
+      },
+      "appendix_layout": {
+        "citations_visible": true,
+        "uncertainty_notes_visible": true,
+        "uncertainty_before_citations": true,
+        "max_citation_items": 60,
+        "max_uncertainty_items": 12
+      }
+    },
+    "internal_qa_artifact": {
+      "appendix_notes": [
+        "파싱 confidence=0.9",
+        "구조 추정 불확실 항목: PDF 분석이 LLM 실패 후 휴리스틱 fallback으로 생성되었습니다.",
+        "구조 추정 불확실 항목: behavior_opinion 섹션이 weak 상태로 분류되었습니다.",
+        "구조 추정 불확실 항목: PDF 요약이 heuristic fallback으로 생성되었습니다."
+      ],
+      "evidence_bank_size": 82,
+      "unique_evidence_pages": 22,
+      "reanalysis_required": false
+    },
+    "execution_metadata": {
+      "requested_llm_provider": "ollama",
+      "requested_llm_model": "qwen2.5:7b",
+      "actual_llm_provider": "deterministic_fallback",
+      "actual_llm_model": "deterministic_fallback",
+      "llm_profile_used": "render",
+      "fallback_used": true,
+      "fallback_reason": "ollama_provider_error",
+      "diagnosis_backbone_requested_llm_provider": null,
+      "diagnosis_backbone_requested_llm_model": null,
+      "diagnosis_backbone_actual_llm_provider": null,
+      "diagnosis_backbone_actual_llm_model": null,
+      "diagnosis_backbone_fallback_used": null,
+      "diagnosis_backbone_fallback_reason": null,
+      "reanalysis_required": false
+    }
+  }
+}
