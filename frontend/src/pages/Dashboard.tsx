@@ -514,20 +514,20 @@ export function Dashboard() {
       />
 
       {primaryGoal ? (
-        <SurfaceCard className="border-blue-200 bg-[linear-gradient(120deg,_rgba(37,99,235,0.14),_rgba(255,255,255,1))]">
+        <SurfaceCard className="border-[#004aad]/10 bg-gradient-to-br from-[#004aad]/5 via-white to-white">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-4">
               <UniversityLogo
                 universityName={primaryGoal.university}
                 className="h-14 w-14 rounded-2xl bg-white object-contain p-2 shadow-sm"
-                fallbackClassName="border border-blue-100"
+                fallbackClassName="border border-[#004aad]/10"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">Dream Target</p>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#004aad]">Dream Target</p>
                 <p className="mt-1 truncate text-2xl font-black text-slate-900">{primaryGoal.university}</p>
                 <p className="mt-1 truncate text-sm font-semibold text-slate-600">{primaryGoal.major || '학과 미정'}</p>
               </div>
-              <StatusBadge status="active" className="px-3 py-1.5 text-sm">
+              <StatusBadge status="active" className="bg-[#004aad] text-white px-3 py-1.5 text-sm">
                 <Flag size={14} />
                 1순위 목표
               </StatusBadge>
@@ -537,15 +537,15 @@ export function Dashboard() {
               {allGoals.map((goal, index) => (
                 <div
                   key={`${goal.university}-${goal.major}-${index}`}
-                  className="flex min-w-0 items-center gap-2 rounded-xl border border-blue-100 bg-white/80 px-2.5 py-2"
+                  className="flex min-w-0 items-center gap-2 rounded-xl border border-[#004aad]/5 bg-white px-2.5 py-2"
                 >
                   <UniversityLogo
                     universityName={goal.university}
-                    className="h-8 w-8 rounded-lg bg-slate-100 object-contain p-1"
-                    fallbackClassName="border border-slate-200"
+                    className="h-8 w-8 rounded-lg bg-slate-50 object-contain p-1"
+                    fallbackClassName="border border-slate-100"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-black text-blue-700">{index + 1}순위</p>
+                    <p className="truncate text-xs font-black text-[#004aad]">{index + 1}순위</p>
                     <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
                     <p className="truncate text-xs font-medium text-slate-600">{goal.major || '학과 미정'}</p>
                   </div>
@@ -592,13 +592,13 @@ export function Dashboard() {
           onCollapsedChange={collapsed => handlePanelCollapsedChange('status', collapsed)}
         >
           {primaryGoal ? (
-            <SurfaceCard padding="sm" className="border-blue-200 bg-blue-50/70">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-600">현재 1순위 목표</p>
+            <SurfaceCard padding="sm" className="border-[#004aad]/10 bg-[#004aad]/5">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#004aad]">현재 1순위 목표</p>
               <div className="mt-2 flex items-center gap-3">
                 <UniversityLogo
                   universityName={primaryGoal.university}
                   className="h-10 w-10 rounded-xl bg-white object-contain p-1.5"
-                  fallbackClassName="border border-blue-100"
+                  fallbackClassName="border border-[#004aad]/10"
                 />
                 <div className="min-w-0">
                   <p className="truncate text-base font-black text-slate-900">{primaryGoal.university}</p>
@@ -637,8 +637,8 @@ export function Dashboard() {
 
           <div>
             <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">진행률</p>
-            <div className="h-3 overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full rounded-full bg-blue-600" style={{ width: `${stats.completion_rate}%` }} />
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-[#004aad]" style={{ width: `${stats.completion_rate}%` }} />
             </div>
             <p className="mt-2 text-xs font-semibold text-slate-500">완성도 {stats.completion_rate}%</p>
           </div>
@@ -655,8 +655,8 @@ export function Dashboard() {
           onCollapsedChange={collapsed => handlePanelCollapsedChange('plan', collapsed)}
         >
           {isLoadingBlueprint ? (
-            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#004aad] border-t-transparent" />
             </div>
           ) : blueprint ? (
             <div className="space-y-5">
@@ -702,7 +702,7 @@ export function Dashboard() {
                       aria-expanded={openSubjectGroups[group.name] ?? false}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <Target size={16} className="text-blue-700" />
+                        <Target size={16} className="text-[#004aad]" />
                         <h4 className="truncate text-sm font-bold uppercase tracking-[0.14em] text-slate-600">{group.name}</h4>
                         <StatusBadge status="neutral">{group.quests.length}개</StatusBadge>
                       </div>

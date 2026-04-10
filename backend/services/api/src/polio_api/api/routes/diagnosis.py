@@ -61,6 +61,10 @@ router = APIRouter()
 logger = logging.getLogger("polio.api.diagnosis")
 
 
+def _normalize_report_mode(value: str | None) -> str:
+    return value if value in {"compact", "premium_10p"} else "premium_10p"
+
+
 def _get_run_for_user(db: Session, diagnosis_id: str, user_id: str) -> DiagnosisRun | None:
     return db.scalar(
         select(DiagnosisRun)
@@ -223,6 +227,7 @@ async def trigger_diagnosis(
             "owner_user_id": current_user.id,
             "fallback_target_university": current_user.target_university or project.target_university,
             "fallback_target_major": current_user.target_major or project.target_major,
+            "interest_universities": payload.interest_universities or current_user.interest_universities,
             "auto_report_mode": "premium_10p",
             "auto_report_include_appendix": True,
             "auto_report_include_citations": True,
@@ -354,15 +359,64 @@ async def get_consultant_report_route(
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis run not found.")
 
+    # Keep auto-generated report delivery moving even when the frontend only polls this route.
+    if run.status == "COMPLETED" and run.result_payload:
+        _ensure_default_report_bootstrap(db, run)
+        _maybe_process_report_job_inline(db, run)
+        refreshed = _get_run_for_user(db, diagnosis_id, current_user.id)
+        if refreshed is not None:
+            run = refreshed
+
+    normalized_mode = _normalize_report_mode(report_mode)
     artifact = (
         get_report_artifact_by_id(db, diagnosis_run_id=run.id, artifact_id=artifact_id)
         if artifact_id
         else get_latest_report_artifact_for_run(
             db,
             diagnosis_run_id=run.id,
-            report_mode=report_mode if report_mode in {"compact", "premium_10p"} else None,
+            report_mode=normalized_mode,
         )
     )
+    if artifact is None and artifact_id:
+        logger.warning(
+            "Diagnosis report artifact id was stale or missing. run_id=%s artifact_id=%s mode=%s",
+            run.id,
+            artifact_id,
+            normalized_mode,
+        )
+        artifact = get_latest_report_artifact_for_run(
+            db,
+            diagnosis_run_id=run.id,
+            report_mode=normalized_mode,
+        )
+
+    if artifact is None and run.status == "COMPLETED" and run.result_payload:
+        project = get_project(db, run.project_id, owner_user_id=current_user.id)
+        if project is not None:
+            try:
+                artifact = await generate_consultant_report_artifact(
+                    db,
+                    run=run,
+                    project=project,
+                    report_mode=normalized_mode,  # type: ignore[arg-type]
+                    template_id=None,
+                    include_appendix=True,
+                    include_citations=True,
+                    force_regenerate=False,
+                )
+                logger.info(
+                    "Recovered diagnosis report read by generating missing artifact. run_id=%s artifact_id=%s mode=%s",
+                    run.id,
+                    artifact.id,
+                    normalized_mode,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to recover diagnosis report artifact on read. run_id=%s artifact_id=%s mode=%s",
+                    run.id,
+                    artifact_id,
+                    normalized_mode,
+                )
     if artifact is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis report artifact not found.")
     return build_report_artifact_response(artifact=artifact, include_payload=include_payload)
@@ -387,12 +441,17 @@ async def download_consultant_report_pdf_route(
     if not run.result_payload:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Diagnosis results are not ready yet.")
 
-    if report_mode not in {"compact", "premium_10p"}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid report mode.")
+    # Ensure queued auto-report jobs are progressed for download requests as well.
+    if run.status == "COMPLETED":
+        _ensure_default_report_bootstrap(db, run)
+        _maybe_process_report_job_inline(db, run)
+        refreshed = _get_run_for_user(db, diagnosis_id, current_user.id)
+        if refreshed is not None:
+            run = refreshed
 
-    project = get_project(db, run.project_id, owner_user_id=current_user.id)
-    if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    normalized_mode = _normalize_report_mode(report_mode)
+    if normalized_mode not in {"compact", "premium_10p"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid report mode.")
 
     artifact = (
         get_report_artifact_by_id(db, diagnosis_run_id=run.id, artifact_id=artifact_id)
@@ -400,9 +459,21 @@ async def download_consultant_report_pdf_route(
         else get_latest_report_artifact_for_run(
             db,
             diagnosis_run_id=run.id,
-            report_mode=report_mode,
+            report_mode=normalized_mode,
         )
     )
+    if artifact is None and artifact_id:
+        logger.warning(
+            "Diagnosis report download received stale artifact id. run_id=%s artifact_id=%s mode=%s",
+            run.id,
+            artifact_id,
+            normalized_mode,
+        )
+        artifact = get_latest_report_artifact_for_run(
+            db,
+            diagnosis_run_id=run.id,
+            report_mode=normalized_mode,
+        )
 
     if (
         artifact is None
@@ -413,11 +484,14 @@ async def download_consultant_report_pdf_route(
         or (template_id is not None and artifact.template_id != template_id)
         or (report_artifact_storage_key(artifact) is None and report_artifact_file_path(artifact) is None)
     ):
+        project = get_project(db, run.project_id, owner_user_id=current_user.id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
         artifact = await generate_consultant_report_artifact(
             db,
             run=run,
             project=project,
-            report_mode=report_mode,  # type: ignore[arg-type]
+            report_mode=normalized_mode,  # type: ignore[arg-type]
             template_id=template_id,
             include_appendix=include_appendix,
             include_citations=include_citations,
@@ -426,6 +500,30 @@ async def download_consultant_report_pdf_route(
 
     output_path = report_artifact_file_path(artifact)
     storage_bytes = load_report_artifact_pdf_bytes(artifact)
+    if storage_bytes is None and artifact.status == "READY":
+        storage_key = report_artifact_storage_key(artifact)
+        if storage_key or output_path:
+            logger.warning(
+                "Diagnosis report binary was missing for READY artifact. Attempting one-time regeneration. "
+                "run_id=%s artifact_id=%s mode=%s",
+                run.id,
+                artifact.id,
+                normalized_mode,
+            )
+            project = get_project(db, run.project_id, owner_user_id=current_user.id)
+            if project is not None:
+                artifact = await generate_consultant_report_artifact(
+                    db,
+                    run=run,
+                    project=project,
+                    report_mode=normalized_mode,  # type: ignore[arg-type]
+                    template_id=template_id,
+                    include_appendix=include_appendix,
+                    include_citations=include_citations,
+                    force_regenerate=True,
+                )
+                output_path = report_artifact_file_path(artifact)
+                storage_bytes = load_report_artifact_pdf_bytes(artifact)
     if storage_bytes is not None:
         filename = f"consultant-diagnosis-{run.id}-v{artifact.version}.pdf"
         return Response(

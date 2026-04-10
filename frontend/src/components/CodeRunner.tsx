@@ -64,7 +64,7 @@ export function CodeRunner({ code }: CodeRunnerProps) {
                 setIsEngineReady(true);
              }}
              disabled={isPyodideLoading}
-             className="px-3 py-1.5 bg-blue-600/20 text-blue-400 font-bold text-xs rounded-lg hover:bg-blue-600/30 transition-colors"
+             className="px-3 py-1.5 bg-[#004aad]/20 text-[#004aad] font-bold text-xs rounded-lg hover:bg-[#004aad]/30 transition-colors"
            >
              {isPyodideLoading ? 'Initializing...' : 'Initialize Engine'}
            </button>

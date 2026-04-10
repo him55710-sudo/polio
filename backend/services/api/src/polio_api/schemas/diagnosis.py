@@ -16,6 +16,7 @@ from polio_api.services.diagnosis_service import (
 
 class DiagnosisRunRequest(BaseModel):
     project_id: str
+    interest_universities: list[str] | None = None
 
 
 class DiagnosisResultPayload(DiagnosisResult):

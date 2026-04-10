@@ -70,7 +70,7 @@ export function AuthCallback() {
         animate={{ opacity: 1, scale: 1 }}
         className="rounded-[32px] border border-slate-200 bg-white p-10 text-center shadow-xl"
       >
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-blue-500 shadow-lg shadow-blue-500/20">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-[#004aad] shadow-lg shadow-[#004aad]/20">
           <Bot size={40} className="animate-pulse text-white" />
         </div>
         <h2 className="mt-6 text-2xl font-extrabold text-slate-800">로그인 정보를 확인하고 있습니다.</h2>

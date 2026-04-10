@@ -20,6 +20,7 @@ interface DiagnosisReportPanelProps {
   diagnosisRunId: string;
   reportStatus?: string | null;
   reportAsyncJobStatus?: string | null;
+  reportArtifactId?: string | null;
   reportErrorMessage?: string | null;
 }
 
@@ -41,6 +42,8 @@ const MODE_OPTIONS: Array<{
 ];
 
 const REPORT_IN_PROGRESS_STATUS = new Set(['AUTO_STARTING', 'QUEUED', 'RUNNING', 'RETRYING', 'SUCCEEDED']);
+const REPORT_SYNC_RECOVERY_TRIGGER = 3;
+const REPORT_SYNC_MAX_RETRIES = 24;
 const PREMIUM_SECTION_ARCHITECTURE: Array<{ id: string; label: string }> = [
   { id: 'cover_context', label: 'Cover / Target Context' },
   { id: 'executive_summary', label: 'Executive Summary' },
@@ -108,6 +111,7 @@ export function DiagnosisReportPanel({
   diagnosisRunId,
   reportStatus,
   reportAsyncJobStatus,
+  reportArtifactId,
   reportErrorMessage,
 }: DiagnosisReportPanelProps) {
   const [mode, setMode] = useState<DiagnosisReportMode>('premium_10p');
@@ -116,8 +120,11 @@ export function DiagnosisReportPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [artifact, setArtifact] = useState<ConsultantDiagnosisArtifactResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reportSyncRetries, setReportSyncRetries] = useState(0);
+  const [recoveryTriggered, setRecoveryTriggered] = useState(false);
 
   const selectedMode = useMemo(() => MODE_OPTIONS.find((item) => item.value === mode) ?? MODE_OPTIONS[0], [mode]);
   const executionMeta = (artifact?.execution_metadata ?? null) as Record<string, unknown> | null;
@@ -177,21 +184,76 @@ export function DiagnosisReportPanel({
       normalizedRunReportStatus &&
       REPORT_IN_PROGRESS_STATUS.has(normalizedRunReportStatus),
   );
+  const isRunMarkedReady = Boolean(runLifecycleEnabled && !artifact && normalizedRunReportStatus === 'READY');
   const shouldPollReport = Boolean(
     runLifecycleEnabled &&
+      reportSyncRetries < REPORT_SYNC_MAX_RETRIES &&
       (isAutoGenerating || (!artifact && normalizedRunReportStatus === 'READY')),
   );
-  const canDownloadReport = Boolean(artifact && artifact.status === 'READY');
+  const canDownloadReport = Boolean(
+    (artifact && artifact.status === 'READY')
+      || (normalizedRunReportStatus === 'READY' && reportArtifactId),
+  );
+
+  const recoverMissingArtifact = useCallback(async () => {
+    if (!runLifecycleEnabled || normalizedRunReportStatus !== 'READY' || artifact) return;
+    setIsRecovering(true);
+    try {
+      const recovered = await api.post<ConsultantDiagnosisArtifactResponse>(
+        `/api/v1/diagnosis/${diagnosisRunId}/report`,
+        {
+          report_mode: mode,
+          include_appendix: includeAppendix,
+          include_citations: includeCitations,
+          force_regenerate: false,
+        },
+      );
+      setArtifact(recovered);
+      setIncludeAppendix(recovered.include_appendix);
+      setIncludeCitations(recovered.include_citations);
+      setReportSyncRetries(0);
+      setErrorMessage(recovered.status === 'FAILED' ? recovered.error_message || 'Report generation failed.' : null);
+      if (recovered.status === 'READY') {
+        toast.success('Report sync recovered.');
+      }
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      setErrorMessage(
+        typeof detail === 'string' && detail.trim()
+          ? detail
+          : 'Report metadata sync is delayed. Please retry generation.',
+      );
+    } finally {
+      setIsRecovering(false);
+    }
+  }, [
+    artifact,
+    diagnosisRunId,
+    includeAppendix,
+    includeCitations,
+    mode,
+    normalizedRunReportStatus,
+    runLifecycleEnabled,
+  ]);
 
   const loadExistingArtifact = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      const params: Record<string, string | number> = {
+        report_mode: mode,
+        _ts: Date.now(),
+      };
+      if (normalizedRunReportStatus === 'READY' && reportArtifactId) {
+        params.artifact_id = reportArtifactId;
+      }
       const existing = await api.get<ConsultantDiagnosisArtifactResponse>(
         `/api/v1/diagnosis/${diagnosisRunId}/report`,
-        { params: { report_mode: mode } },
+        { params },
       );
       setArtifact(existing);
+      setReportSyncRetries(0);
+      setRecoveryTriggered(false);
       setIncludeAppendix(existing.include_appendix);
       setIncludeCitations(existing.include_citations);
       if (existing.status === 'FAILED') {
@@ -200,18 +262,45 @@ export function DiagnosisReportPanel({
     } catch (error: any) {
       if (error?.response?.status === 404) {
         setArtifact(null);
-        setErrorMessage(null);
+        if (normalizedRunReportStatus === 'READY') {
+          setReportSyncRetries((previous) => previous + 1);
+          setErrorMessage('진단은 완료되었고, 전문 진단서를 준비하고 있습니다. 동기화가 길어지면 재생성을 눌러주세요.');
+        } else {
+          setReportSyncRetries(0);
+          setErrorMessage(null);
+        }
       } else {
         setErrorMessage('Failed to load existing report artifact.');
       }
     } finally {
       setIsLoading(false);
     }
-  }, [diagnosisRunId, mode]);
+  }, [diagnosisRunId, mode, normalizedRunReportStatus, reportArtifactId]);
 
   useEffect(() => {
     void loadExistingArtifact();
   }, [loadExistingArtifact]);
+
+  useEffect(() => {
+    setReportSyncRetries(0);
+    setRecoveryTriggered(false);
+  }, [diagnosisRunId, mode, reportArtifactId]);
+
+  useEffect(() => {
+    if (!runLifecycleEnabled || artifact) return;
+    if (normalizedRunReportStatus !== 'READY') return;
+    if (reportSyncRetries < REPORT_SYNC_RECOVERY_TRIGGER) return;
+    if (recoveryTriggered) return;
+    setRecoveryTriggered(true);
+    void recoverMissingArtifact();
+  }, [
+    artifact,
+    normalizedRunReportStatus,
+    recoverMissingArtifact,
+    recoveryTriggered,
+    reportSyncRetries,
+    runLifecycleEnabled,
+  ]);
 
   useEffect(() => {
     if (!shouldPollReport) return undefined;
@@ -262,7 +351,7 @@ export function DiagnosisReportPanel({
     try {
       const response = await api.download(`/api/v1/diagnosis/${diagnosisRunId}/report.pdf`, {
         params: {
-          artifact_id: artifact?.id ?? undefined,
+          artifact_id: artifact?.id ?? reportArtifactId ?? undefined,
           report_mode: mode,
           include_appendix: includeAppendix,
           include_citations: includeCitations,
@@ -288,7 +377,7 @@ export function DiagnosisReportPanel({
     } finally {
       setIsDownloading(false);
     }
-  }, [artifact?.id, diagnosisRunId, includeAppendix, includeCitations, mode]);
+  }, [artifact?.id, diagnosisRunId, includeAppendix, includeCitations, mode, reportArtifactId]);
 
   return (
     <SectionCard
@@ -308,7 +397,27 @@ export function DiagnosisReportPanel({
           <WorkflowNotice
             tone="loading"
             title="Auto report generation in progress"
-            description="진단은 완료되었고, 전문 진단서를 준비하고 있습니다."
+            description="진단이 완료되었고, 전문 진단서를 준비하고 있습니다."
+          />
+        ) : null}
+
+        {isRunMarkedReady ? (
+          <WorkflowNotice
+            tone="loading"
+            title="Report generated, syncing preview"
+            description="진단 보고서 생성은 완료되었습니다. 미리보기와 다운로드 정보를 불러오는 중입니다."
+          />
+        ) : null}
+
+        {!artifact && normalizedRunReportStatus === 'READY' && reportSyncRetries >= REPORT_SYNC_RECOVERY_TRIGGER ? (
+          <WorkflowNotice
+            tone="warning"
+            title="Report sync is delayed"
+            description={
+              isRecovering
+                ? '자동 복구를 시도하고 있습니다. 잠시만 기다려주세요.'
+                : '동기화가 지연되고 있습니다. Regenerate 버튼으로 즉시 복구할 수 있습니다.'
+            }
           />
         ) : null}
 
@@ -342,9 +451,9 @@ export function DiagnosisReportPanel({
               Generate report
             </PrimaryButton>
           )}
-          <SecondaryButton onClick={() => generateReport(true)} disabled={isGenerating || isLoading}>
+          <SecondaryButton onClick={() => generateReport(true)} disabled={isGenerating || isLoading || isRecovering}>
             <RefreshCw size={14} />
-            Regenerate
+            {isRecovering ? 'Recovering...' : 'Regenerate'}
           </SecondaryButton>
         </div>
 
@@ -379,7 +488,7 @@ export function DiagnosisReportPanel({
                   type="checkbox"
                   checked={includeAppendix}
                   onChange={(event) => setIncludeAppendix(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                  className="h-4 w-4 rounded border-slate-300 text-[#004aad]"
                 />
                 Include appendix
               </label>
@@ -388,7 +497,7 @@ export function DiagnosisReportPanel({
                   type="checkbox"
                   checked={includeCitations}
                   onChange={(event) => setIncludeCitations(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                  className="h-4 w-4 rounded border-slate-300 text-[#004aad]"
                 />
                 Include citations
               </label>
@@ -499,3 +608,4 @@ export function DiagnosisReportPanel({
   );
 }
 
+

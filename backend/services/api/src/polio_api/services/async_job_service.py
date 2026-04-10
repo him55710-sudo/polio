@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
-from threading import Thread
+from threading import Event, Lock, Thread
+import traceback
 from typing import Any
 
 from sqlalchemy import Select, select, update
@@ -30,6 +31,10 @@ from polio_api.services.research_service import ingest_research_document
 from polio_domain.enums import AsyncJobStatus, AsyncJobType, RenderStatus
 
 logger = logging.getLogger("polio.api.async_jobs")
+_ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
+_ASYNC_BRIDGE_THREAD: Thread | None = None
+_ASYNC_BRIDGE_READY = Event()
+_ASYNC_BRIDGE_LOCK = Lock()
 
 
 def utc_now() -> datetime:
@@ -105,29 +110,53 @@ def run_async_job(job_id: str) -> AsyncJob | None:
         return process_async_job(db, job_id)
 
 
+def _async_bridge_loop_runner() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    global _ASYNC_BRIDGE_LOOP
+    _ASYNC_BRIDGE_LOOP = loop
+    _ASYNC_BRIDGE_READY.set()
+    loop.run_forever()
+
+
+def _ensure_async_bridge_loop() -> asyncio.AbstractEventLoop:
+    global _ASYNC_BRIDGE_THREAD
+    with _ASYNC_BRIDGE_LOCK:
+        loop = _ASYNC_BRIDGE_LOOP
+        if loop is not None and loop.is_running():
+            return loop
+
+        _ASYNC_BRIDGE_READY.clear()
+        _ASYNC_BRIDGE_THREAD = Thread(
+            target=_async_bridge_loop_runner,
+            daemon=True,
+            name="polio-async-bridge-loop",
+        )
+        _ASYNC_BRIDGE_THREAD.start()
+
+    if not _ASYNC_BRIDGE_READY.wait(timeout=5.0):
+        raise RuntimeError("Failed to initialize async bridge loop for job execution.")
+
+    loop = _ASYNC_BRIDGE_LOOP
+    if loop is None or not loop.is_running():
+        raise RuntimeError("Async bridge loop is unavailable.")
+    return loop
+
+
 def _run_async_callable(func: Any, /, *args: Any, **kwargs: Any) -> Any:
-    """Run an async callable from sync code, even if this thread already has a running loop."""
+    """Run an async callable from sync code safely across loop/thread boundaries."""
+    coroutine = func(*args, **kwargs)
+    if not asyncio.iscoroutine(coroutine):
+        raise TypeError("_run_async_callable expects an async callable that returns a coroutine.")
+
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(func(*args, **kwargs))
+        return asyncio.run(coroutine)
 
-    result: dict[str, Any] = {}
-    error: dict[str, BaseException] = {}
-
-    def runner() -> None:
-        try:
-            result["value"] = asyncio.run(func(*args, **kwargs))
-        except BaseException as exc:  # noqa: BLE001
-            error["value"] = exc
-
-    worker = Thread(target=runner, daemon=True, name="polio-inline-async")
-    worker.start()
-    worker.join()
-
-    if "value" in error:
-        raise error["value"]
-    return result.get("value")
+    loop = _ensure_async_bridge_loop()
+    future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+    return future.result()
 
 
 def process_async_job(db: Session, job_id: str) -> AsyncJob | None:
@@ -146,7 +175,21 @@ def process_async_job(db: Session, job_id: str) -> AsyncJob | None:
         db.refresh(job)
         return job
     except Exception as exc:  # noqa: BLE001
-        return _handle_job_failure(db, job=job, reason=str(exc))
+        logger.exception(
+            "Async job execution raised an exception. job_type=%s job_id=%s resource_type=%s resource_id=%s retry_count=%s max_retries=%s",
+            job.job_type,
+            job.id,
+            job.resource_type,
+            job.resource_id,
+            job.retry_count,
+            job.max_retries,
+        )
+        return _handle_job_failure(
+            db,
+            job=job,
+            reason=str(exc),
+            internal_reason=_format_internal_failure_reason(exc),
+        )
 
 
 def process_next_async_job(db: Session) -> AsyncJob | None:
@@ -164,7 +207,21 @@ def process_next_async_job(db: Session) -> AsyncJob | None:
         db.refresh(job)
         return job
     except Exception as exc:  # noqa: BLE001
-        return _handle_job_failure(db, job=job, reason=str(exc))
+        logger.exception(
+            "Async job execution raised an exception. job_type=%s job_id=%s resource_type=%s resource_id=%s retry_count=%s max_retries=%s",
+            job.job_type,
+            job.id,
+            job.resource_type,
+            job.resource_id,
+            job.retry_count,
+            job.max_retries,
+        )
+        return _handle_job_failure(
+            db,
+            job=job,
+            reason=str(exc),
+            internal_reason=_format_internal_failure_reason(exc),
+        )
 
 
 def retry_async_job(db: Session, job_id: str) -> AsyncJob | None:
@@ -259,11 +316,28 @@ def _requeue_stale_jobs(db: Session) -> None:
     db.commit()
 
 
-def _handle_job_failure(db: Session, *, job: AsyncJob, reason: str) -> AsyncJob:
+def _handle_job_failure(
+    db: Session,
+    *,
+    job: AsyncJob,
+    reason: str,
+    internal_reason: str | None = None,
+) -> AsyncJob:
     public_reason = _public_failure_reason(job, reason)
     logger.warning("Async job failed: %s %s -> %s", job.job_type, job.id, public_reason)
+    if internal_reason:
+        logger.warning(
+            "Async job internal failure detail: job_type=%s job_id=%s detail=%s",
+            job.job_type,
+            job.id,
+            internal_reason,
+        )
+        payload = dict(job.payload or {})
+        payload["last_internal_failure"] = internal_reason
+        payload["last_internal_failure_at"] = utc_now().isoformat()
+        job.payload = payload
     settings = get_settings()
-    if job.retry_count >= job.max_retries:
+    if _is_non_retryable_failure(job, reason=reason, internal_reason=internal_reason) or job.retry_count >= job.max_retries:
         job.status = AsyncJobStatus.FAILED.value
         job.failure_reason = public_reason
         job.completed_at = utc_now()
@@ -299,15 +373,17 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
         )
         return
     if job.job_type == AsyncJobType.DIAGNOSIS.value:
-        completed_run = _run_async_callable(
-            run_diagnosis_run,
-            db,
+        run_id = str(payload.get("run_id") or job.resource_id)
+        completed_run_id = _run_async_callable(
+            _run_diagnosis_with_worker_session,
             run_id=str(payload.get("run_id") or job.resource_id),
             project_id=str(payload.get("project_id") or job.project_id or ""),
             owner_user_id=str(payload.get("owner_user_id") or ""),
             fallback_target_university=_opt_str(payload.get("fallback_target_university")),
             fallback_target_major=_opt_str(payload.get("fallback_target_major")),
         )
+        db.expire_all()
+        completed_run = db.get(DiagnosisRun, str(completed_run_id or run_id))
         if isinstance(completed_run, DiagnosisRun):
             logger.info("Diagnosis completed. run_id=%s project_id=%s", completed_run.id, completed_run.project_id)
             try:
@@ -335,42 +411,32 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
         return
     if job.job_type == AsyncJobType.DIAGNOSIS_REPORT.value:
         run_id = str(payload.get("run_id") or job.resource_id)
-        run = db.get(DiagnosisRun, run_id)
-        if run is None:
-            raise ValueError(f"Diagnosis run not found: {run_id}")
-        project_id = str(payload.get("project_id") or run.project_id or "")
-        project = db.get(Project, project_id)
-        if project is None:
-            raise ValueError(f"Project not found for report generation: {project_id}")
         report_mode = str(payload.get("report_mode") or "premium_10p")
         if report_mode not in {"compact", "premium_10p"}:
             report_mode = "premium_10p"
-        artifact = _run_async_callable(
-            generate_consultant_report_artifact,
-            db,
-            run=run,
-            project=project,
+        artifact_id, artifact_status, artifact_project_id = _run_async_callable(
+            _run_diagnosis_report_with_worker_session,
+            run_id=run_id,
             report_mode=report_mode,  # type: ignore[arg-type]
-            template_id=None,
             include_appendix=bool(payload.get("include_appendix", True)),
             include_citations=bool(payload.get("include_citations", True)),
             force_regenerate=bool(payload.get("force_regenerate", False)),
         )
-        if getattr(artifact, "status", None) == "FAILED":
+        if artifact_status == "FAILED":
             logger.warning(
                 "Diagnosis report generation completed with failed artifact. run_id=%s project_id=%s mode=%s artifact_id=%s",
-                run.id,
-                run.project_id,
+                run_id,
+                artifact_project_id,
                 report_mode,
-                getattr(artifact, "id", None),
+                artifact_id,
             )
         else:
             logger.info(
                 "Diagnosis report generation succeeded. run_id=%s project_id=%s mode=%s artifact_id=%s",
-                run.id,
-                run.project_id,
+                run_id,
+                artifact_project_id,
                 report_mode,
-                getattr(artifact, "id", None),
+                artifact_id,
             )
         return
     if job.job_type == AsyncJobType.INQUIRY_EMAIL.value:
@@ -701,11 +767,74 @@ def _opt_str(value: Any) -> str | None:
     return normalized or None
 
 
+def _format_internal_failure_reason(exc: Exception) -> str:
+    detail = f"{type(exc).__name__}: {exc}"
+    stack = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).strip()
+    if stack:
+        return f"{detail}\n{stack}"[:4000]
+    return detail[:4000]
+
+
+async def _run_diagnosis_with_worker_session(
+    *,
+    run_id: str,
+    project_id: str,
+    owner_user_id: str,
+    fallback_target_university: str | None,
+    fallback_target_major: str | None,
+) -> str:
+    with SessionLocal() as worker_db:
+        run = await run_diagnosis_run(
+            worker_db,
+            run_id=run_id,
+            project_id=project_id,
+            owner_user_id=owner_user_id,
+            fallback_target_university=fallback_target_university,
+            fallback_target_major=fallback_target_major,
+        )
+        return run.id
+
+
+async def _run_diagnosis_report_with_worker_session(
+    *,
+    run_id: str,
+    report_mode: str,
+    include_appendix: bool,
+    include_citations: bool,
+    force_regenerate: bool,
+) -> tuple[str | None, str | None, str | None]:
+    with SessionLocal() as worker_db:
+        run = worker_db.get(DiagnosisRun, run_id)
+        if run is None:
+            raise ValueError(f"Diagnosis run not found: {run_id}")
+        project = worker_db.get(Project, run.project_id)
+        if project is None:
+            raise ValueError(f"Project not found for report generation: {run.project_id}")
+
+        artifact = await generate_consultant_report_artifact(
+            worker_db,
+            run=run,
+            project=project,
+            report_mode=report_mode,  # type: ignore[arg-type]
+            template_id=None,
+            include_appendix=include_appendix,
+            include_citations=include_citations,
+            force_regenerate=force_regenerate,
+        )
+        return (
+            getattr(artifact, "id", None),
+            getattr(artifact, "status", None),
+            run.project_id,
+        )
+
+
 def _diagnosis_failure_reason(reason: str) -> str:
     fallback = "Diagnosis job failed. Retry after checking the project evidence."
     normalized = sanitize_public_error(reason, fallback=fallback)
     lowered = normalized.lower()
 
+    if "database or disk is full" in lowered:
+        return "Diagnosis storage is temporarily saturated on the server. Retry after a short wait."
     if "upload a parsed document before running diagnosis" in lowered:
         return "Upload and parse at least one document before running diagnosis."
     if "parsed document content is empty" in lowered:
@@ -727,3 +856,12 @@ def _public_failure_reason(job: AsyncJob, reason: str) -> str:
     if job.job_type == AsyncJobType.INQUIRY_EMAIL.value:
         return "Inquiry email delivery failed. Retry after checking SMTP configuration."
     return sanitize_public_error(reason, fallback="Async job failed.")
+
+
+def _is_non_retryable_failure(job: AsyncJob, *, reason: str, internal_reason: str | None) -> bool:
+    lowered_reason = (reason or "").lower()
+    lowered_internal = (internal_reason or "").lower()
+    if job.job_type == AsyncJobType.DIAGNOSIS.value:
+        if "database or disk is full" in lowered_reason or "database or disk is full" in lowered_internal:
+            return True
+    return False

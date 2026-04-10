@@ -90,6 +90,7 @@ interface AdvancedPreviewProps {
   mathExpressions: MathExpression[];
   isAdvancedMode: boolean;
   onUpdateVisualStatus?: (visualId: string, status: string) => void;
+  onReplaceVisual?: (visualId: string) => void;
 }
 
 export function AdvancedPreview({
@@ -99,6 +100,7 @@ export function AdvancedPreview({
   mathExpressions,
   isAdvancedMode,
   onUpdateVisualStatus,
+  onReplaceVisual,
 }: AdvancedPreviewProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -187,6 +189,7 @@ export function AdvancedPreview({
                     key={spec.id || `${spec.type}-${spec.title}`}
                     spec={spec}
                     onStatusChange={(status) => spec.id && onUpdateVisualStatus?.(spec.id, status)}
+                    onReplace={() => spec.id && onReplaceVisual?.(spec.id)}
                   />
                 ))}
               </div>
@@ -198,7 +201,15 @@ export function AdvancedPreview({
   );
 }
 
-function VisualCard({ spec, onStatusChange }: { spec: VisualSpec; onStatusChange: (status: string) => void }) {
+function VisualCard({ 
+  spec, 
+  onStatusChange,
+  onReplace 
+}: { 
+  spec: VisualSpec; 
+  onStatusChange: (status: string) => void;
+  onReplace: () => void;
+}) {
   const confidence = typeof spec.confidence === 'number' ? spec.confidence : 0;
   const status = spec.approval_status || 'proposed';
 
@@ -310,7 +321,7 @@ function VisualCard({ spec, onStatusChange }: { spec: VisualSpec; onStatusChange
           </button>
         )}
         <button
-          onClick={() => onStatusChange('replaced')}
+          onClick={onReplace}
           className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-transparent px-3 py-1.5 text-xs font-black text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200"
         >
           Replace Visual

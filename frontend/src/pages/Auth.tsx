@@ -136,14 +136,14 @@ export function Auth() {
             transition={{ duration: 0.45 }}
             className="mt-10 max-w-2xl sm:mt-14"
           >
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white/80 px-4 py-2 text-xs font-black text-blue-600 shadow-sm sm:text-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#004aad]/10 bg-white/80 px-4 py-2 text-xs font-black text-[#004aad] shadow-sm sm:text-sm">
               <ShieldCheck size={16} />
               근거 중심 준비 흐름
             </div>
             <h1 className="mt-5 text-3xl font-black leading-tight tracking-tight text-slate-900 sm:mt-6 sm:text-4xl lg:text-5xl break-keep">
               막연한 불안 대신
               <br />
-              <span className="text-blue-600">확인 가능한 준비 순서</span>
+              <span className="text-[#004aad]">확인 가능한 준비 순서</span>
             </h1>
             <p className="mt-5 text-base font-medium leading-7 text-slate-600 sm:mt-6 sm:text-lg sm:leading-8 break-keep">
               학생부 기반 분석, 진단 확인, 문서 작성까지 한 화면 흐름으로 이어집니다.
@@ -160,7 +160,7 @@ export function Auth() {
             <div className="mt-8 grid gap-4 sm:mt-10 sm:grid-cols-2">
               <div className="rounded-3xl border border-slate-200 bg-white/85 p-5 shadow-sm sm:p-6">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 sm:h-11 sm:w-11">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#004aad]/5 text-[#004aad] sm:h-11 sm:w-11">
                     <BookOpen size={20} />
                   </div>
                   <div>
@@ -171,7 +171,7 @@ export function Auth() {
                 <div className="mt-4 space-y-2.5 sm:mt-5 sm:space-y-3">
                   {flowSteps.map((step, index) => (
                     <div key={step} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white sm:h-8 sm:w-8 sm:text-sm">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#004aad] text-xs font-black text-white sm:h-8 sm:w-8 sm:text-sm">
                         {index + 1}
                       </span>
                       <span className="text-sm font-bold text-slate-700">{step}</span>
@@ -182,7 +182,7 @@ export function Auth() {
 
               <div className="rounded-3xl border border-slate-200 bg-white/85 p-5 shadow-sm sm:p-6">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 sm:h-11 sm:w-11">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#004aad]/5 text-[#004aad] sm:h-11 sm:w-11">
                     <ShieldCheck size={20} />
                   </div>
                   <div>
@@ -197,7 +197,7 @@ export function Auth() {
                     '합격 보장을 약속하는 서비스가 아니에요.',
                   ].map(item => (
                     <div key={item} className="flex gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <CircleCheck size={18} className="mt-0.5 text-blue-600" />
+                      <CircleCheck size={18} className="mt-0.5 text-[#004aad]" />
                       <p className="text-sm font-semibold leading-6 text-slate-700 break-keep">{item}</p>
                     </div>
                   ))}
@@ -215,7 +215,7 @@ export function Auth() {
             className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] sm:rounded-[40px] sm:p-8"
           >
             <div className="text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-blue-100 bg-blue-50 sm:h-20 sm:w-20 sm:rounded-[28px]">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-[#004aad]/10 bg-[#004aad]/5 sm:h-20 sm:w-20 sm:rounded-[28px]">
                 <UniFoliLogo size="lg" markOnly />
               </div>
               <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-900 sm:mt-6 sm:text-3xl">로그인하고 시작하기</h2>
@@ -242,7 +242,7 @@ export function Auth() {
                 <label className="flex cursor-pointer items-center gap-3">
                   <input
                     type="checkbox"
-                    className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="h-5 w-5 rounded border-slate-300 text-[#004aad] focus:ring-[#004aad]"
                     checked={agreements.terms && agreements.privacy && agreements.age && agreements.marketing}
                     onChange={(e) => {
                       const checked = e.target.checked;
@@ -257,7 +257,7 @@ export function Auth() {
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-slate-300 text-[#004aad] focus:ring-[#004aad]"
                       checked={agreements.age}
                       onChange={(e) => setAgreements(prev => ({ ...prev, age: e.target.checked }))}
                     />
@@ -268,31 +268,31 @@ export function Auth() {
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-slate-300 text-[#004aad] focus:ring-[#004aad]"
                       checked={agreements.terms}
                       onChange={(e) => setAgreements(prev => ({ ...prev, terms: e.target.checked }))}
                     />
                     <span className="text-sm font-medium text-slate-700">[필수] 이용약관 동의</span>
                   </label>
-                  <Link to="/legal/terms" target="_blank" className="text-xs font-bold text-slate-400 hover:text-blue-600">보기</Link>
+                  <Link to="/legal/terms" target="_blank" className="text-xs font-bold text-slate-400 hover:text-[#004aad]">보기</Link>
                 </div>
                 <div className="flex items-center justify-between">
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-slate-300 text-[#004aad] focus:ring-[#004aad]"
                       checked={agreements.privacy}
                       onChange={(e) => setAgreements(prev => ({ ...prev, privacy: e.target.checked }))}
                     />
                     <span className="text-sm font-medium text-slate-700">[필수] 개인정보 수집 및 이용 동의</span>
                   </label>
-                  <Link to="/legal/privacy" target="_blank" className="text-xs font-bold text-slate-400 hover:text-blue-600">보기</Link>
+                  <Link to="/legal/privacy" target="_blank" className="text-xs font-bold text-slate-400 hover:text-[#004aad]">보기</Link>
                 </div>
                 <div className="flex items-center justify-between">
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-slate-300 text-[#004aad] focus:ring-[#004aad]"
                       checked={agreements.marketing}
                       onChange={(e) => setAgreements(prev => ({ ...prev, marketing: e.target.checked }))}
                     />
@@ -338,18 +338,18 @@ export function Auth() {
                 type="button"
                 onClick={onGuestLogin}
                 disabled={isSigningIn !== null || !allRequiredAgreed}
-                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3.5 text-sm font-black text-blue-700 shadow-sm transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
+                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-[#004aad]/20 bg-[#004aad]/5 px-5 py-3.5 text-sm font-black text-[#004aad] shadow-sm transition-colors hover:bg-[#004aad]/10 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
                 <User size={18} />
                 {isSigningIn === 'guest' ? '게스트 준비 중...' : '게스트로 둘러보기'}
-                <ArrowRight size={18} className="absolute right-5 text-blue-400 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
+                <ArrowRight size={18} className="absolute right-5 text-[#004aad]/40 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
               </button>
             </div>
 
 
             <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5 sm:mt-8 sm:rounded-[28px]">
               <div className="flex items-center gap-3">
-                <Headphones size={18} className="text-blue-600" />
+                <Headphones size={18} className="text-[#004aad]" />
                 <p className="text-sm font-black text-slate-900">로그인 문제 해결</p>
               </div>
               <p className="mt-3 text-sm font-medium leading-7 text-slate-600 break-keep">

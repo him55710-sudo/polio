@@ -65,12 +65,12 @@ def normalize_search_source(source: str | None) -> SearchSource:
 
 def source_type_label(source_type: GroundingSourceType) -> str:
     if source_type == "uploaded_student_record":
-        return "Uploaded Student Record"
+        return "학습 기록"
     if source_type == "academic_source":
-        return "Academic Source"
+        return "학술 자료"
     if source_type == "official_guideline":
-        return "Official Guideline"
-    return "Live Web Source"
+        return "공식 가이드라인"
+    return "실시간 웹 자료"
 
 
 def normalize_grounding_source_type(
@@ -162,13 +162,13 @@ def _is_official_domain(domain: str | None) -> bool:
 
 def _freshness_label_from_year(year: int | None) -> str:
     if year is None:
-        return "unknown"
+        return "확인 불가"
     current_year = datetime.now(timezone.utc).year
     if year >= current_year - 1:
-        return "realtime"
+        return "최신"
     if year >= current_year - 3:
-        return "recent"
-    return "archive"
+        return "최근"
+    return "과거 기록"
 
 
 def _resolve_source_type(*, resolved_source: SearchSource, domain: str | None) -> GroundingSourceType:
@@ -316,12 +316,12 @@ async def search_research_sources(
         fallback = await search_semantic_scholar_papers(query=query, limit=limit)
         limitation = live_exc.reason
         if isinstance(live_exc, LiveWebSearchError) and live_exc.retry_after:
-            limitation = f"{limitation} Retry after {live_exc.retry_after}s."
+            limitation = f"{limitation} {live_exc.retry_after}초 후 다시 시도해 주세요."
         fallback_enriched = fallback.model_copy(
             update={
                 "requested_source": "live_web",
                 "fallback_applied": True,
-                "limitation_note": f"{limitation} Returned Semantic Scholar fallback results."[:500],
+                "limitation_note": f"{limitation} Semantic Scholar 검색 결과로 대체되었습니다."[:500],
             }
         )
         return _annotate_result(

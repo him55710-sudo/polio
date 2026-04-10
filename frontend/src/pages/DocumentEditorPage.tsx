@@ -178,10 +178,10 @@ export function DocumentEditorPage() {
       <div className="flex h-[80vh] w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100">
-              <FileText size={28} className="text-blue-600" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#004aad]/5">
+              <FileText size={28} className="text-[#004aad]" />
             </div>
-            <Loader2 size={20} className="absolute -right-1 -bottom-1 animate-spin text-blue-600" />
+            <Loader2 size={20} className="absolute -right-1 -bottom-1 animate-spin text-[#004aad]" />
           </div>
           <p className="text-sm font-medium text-slate-500">문서를 준비하고 있습니다...</p>
         </div>
@@ -205,7 +205,7 @@ export function DocumentEditorPage() {
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <BookOpen size={16} className="shrink-0 text-blue-600" />
+              <BookOpen size={16} className="shrink-0 text-[#004aad]" />
               <h1 className="truncate text-sm font-bold text-slate-900">{draft?.title || '문서 편집기'}</h1>
             </div>
             <div className="mt-1">

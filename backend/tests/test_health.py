@@ -47,15 +47,47 @@ def test_health_check_llm_probe_uses_ttl_cache(monkeypatch) -> None:
 
 def test_root_page_hides_docs_when_disabled_in_production() -> None:
     settings = get_settings()
-    original = (settings.app_env, settings.api_docs_enabled)
+    original = (
+        settings.app_env,
+        settings.api_docs_enabled,
+        settings.api_root_redirect_enabled,
+        settings.public_app_base_url,
+    )
     settings.app_env = "production"
     settings.api_docs_enabled = False
+    settings.api_root_redirect_enabled = True
+    settings.public_app_base_url = "https://uni-foli.vercel.app/app"
+
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/", follow_redirects=False)
+            assert response.status_code == 307
+            assert response.headers["location"] == "https://uni-foli.vercel.app/app"
+            assert client.get("/docs").status_code == 404
+    finally:
+        (
+            settings.app_env,
+            settings.api_docs_enabled,
+            settings.api_root_redirect_enabled,
+            settings.public_app_base_url,
+        ) = original
+
+
+def test_root_page_shows_backend_info_in_local() -> None:
+    settings = get_settings()
+    original = (
+        settings.app_env,
+        settings.api_docs_enabled,
+        settings.api_root_redirect_enabled,
+    )
+    settings.app_env = "local"
+    settings.api_docs_enabled = False
+    settings.api_root_redirect_enabled = True
 
     try:
         with TestClient(create_app()) as client:
             response = client.get("/")
             assert response.status_code == 200
-            assert "API Docs Hidden" in response.text
-            assert client.get("/docs").status_code == 404
+            assert "Open API Docs" in response.text
     finally:
-        settings.app_env, settings.api_docs_enabled = original
+        settings.app_env, settings.api_docs_enabled, settings.api_root_redirect_enabled = original

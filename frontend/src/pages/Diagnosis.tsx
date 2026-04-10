@@ -121,7 +121,7 @@ async function waitForDocumentParseResult(
     await new Promise(resolve => window.setTimeout(resolve, PARSE_POLL_INTERVAL_MS));
   }
 
-  throw new Error('문서 분석 시간이 예상보다 오래 걸리고 있어요. 잠시 뒤 다시 시도해 주세요.');
+  throw new Error('문서 분석 시간이 예상보다 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.');
 }
 
 export function Diagnosis() {
@@ -152,6 +152,8 @@ export function Diagnosis() {
   const [flowError, setFlowError] = useState<string | null>(null);
   const [timingPhases, setTimingPhases] = useState<TimingPhaseMap>(() => createInitialTimingPhases());
   const useSynchronousApiJobs = shouldUseSynchronousApiJobs();
+  const goalListRef = useRef(goalList);
+  const currentMajorRef = useRef(currentMajor);
 
   const setTimingPhase = useCallback(
     (phase: TimingPhaseKey, updater: Partial<TimingPhaseState> | ((prev: TimingPhaseState) => TimingPhaseState)) => {
@@ -205,6 +207,14 @@ export function Diagnosis() {
   const resetTimingPhases = useCallback(() => {
     setTimingPhases(createInitialTimingPhases());
   }, []);
+
+  useEffect(() => {
+    goalListRef.current = goalList;
+  }, [goalList]);
+
+  useEffect(() => {
+    currentMajorRef.current = currentMajor;
+  }, [currentMajor]);
 
   const triggerInlineDiagnosisProcessing = useCallback(
     (jobId: string) => {
@@ -313,7 +323,8 @@ export function Diagnosis() {
       setDiagnosisRunId(null);
       setIsUploading(false);
 
-      const primaryMajor = goalList[0]?.major || currentMajor || '';
+      const latestGoals = goalListRef.current;
+      const primaryMajor = latestGoals[0]?.major || currentMajorRef.current || '';
       localStorage.setItem(
         DIAGNOSIS_STORAGE_KEY,
         JSON.stringify({
@@ -332,7 +343,7 @@ export function Diagnosis() {
 
       return true;
     },
-    [currentMajor, finishTimingPhase, goalList],
+    [finishTimingPhase],
   );
 
   const syncDiagnosisRun = useCallback(
@@ -355,7 +366,7 @@ export function Diagnosis() {
       if (job?.status === 'succeeded' || job?.status === 'failed') {
         diagnosisProcessKickoffRef.current.delete(job.id);
       }
-      if (job?.status === 'queued' || job?.status === 'retrying') {
+      if (job?.status === 'queued') {
         diagnosisProcessKickoffRef.current.delete(job.id);
         triggerInlineDiagnosisProcessing(job.id);
       }
@@ -422,6 +433,42 @@ export function Diagnosis() {
     };
   }, [diagnosisRunId, finishTimingPhase, syncDiagnosisRun]);
 
+  useEffect(() => {
+    if (step !== 'RESULT') return undefined;
+    if (!diagnosisRun?.id) return undefined;
+
+    const normalizedReportStatus = (
+      diagnosisRun.report_status ||
+      diagnosisRun.report_async_job_status ||
+      ''
+    ).trim().toUpperCase();
+    if (normalizedReportStatus === 'READY' || normalizedReportStatus === 'FAILED') return undefined;
+
+    let cancelled = false;
+    const pollReportProgress = async () => {
+      try {
+        const refreshed = await api.get<DiagnosisRunResponse>(`/api/v1/diagnosis/${diagnosisRun.id}`);
+        if (cancelled) return;
+        setDiagnosisRun((previous) => {
+          if (!previous || previous.id !== refreshed.id) return previous;
+          return refreshed;
+        });
+      } catch {
+        // Keep showing the latest known state; manual regenerate is still available.
+      }
+    };
+
+    void pollReportProgress();
+    const timer = window.setInterval(() => {
+      void pollReportProgress();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [diagnosisRun?.id, diagnosisRun?.report_async_job_status, diagnosisRun?.report_status, step]);
+
   const retryDiagnosis = useCallback(async () => {
     if (!diagnosisRun?.async_job_id || isRetryingDiagnosis) return;
 
@@ -456,7 +503,11 @@ export function Diagnosis() {
   const startDiagnosisForProject = useCallback(
     async (activeProjectId: string): Promise<boolean> => {
       const diagnosisUrl = useSynchronousApiJobs ? '/api/v1/diagnosis/run?wait_for_completion=true' : '/api/v1/diagnosis/run';
-      const run = await api.post<DiagnosisRunResponse>(diagnosisUrl, { project_id: activeProjectId });
+      const others = goalList.slice(1).map(goal => `${goal.university} (${goal.major})`);
+      const run = await api.post<DiagnosisRunResponse>(diagnosisUrl, { 
+        project_id: activeProjectId,
+        interest_universities: others 
+      });
       setProjectId(activeProjectId);
       setDiagnosisRun(run);
       setDiagnosisJob(null);
@@ -493,8 +544,29 @@ export function Diagnosis() {
       }
       return true;
     },
-    [completeDiagnosis, finishTimingPhase, triggerInlineDiagnosisProcessing, useSynchronousApiJobs],
+    [completeDiagnosis, finishTimingPhase, goalList, triggerInlineDiagnosisProcessing, useSynchronousApiJobs],
   );
+
+  const completeDiagnosisRef = useRef(completeDiagnosis);
+  const failRunningTimingPhasesRef = useRef(failRunningTimingPhases);
+  const startDiagnosisForProjectRef = useRef(startDiagnosisForProject);
+  const triggerInlineDiagnosisProcessingRef = useRef(triggerInlineDiagnosisProcessing);
+
+  useEffect(() => {
+    completeDiagnosisRef.current = completeDiagnosis;
+  }, [completeDiagnosis]);
+
+  useEffect(() => {
+    failRunningTimingPhasesRef.current = failRunningTimingPhases;
+  }, [failRunningTimingPhases]);
+
+  useEffect(() => {
+    startDiagnosisForProjectRef.current = startDiagnosisForProject;
+  }, [startDiagnosisForProject]);
+
+  useEffect(() => {
+    triggerInlineDiagnosisProcessingRef.current = triggerInlineDiagnosisProcessing;
+  }, [triggerInlineDiagnosisProcessing]);
 
   useEffect(() => {
     if (!preselectedProjectId) return;
@@ -504,7 +576,7 @@ export function Diagnosis() {
     let cancelled = false;
 
     const hydrateFromRecordUpload = async () => {
-      const loadingId = toast.loading('업로드한 기록으로 진단 결과를 확인하고 있어요...');
+      const loadingId = toast.loading('업로드한 기록으로 진단 결과를 확인하고 있어요..');
       const now = Date.now();
 
       setProjectId(preselectedProjectId);
@@ -536,7 +608,7 @@ export function Diagnosis() {
           setDiagnosisRun(latestRun);
 
           if (isDiagnosisComplete(latestRun)) {
-            const loaded = completeDiagnosis(latestRun);
+            const loaded = completeDiagnosisRef.current(latestRun);
             if (loaded) {
               toast.success('기존 진단 결과를 바로 불러왔어요.', { id: loadingId });
               return;
@@ -544,21 +616,21 @@ export function Diagnosis() {
           } else {
             setDiagnosisRunId(latestRun.id);
             if (latestRun.async_job_id) {
-              triggerInlineDiagnosisProcessing(latestRun.async_job_id);
+              triggerInlineDiagnosisProcessingRef.current(latestRun.async_job_id);
             }
-            toast.success('진행 중이던 진단 작업을 이어서 보여드릴게요.', { id: loadingId });
+            toast.success('진행 중이던 진단 작업을 이어 보여드릴게요.', { id: loadingId });
             return;
           }
         }
 
-        const started = await startDiagnosisForProject(preselectedProjectId);
+        const started = await startDiagnosisForProjectRef.current(preselectedProjectId);
         if (!cancelled && started) {
           toast.success('업로드한 기록으로 진단을 시작했어요.', { id: loadingId });
         }
       } catch (error: any) {
         if (cancelled) return;
         const failureMessage = getApiErrorMessage(error, '저장된 업로드 기록으로 진단을 시작하지 못했어요.');
-        failRunningTimingPhases(failureMessage);
+        failRunningTimingPhasesRef.current(failureMessage);
         setDiagnosisError(failureMessage);
         setFlowError(failureMessage);
         setStep('FAILED');
@@ -572,14 +644,14 @@ export function Diagnosis() {
     return () => {
       cancelled = true;
     };
-  }, [completeDiagnosis, failRunningTimingPhases, preselectedProjectId, startDiagnosisForProject, triggerInlineDiagnosisProcessing]);
+  }, [preselectedProjectId]);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
       if (!file) return;
       if (file.size > MAX_UPLOAD_BYTES) {
-        toast.error('파일 용량이 50MB를 초과해 업로드할 수 없습니다.');
+        toast.error('파일 용량이 50MB를 초과하여 업로드할 수 없습니다.');
         return;
       }
 
@@ -599,6 +671,7 @@ export function Diagnosis() {
         formData.append('file', file);
         const mainGoal = goalList[0];
         if (mainGoal) {
+          formData.append('target_university', mainGoal.university);
           formData.append('target_major', mainGoal.major);
           formData.append('title', `${mainGoal.university} ${mainGoal.major} 진단`);
         }
@@ -649,11 +722,11 @@ export function Diagnosis() {
 
         await startDiagnosisForProject(uploadRes.project_id);
 
-        toast.success('진단 실행을 시작했습니다.', { id: loadingId });
+        toast.success('진단 실행이 시작되었습니다.', { id: loadingId });
       } catch (error: any) {
         console.error('Diagnosis flow failed:', error);
         const failureMessage = getApiErrorMessage(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
-        failRunningTimingPhases(failureMessage);
+        failRunningTimingPhasesRef.current(failureMessage);
         setDiagnosisError(failureMessage);
         setFlowError(failureMessage);
         setStep('FAILED');
@@ -753,11 +826,11 @@ export function Diagnosis() {
     '진단 실행 중 확인이 필요합니다';
 
   const headerDescription =
-    step === 'GOALS' ? '목표가 분명할수록 진단 결과와 퀘스트 추천의 정확도가 높아집니다.' :
+    step === 'GOALS' ? '목표가 분명할수록 진단 결과와 워크숍 추천의 정확도가 높아집니다.' :
     step === 'UPLOAD' ? 'PDF 1개를 업로드하면 파싱, 마스킹, 진단이 순차적으로 진행됩니다.' :
     step === 'ANALYSING' ? '근거 매핑과 위험 신호 분석을 진행 중입니다.' :
-    step === 'RESULT' ? '강점, 보완점, 액션 플랜을 확인한 뒤 워크숍으로 이동하세요.' :
-    '실패 원인과 작업 상태를 확인하고 안전하게 재시도해 주세요.';
+    step === 'RESULT' ? '강점, 보완점, 액션 플랜을 확인한 후 워크숍으로 이동하세요.' :
+    '실패 원인과 작업 상태를 확인하고 안전하게 다시 시도해 주세요.';
 
   const timingPhaseItems = [
     { id: 'upload', label: '업로드', expectedSeconds: 20, ...timingPhases.upload },
@@ -773,8 +846,8 @@ export function Diagnosis() {
       {shouldShowProgressRail && shouldShowTimingDashboard ? (
         <ProcessTimingDashboard
           phases={timingPhaseItems}
-          title="진단 진행 타임테이블"
-          description="예상 소요시간 대비 현재 진단 진행률을 보여드려요."
+          title="진단 진행 타임라인"
+          description="예상 소요 시간 대비 현재 진단 진행률을 보여드려요"
         />
       ) : null}
 
@@ -783,7 +856,7 @@ export function Diagnosis() {
           <motion.div key="goals" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
             <SectionCard
               title="지원 목표 목록"
-              description="첫 번째 목표가 진단 기준점으로 사용됩니다."
+              description="첫 번째 목표가 진단 기준점으로 사용됩니다"
               actions={
                 !isEditingGoals ? (
                   <SecondaryButton data-testid="diagnosis-edit-goals" onClick={() => setIsEditingGoals(true)}>
@@ -803,7 +876,7 @@ export function Diagnosis() {
                         value={univInput}
                         onChange={event => setUnivInput(event.target.value)}
                         placeholder="대학명을 입력하세요"
-                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-12 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-12 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]/20"
                       />
                       {univPreviewName.length >= 2 ? (
                         <UniversityLogo
@@ -846,13 +919,13 @@ export function Diagnosis() {
                     </div>
 
                     {currentUniv ? (
-                      <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
+                      <div className="space-y-3 rounded-xl border border-[#004aad]/10 bg-[#004aad]/5 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
                             <UniversityLogo
                               universityName={currentUniv}
                               className="h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                              fallbackClassName="border border-blue-100"
+                              fallbackClassName="border border-[#004aad]/10"
                             />
                             <StatusBadge status="active" className="truncate">{currentUniv}</StatusBadge>
                           </div>
@@ -929,7 +1002,7 @@ export function Diagnosis() {
                   ))}
                 </div>
               ) : (
-                <EmptyState title="설정된 목표가 없습니다" description="진단을 시작하려면 최소 1개의 목표를 설정해 주세요." />
+                <EmptyState title="설정한 목표가 없습니다" description="진단을 시작하려면 최소 1개의 목표를 설정해 주세요" />
               )}
             </SectionCard>
 
@@ -938,6 +1011,17 @@ export function Diagnosis() {
                 <SecondaryButton onClick={() => setIsEditingGoals(false)}>취소</SecondaryButton>
                 <PrimaryButton data-testid="diagnosis-save-goals" onClick={saveGoals}>
                   목표 저장
+                </PrimaryButton>
+              </div>
+            ) : goalList.length > 0 ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2 text-sm font-semibold text-[#004aad]">
+                  <CheckCircle2 size={16} />
+                  설정된 6개 대학교/학과를 기준으로 진단을 진행합니다.
+                </div>
+                <PrimaryButton data-testid="diagnosis-goals-continue" onClick={() => setStep('UPLOAD')} size="lg">
+                  학생부 업로드 단계로 이동
+                  <ArrowRight size={18} />
                 </PrimaryButton>
               </div>
             ) : (
@@ -953,7 +1037,10 @@ export function Diagnosis() {
 
         {step === 'UPLOAD' ? (
           <motion.div key="upload" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-            <SectionCard title="PDF 업로드" description="파일 1개(최대 50MB)를 올리면 업로드 → 파싱 → 진단이 자동으로 이어집니다.">
+            <SectionCard
+              title="PDF 업로드"
+              description="파일 1개(최대 50MB)를 올리면 업로드 이후 파싱 및 진단이 자동으로 이어집니다."
+            >
               <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
                 <p className="text-sm font-semibold text-slate-700">1. PDF 선택</p>
                 <p className="text-sm font-semibold text-slate-700">2. 자동 파싱 확인</p>
@@ -965,15 +1052,15 @@ export function Diagnosis() {
                   onKeyDown: handleDropzoneKeyDown,
                 })}
                 className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-colors sm:p-10 ${
-                  isDragActive ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-white'
+                  isDragActive ? 'border-[#004aad]/40 bg-[#004aad]/5' : 'border-slate-300 bg-slate-50 hover:border-[#004aad]/30 hover:bg-white'
                 } ${isUploading ? 'pointer-events-none opacity-60' : ''}`}
               >
                 <input data-testid="diagnosis-upload-input" {...getInputProps()} />
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-[#004aad] shadow-sm">
                   {isUploading ? <Loader2 size={26} className="animate-spin" /> : <FileUp size={26} />}
                 </div>
-                <p className="text-xl font-black tracking-tight text-slate-900">학생부 PDF를 드래그하거나 클릭해 업로드하세요</p>
-                <p className="mt-2 text-base font-medium text-slate-600">업로드 후에는 페이지를 유지하면 자동으로 상태가 갱신됩니다.</p>
+                <p className="text-xl font-black tracking-tight text-slate-900">학생부 PDF를 드래그하거나 클릭하여 업로드하세요</p>
+                <p className="mt-2 text-base font-medium text-slate-600">업로드 이후에 페이지를 유지하면 자동으로 상태가 갱신됩니다</p>
                 <div className="mt-4">
                   <button
                     type="button"
@@ -983,14 +1070,14 @@ export function Diagnosis() {
                       handleOpenFileDialog();
                     }}
                     disabled={isUploading}
-                    className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 shadow-sm transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#004aad]/20 bg-white px-4 py-2 text-sm font-bold text-[#004aad] shadow-sm transition-colors hover:bg-[#004aad]/5 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <FileUp size={15} />
                     파일 선택
                   </button>
                 </div>
               </div>
-              {flowError ? <WorkflowNotice tone="danger" title="업로드/진단 오류" description={flowError} /> : null}
+              {flowError ? <WorkflowNotice tone="danger" title="업로드 및 진단 오류" description={flowError} /> : null}
             </SectionCard>
           </motion.div>
         ) : null}
@@ -1000,7 +1087,7 @@ export function Diagnosis() {
             <WorkflowNotice
               tone="loading"
               title="문서 분석과 진단 생성을 진행 중입니다"
-              description="파싱이 끝나면 자동으로 진단 생성 단계로 넘어가며, 페이지를 유지하면 상태가 자동 갱신됩니다."
+              description="파싱이 끝나면 자동으로 진단 생성 단계로 넘어가며, 페이지를 유지하면 상태가 자동 갱신됩니다"
             />
             <AsyncJobStatusCard job={diagnosisJob} runStatus={diagnosisRun?.status} errorMessage={diagnosisRun?.error_message} />
           </motion.div>
@@ -1008,7 +1095,7 @@ export function Diagnosis() {
 
         {step === 'FAILED' ? (
           <motion.div key="failed" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-            <WorkflowNotice tone="danger" title="진단 실행에 실패했습니다" description={flowError || diagnosisError || '작업 상태를 확인한 뒤 재시도해 주세요.'} />
+            <WorkflowNotice tone="danger" title="진단 실행에 실패했습니다" description={flowError || diagnosisError || '작업 상태를 확인하고 다시 시도해 주세요.'} />
 
             <AsyncJobStatusCard
               job={diagnosisJob}
@@ -1041,7 +1128,7 @@ export function Diagnosis() {
           <motion.div key="result" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
             <SectionCard
               title={diagnosisResult.headline}
-              description="진단 근거를 확인한 뒤 워크숍으로 이동해 주세요."
+              description="진단 근거를 확인하고 워크숍으로 이동해 주세요."
               eyebrow="진단 결과"
               data-testid="diagnosis-result-panel"
               actions={
@@ -1087,8 +1174,8 @@ export function Diagnosis() {
 
               <WorkflowNotice
                 tone="info"
-                title="세부 인사이트는 아래 접힘 섹션에서 확인할 수 있어요"
-                description="핵심 요약은 이 영역에 유지하고, 보조 분석과 고급 메타 데이터는 분리해 표시합니다."
+                title="핵심 인사이트는 아래 섹션에서 확인할 수 있어요"
+                description="상단 요약은 첫 진입을 돕고, 보조 분석과 고급 메타데이터는 분리해서 제시합니다."
               />
 
               {diagnosisResult.next_actions?.length ? (
@@ -1097,7 +1184,7 @@ export function Diagnosis() {
                   <ul className="space-y-1.5">
                     {diagnosisResult.next_actions.map((action) => (
                       <li key={action} className="text-base font-medium leading-7 text-slate-700">
-                        · {action}
+                        • {action}
                       </li>
                     ))}
                   </ul>
@@ -1110,7 +1197,7 @@ export function Diagnosis() {
             {hasSecondaryInsights ? (
               <SectionCard
                 title="추가 인사이트"
-                description="보조 분석 항목은 기본 화면에서 분리해 필요할 때만 펼쳐볼 수 있어요."
+                description="보조 분석 항목은 기본 화면에서 분리되어 필요할 때만 펼쳐볼 수 있어요."
                 eyebrow="Secondary"
                 collapsible
                 defaultCollapsed
@@ -1121,7 +1208,7 @@ export function Diagnosis() {
                     <ul className="space-y-1.5">
                       {diagnosisResult.risks.map((risk) => (
                         <li key={risk} className="text-sm font-medium leading-6 text-amber-900">
-                          · {risk}
+                          • {risk}
                         </li>
                       ))}
                     </ul>
@@ -1191,15 +1278,15 @@ export function Diagnosis() {
                         : '진단서 생성 단계에서 문제가 발생했습니다'
                       : deliveryResolution.state === 'report_generating'
                         ? '전문 진단서를 생성하고 있습니다'
-                        : '진단은 완료되었고 진단서 생성을 시작합니다'
+                        : '진단은 완료되었고, 전문 진단서를 준비하고 있습니다'
                 }
                 description={
                   deliveryResolution.state === 'report_ready'
                     ? '아래에서 미리보기와 PDF 다운로드를 바로 진행할 수 있습니다.'
                     : deliveryResolution.state === 'failed'
-                      ? deliveryResolution.message || '상태를 확인한 뒤 다시 시도해 주세요.'
+                      ? deliveryResolution.message || '상태를 확인하고 다시 시도해 주세요.'
                       : deliveryResolution.state === 'report_generating'
-                        ? '진단 결과를 기반으로 premium_10p 진단서를 자동 생성 중입니다.'
+                        ? '진단 결과를 기반으로 프리미엄 진단서를 자동 생성 중입니다.'
                         : '잠시 후 자동으로 진단서 생성 상태가 갱신됩니다.'
                 }
               />
@@ -1210,6 +1297,7 @@ export function Diagnosis() {
                 diagnosisRunId={diagnosisRun.id}
                 reportStatus={diagnosisRun.report_status ?? null}
                 reportAsyncJobStatus={diagnosisRun.report_async_job_status ?? null}
+                reportArtifactId={diagnosisRun.report_artifact_id ?? null}
                 reportErrorMessage={diagnosisRun.report_error_message ?? null}
               />
             ) : null}
@@ -1217,7 +1305,7 @@ export function Diagnosis() {
             {hasAdvancedDiagnostics ? (
               <SectionCard
                 title="고급 분석 데이터"
-                description="실행 메타데이터와 근거 검증 정보는 필요할 때만 펼쳐볼 수 있어요."
+                description="실행 메타데이터와 근거 검증 정보는 필요한 경우에만 확인할 수 있어요."
                 eyebrow="Advanced"
                 collapsible
                 defaultCollapsed
@@ -1292,7 +1380,7 @@ export function Diagnosis() {
 
                 {diagnosisResult.admission_axes?.length ? (
                   <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">핵심 평가축</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">입학 축별 평가</p>
                     <div className="grid gap-3 md:grid-cols-2">
                       {diagnosisResult.admission_axes.map((axis) => (
                         <SurfaceCard key={axis.key} padding="sm">
@@ -1310,7 +1398,7 @@ export function Diagnosis() {
                             <ul className="mt-2 space-y-1">
                               {axis.evidence_hints.slice(0, 2).map((hint) => (
                                 <li key={hint} className="text-sm font-semibold text-slate-500">
-                                  · {hint}
+                                  • {hint}
                                 </li>
                               ))}
                             </ul>
@@ -1360,3 +1448,5 @@ export function Diagnosis() {
     </div>
   );
 }
+
+

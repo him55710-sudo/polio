@@ -38,7 +38,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
           aria-describedby={describedBy}
           className={cn(
             'h-11 w-full appearance-none rounded-2xl border bg-white px-3.5 pr-10 text-sm font-medium text-slate-700 outline-none transition-colors',
-            'focus-visible:ring-2 focus-visible:ring-blue-300',
+            'focus-visible:ring-2 focus-visible:ring-[#004aad]/30',
             error ? 'border-red-300 focus-visible:ring-red-200' : 'border-slate-300 hover:border-slate-400',
             className,
           )}

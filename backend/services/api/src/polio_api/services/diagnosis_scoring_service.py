@@ -96,6 +96,7 @@ async def extract_semantic_diagnosis(
     masked_text: str,
     target_major: str | None,
     target_university: str | None,
+    interest_universities: list[str] | None = None,
 ) -> SemanticDiagnosisExtraction:
     from polio_api.core.llm import get_llm_client
     
@@ -104,10 +105,14 @@ async def extract_semantic_diagnosis(
     if hasattr(llm, "model_name"):
         llm.model_name = "gemini-1.5-flash"
         
+    interest_context = ""
+    if interest_universities:
+        interest_context = f". Other Interest Universities: {', '.join(interest_universities)}"
+
     system_instruction = (
         "You are an expert admissions officer. Extract semantic scores for the student record axes. "
         "Each axis score should reflect the DEPTH and QUALITY of the record, not just the presence of text. "
-        f"Target Major: {target_major or 'General'}. Target University: {target_university or 'General'}. "
+        f"Target Major: {target_major or 'General'}. Target University: {target_university or 'General'}{interest_context}. "
         "Be critical but fair. Provide specific evidence hints for each axis."
     )
     
@@ -131,6 +136,7 @@ def build_diagnosis_scoring_sheet(
     project_title: str,
     target_major: str | None,
     target_university: str | None,
+    interest_universities: list[str] | None = None,
     semantic: SemanticDiagnosisExtraction | None = None,
 ) -> DiagnosisScoringSheet:
     section_analysis = _build_section_analysis(features)
@@ -154,7 +160,18 @@ def build_diagnosis_scoring_sheet(
         default=None,
     )
     weakest_label = weakest_axis.label if weakest_axis else "핵심 평가축"
-    target_context = f"{target_university} {target_major}".strip() or target_major or "목표 전공"
+    
+    # Construct multi-university context
+    targets = []
+    if target_university:
+        targets.append(f"{target_university} {target_major or ''}".strip())
+    if interest_universities:
+        targets.extend(interest_universities)
+    
+    target_context = " 및 ".join(targets[:2]) + (f" 외 {len(targets)-2}곳" if len(targets) > 2 else "")
+    if not target_context:
+        target_context = target_major or "목표 전공"
+
     overview = (
         f"{project_title} 기준으로 문서 신뢰도는 {document_quality.parse_reliability_band} 수준이며, "
         f"현재는 {weakest_label} 보강이 우선입니다."

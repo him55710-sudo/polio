@@ -25,7 +25,7 @@ export function SuggestionReviewModal({ isOpen, content, onApply, onCancel }: Su
       >
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 p-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600 shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#004aad]/10 text-[#004aad] shadow-sm">
               <FileText size={20} />
             </div>
             <div>

@@ -37,7 +37,7 @@ const DataDeletionPolicy = lazy(() => import('./pages/legal/LegalPages').then(m 
 function PageLoader() {
   return (
     <div className="flex h-screen items-center justify-center bg-slate-50">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#004aad] border-t-transparent" />
     </div>
   );
 }

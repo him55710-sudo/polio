@@ -112,7 +112,7 @@ def test_dispatch_diagnosis_job_does_not_fail_when_report_bootstrap_errors(monke
     monkeypatch.setattr(
         async_job_service,
         "_run_async_callable",
-        lambda func, *args, **kwargs: _completed_run(),
+        lambda func, *args, **kwargs: "run-1",
     )
     monkeypatch.setattr(
         async_job_service,
@@ -134,4 +134,8 @@ def test_dispatch_diagnosis_job_does_not_fail_when_report_bootstrap_errors(monke
         },
     )
 
-    async_job_service._dispatch_job(SimpleNamespace(), diagnosis_job)
+    fake_db = SimpleNamespace(
+        get=lambda model, resource_id: _completed_run() if resource_id == "run-1" else None,
+        expire_all=lambda: None,
+    )
+    async_job_service._dispatch_job(fake_db, diagnosis_job)

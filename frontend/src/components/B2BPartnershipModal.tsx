@@ -91,12 +91,12 @@ export function B2BPartnershipModal({ isOpen, onClose }: B2BPartnershipModalProp
               onClose={closeModal}
             />
             <DialogBody>
-              <div className="mb-5 flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-600">
+              <div className="mb-5 flex items-center gap-3 rounded-2xl border border-[#004aad]/10 bg-[#004aad]/5 p-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#004aad]">
                   <Building2 size={18} />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-800">Partnership Contact</p>
+                  <p className="px-3 py-1.5 bg-[#004aad]/20 text-[#004aad] font-bold text-xs rounded-lg hover:bg-[#004aad]/30 transition-colors inline-block mb-1">Partnership Contact</p>
                   <p className="text-xs font-medium text-slate-500">기관/운영 문의를 빠르게 접수한 뒤 상세 상담으로 연결합니다.</p>
                 </div>
               </div>
@@ -146,7 +146,7 @@ export function B2BPartnershipModal({ isOpen, onClose }: B2BPartnershipModalProp
                     id="partnership-type"
                     value={form.institution_type ?? 'school'}
                     onChange={event => setForm(prev => ({ ...prev, institution_type: event.target.value as InstitutionType }))}
-                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]"
                   >
                     <option value="school">학교</option>
                     <option value="academy">학원</option>

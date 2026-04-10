@@ -171,7 +171,7 @@ export function OnboardingModal({
         </button>
 
         <div className="mb-6">
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black text-blue-600">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#004aad]/5 px-3 py-1 text-[11px] font-black text-[#004aad]">
             <Sparkles size={12}/> {TEXT.chip}
           </div>
           <h2 className="text-3xl font-black text-slate-900">{TEXT.title}</h2>
@@ -182,7 +182,7 @@ export function OnboardingModal({
           {/* Left: Current Selection */}
           <div className="space-y-6">
             <div className="p-5 border-2 border-slate-100 rounded-3xl space-y-4">
-              <div className="flex items-center gap-2 text-xs font-black text-blue-600">
+              <div className="flex items-center gap-2 text-xs font-black text-[#004aad]">
                 <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center">{step}</div>
                 {step === 1 ? TEXT.step1 : TEXT.step2}
               </div>
@@ -224,7 +224,7 @@ export function OnboardingModal({
                       />
                       <span className="truncate text-sm font-bold text-slate-700">{currentUniv || univInput}</span>
                     </div>
-                    <button onClick={()=>setStep(1)} className="text-[10px] font-black text-blue-600 underline">변경</button>
+                    <button onClick={()=>setStep(1)} className="text-[10px] font-black text-[#004aad] underline">변경</button>
                   </div>
                   <CatalogAutocompleteInput
                     label={TEXT.majorLabel}
@@ -235,7 +235,7 @@ export function OnboardingModal({
                     onSelect={s => setCurrentMajor(s.label)}
                     autoFocus
                   />
-                  <button onClick={handleAddGoal} disabled={!canAddThis || !canAddMore} className="w-full py-3 bg-blue-600 text-white rounded-2xl font-black text-sm disabled:opacity-30">
+                  <button onClick={handleAddGoal} disabled={!canAddThis || !canAddMore} className="w-full py-3 bg-[#004aad] text-white rounded-2xl font-black text-sm disabled:opacity-30">
                     {TEXT.addGoal} (+{goals.length}/6)
                   </button>
                 </div>

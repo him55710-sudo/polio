@@ -308,11 +308,11 @@ export function DiagnosisGuidedChoicePanel({
       </div>
 
       {defaultAction && recommendedDirection ? (
-        <div data-testid="guided-default-action" className="rounded-[28px] border border-blue-200 bg-blue-50 p-6">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-500">Recommended Start</p>
+        <div data-testid="guided-default-action" className="rounded-[28px] border border-[#004aad]/10 bg-[#004aad]/5 p-6">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#004aad]">Recommended Start</p>
           <h3 className="mt-3 text-xl font-black text-slate-900">{recommendedDirection.label}</h3>
           <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{defaultAction.rationale}</p>
-          <div className="mt-4 flex flex-wrap gap-2 text-xs font-black text-blue-900">
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-black text-[#004aad]">
             <span className="rounded-full bg-white px-3 py-2">{defaultAction.export_format.toUpperCase()}</span>
             <span className="rounded-full bg-white px-3 py-2">{defaultAction.page_count} pages</span>
             <span className="rounded-full bg-white px-3 py-2">{defaultAction.template_id}</span>

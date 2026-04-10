@@ -63,7 +63,7 @@ export function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
               <div className="absolute top-0 right-0 bg-blue-500 text-white text-xs font-extrabold px-4 py-1.5 rounded-bl-2xl">
                 가장 인기
               </div>
-              <h3 className="text-xl font-extrabold text-blue-600 mb-2">Pro 플랜</h3>
+              <h3 className="text-xl font-extrabold text-[#004aad] mb-2">Pro 플랜</h3>
               <div className="text-3xl font-extrabold text-slate-800 mb-6">₩19,000<span className="text-lg text-slate-400 font-medium">/월</span></div>
               <ul className="space-y-4 mb-8 flex-1">
                 <li className="flex items-start gap-3 text-slate-800 font-bold">

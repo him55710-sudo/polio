@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import logging
 import re
 from typing import Any
 
@@ -15,6 +16,7 @@ _SECTION_KEYS = (
     "수상경력",
 )
 _TOKEN_RE = re.compile(r"[A-Za-z가-힣]{2,}")
+logger = logging.getLogger("polio.api.student_record_features")
 
 
 class StudentRecordFeatures(BaseModel):
@@ -81,52 +83,65 @@ def extract_student_record_features(
             if "canonical_data" in structured_data:
                 canonical = structured_data["canonical_data"]
                 quality_report = structured_data.get("quality_report") or {}
-                
+
+                if not isinstance(canonical, dict):
+                    logger.warning(
+                        "Skipping malformed canonical_data. expected=dict actual=%s",
+                        type(canonical).__name__,
+                    )
+                    canonical = {}
+
                 # Update confidence and reliability from quality report
                 if quality_report and "overall_score" in quality_report:
-                    parse_confidences.append(float(quality_report["overall_score"]))
-                
+                    quality_score = _coerce_optional_float(quality_report.get("overall_score"))
+                    if quality_score is not None:
+                        parse_confidences.append(quality_score)
+
                 # Section mapping and record counting
                 # Attendance
-                if canonical.get("attendance"):
+                attendance = _ensure_list(canonical.get("attendance"))
+                if attendance:
                     section_presence["교과학습발달상황"] = True # Attendance usually in the same section or nearby
-                    section_record_counts["교과학습발달상황"] += len(canonical["attendance"])
-                
+                    section_record_counts["교과학습발달상황"] += len(attendance)
+
                 # Awards
-                if canonical.get("awards"):
+                awards = _ensure_list(canonical.get("awards"))
+                if awards:
                     section_presence["수상경력"] = True
-                    section_record_counts["수상경력"] += len(canonical["awards"])
-                    total_records += len(canonical["awards"])
-                
+                    section_record_counts["수상경력"] += len(awards)
+                    total_records += len(awards)
+
                 # Grades
-                grades = canonical.get("grades") or []
+                grades = _ensure_list(canonical.get("grades"))
                 if grades:
                     section_presence["교과학습발달상황"] = True
                     section_record_counts["교과학습발달상황"] += len(grades)
                     total_records += len(grades)
                     for g in grades:
+                        if not isinstance(g, dict):
+                            continue
                         subj = _normalize_subject(g.get("subject"))
                         if subj:
                             subject_counter[subj] += 1
-                
+
                 # Narratives (Extracurricular)
-                extra = canonical.get("extracurricular_narratives") or {}
+                extra = _ensure_dict(canonical.get("extracurricular_narratives"))
                 if extra:
                     section_presence["창의적체험활동"] = True
                     section_record_counts["창의적체험활동"] += len(extra)
-                    for k, v in extra.items():
+                    for _, v in extra.items():
                         narrative_char_count += len(str(v).strip())
-                
+
                 # Subject Notes
-                subj_notes = canonical.get("subject_special_notes") or {}
+                subj_notes = _ensure_dict(canonical.get("subject_special_notes"))
                 if subj_notes:
                     section_presence["교과학습발달상황"] = True
                     section_record_counts["교과학습발달상황"] += len(subj_notes)
-                    for k, v in subj_notes.items():
+                    for _, v in subj_notes.items():
                         narrative_char_count += len(str(v).strip())
-                
+
                 # Reading
-                reading = canonical.get("reading_activities") or []
+                reading = _ensure_list(canonical.get("reading_activities"))
                 if reading:
                     section_presence["독서활동"] = True
                     section_record_counts["독서활동"] += len(reading)
@@ -139,7 +154,7 @@ def extract_student_record_features(
                     section_presence["행동특성 및 종합의견"] = True
                     section_record_counts["행동특성 및 종합의견"] += 1
                     narrative_char_count += len(str(behavior).strip())
-                
+
                 continue # Skip fallback text inference
 
             # Legacy NEIS Structure
@@ -329,6 +344,25 @@ def _coerce_float(value: Any, *, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _ensure_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _ensure_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items()}
+    return {}
 
 
 def _first_non_empty(*values: Any) -> str:

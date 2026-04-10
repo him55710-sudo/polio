@@ -137,15 +137,15 @@ export function ReferenceSearchPanel({
     >
       <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-indigo-500">
         <Database size={14} />
-        Reference Search
+        레퍼런스 검색
       </div>
 
       <div className="mb-3 flex gap-1.5">
         {([
-          { key: 'semantic' as SearchSource, label: 'Semantic Scholar', icon: <BookOpen size={12} /> },
-          { key: 'kci' as SearchSource, label: 'KCI', icon: <Database size={12} /> },
-          { key: 'both' as SearchSource, label: 'Academic Hybrid', icon: <Database size={12} /> },
-          { key: 'live_web' as SearchSource, label: 'Live Web', icon: <Globe size={12} /> },
+          { key: 'semantic' as SearchSource, label: '학술 DB', icon: <BookOpen size={12} /> },
+          { key: 'kci' as SearchSource, label: 'KCI (국내)', icon: <Database size={12} /> },
+          { key: 'both' as SearchSource, label: '통합 검색', icon: <Database size={12} /> },
+          { key: 'live_web' as SearchSource, label: '실시간 웹', icon: <Globe size={12} /> },
         ]).map(({ key, label, icon }) => (
           <button
             key={key}
@@ -171,7 +171,7 @@ export function ReferenceSearchPanel({
           onKeyDown={(event) => {
             if (event.key === 'Enter') void handleSearch();
           }}
-          placeholder="Search papers by title or keyword..."
+          placeholder="논문 제목이나 키워드를 입력하세요..."
           className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
         />
         <button
@@ -192,16 +192,16 @@ export function ReferenceSearchPanel({
 
       {searchMeta?.fallbackApplied ? (
         <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-800">
-          Live web provider was unavailable. Showing fallback indexed sources.
+          실시간 웹 검색 기능을 일시적으로 사용할 수 없어 인덱싱된 자료를 검색했습니다.
         </div>
       ) : null}
 
       {searchMeta ? (
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
-          <p>Resolved source: {searchMeta.resolvedSource}</p>
-          <p>Providers: {searchMeta.providersUsed.join(', ') || 'n/a'}</p>
+          <p>검색 소스: {searchMeta.resolvedSource}</p>
+          <p>공급처: {searchMeta.providersUsed.join(', ') || 'n/a'}</p>
           <p>
-            Source types:{' '}
+            자료 유형:{' '}
             {Object.entries(searchMeta.sourceTypeCounts)
               .map(([key, value]) => `${key} (${value})`)
               .join(', ') || 'n/a'}
@@ -240,7 +240,7 @@ export function ReferenceSearchPanel({
                           <span key={i} className="font-medium">{author}</span>
                         ))}
                         {paper.year ? (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold">{paper.year}</span>
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold">{paper.year}년</span>
                         ) : null}
                         {paper.freshness_label ? (
                           <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700">
@@ -248,7 +248,7 @@ export function ReferenceSearchPanel({
                           </span>
                         ) : null}
                         {paper.citationCount > 0 ? (
-                          <span className="font-bold text-amber-600">Cited {paper.citationCount}</span>
+                          <span className="font-bold text-amber-600">인용 {paper.citationCount}회</span>
                         ) : null}
                       </div>
                       {paper.abstract ? (
@@ -264,7 +264,7 @@ export function ReferenceSearchPanel({
                         className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-black text-indigo-700 transition-all hover:bg-indigo-100 active:scale-95"
                       >
                         <Pin size={11} />
-                        Pin
+                        고정
                       </button>
                       {paper.url ? (
                         <a
@@ -274,7 +274,7 @@ export function ReferenceSearchPanel({
                           className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-500 transition-all hover:bg-slate-50"
                         >
                           <ExternalLink size={11} />
-                          Open
+                          열기
                         </a>
                       ) : null}
                     </div>
@@ -283,7 +283,7 @@ export function ReferenceSearchPanel({
               ))
             ) : !isSearching ? (
               <p className="py-4 text-center text-sm font-medium text-slate-400">
-                No results found.
+                검색 결과가 없습니다.
               </p>
             ) : null}
           </motion.div>

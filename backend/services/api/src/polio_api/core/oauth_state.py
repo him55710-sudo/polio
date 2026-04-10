@@ -26,7 +26,9 @@ def build_oauth_state(*, provider: str, secret: str, client_binding: str | None 
         "iat": int(time.time()),
         "cb": client_binding or "",
     }
-    encoded_payload = _urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    encoded_payload = _urlsafe_b64encode(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    )
     signature = hmac.new(secret.encode("utf-8"), encoded_payload.encode("utf-8"), hashlib.sha256).digest()
     encoded_signature = _urlsafe_b64encode(signature)
     return f"{encoded_payload}.{encoded_signature}"

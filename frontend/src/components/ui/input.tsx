@@ -28,7 +28,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
         aria-describedby={describedBy}
         className={cn(
           'h-12 w-full rounded-2xl border bg-white px-4 text-base font-medium text-slate-700 transition-colors outline-none',
-          'placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-300',
+          'placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-[#004aad]/30',
           error ? 'border-red-300 focus-visible:border-red-400 focus-visible:ring-red-200' : 'border-slate-300 hover:border-slate-400',
           className,
         )}
@@ -76,7 +76,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(fun
         aria-describedby={describedBy}
         className={cn(
           'w-full rounded-2xl border bg-white px-4 py-3.5 text-base font-medium text-slate-700 transition-colors outline-none',
-          'placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-300',
+          'placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-[#004aad]/30',
           error ? 'border-red-300 focus-visible:border-red-400 focus-visible:ring-red-200' : 'border-slate-300 hover:border-slate-400',
           className,
         )}

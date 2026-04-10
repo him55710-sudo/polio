@@ -1,12 +1,6 @@
 {
   "version": 2,
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "api/index.py": {
-      "runtime": "@vercel/python",
-      "excludeFiles": "{tests/**,storage/**,tmp/**,.pytest_cache/**,scripts/**,infra/**,alembic/**,docker-compose.yml,**/__pycache__/**}"
-    }
-  },
   "rewrites": [
     {
       "source": "/(.*)",
@@ -14,4 +8,3 @@
     }
   ]
 }
-

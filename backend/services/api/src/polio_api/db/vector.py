@@ -28,7 +28,7 @@ class EmbeddingVector(TypeDecorator):
             return None
         if dialect.name == "postgresql":
             return list(value)
-        return json.dumps(list(value))
+        return json.dumps(list(value), ensure_ascii=False)
 
     def process_result_value(self, value, dialect):
         if value is None:

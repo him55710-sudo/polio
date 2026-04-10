@@ -386,7 +386,7 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
       {/* Row 2: Table controls (conditional) */}
       {editor.isActive('table') && (
         <div className="flex items-center gap-0.5 border-t border-slate-100 bg-blue-50/40 px-3 py-1">
-          <span className="mr-1 text-[10px] font-bold text-blue-600">표 편집</span>
+          <span className="mr-1 text-[10px] font-bold text-[#004aad]">표 편집</span>
           <ToolbarButton onClick={() => editor.chain().focus().addColumnBefore().run()} title="왼쪽에 열 추가">
             <Plus size={13} />
           </ToolbarButton>

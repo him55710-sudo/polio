@@ -3,40 +3,40 @@
 
 @theme {
   --font-sans: "Pretendard", ui-sans-serif, system-ui, sans-serif;
-  --color-primary: #2563eb;
-  --color-primary-light: #3b82f6;
-  --color-primary-dark: #1d4ed8;
-  --color-background: #f4f7fb;
+  --color-primary: #004aad;
+  --color-primary-light: #3079ed;
+  --color-primary-dark: #003780;
+  --color-background: #f8fafc;
   --color-surface: #ffffff;
   --color-text-main: #0f172a;
   --color-text-muted: #475569;
-  --color-danger: #dc2626;
-  --color-safe: #16a34a;
-  --color-accent: #0ea5e9;
+  --color-danger: #e11d48;
+  --color-safe: #10b981;
+  --color-accent: #004aad;
 }
 
 :root {
-  --ui-bg: #f4f7fb;
+  --ui-bg: #f8fafc;
   --ui-surface: #ffffff;
-  --ui-surface-muted: #f8fafc;
+  --ui-surface-muted: #f1f5f9;
   --ui-surface-elevated: #ffffff;
-  --ui-border: #dbe3ee;
-  --ui-border-strong: #cad5e4;
-  --ui-border-inverse: #1e293b;
+  --ui-border: #e2e8f0;
+  --ui-border-strong: #cbd5e1;
+  --ui-border-inverse: #0f172a;
   --ui-text: #0f172a;
   --ui-text-secondary: #334155;
-  --ui-text-muted: #475569;
-  --ui-brand: #2563eb;
+  --ui-text-muted: #64748b;
+  --ui-brand: #004aad;
   --ui-brand-soft: #eff6ff;
-  --ui-danger: #dc2626;
-  --ui-success: #16a34a;
-  --ui-warning: #d97706;
-  --ui-ring: rgba(37, 99, 235, 0.45);
+  --ui-danger: #e11d48;
+  --ui-success: #10b981;
+  --ui-warning: #f59e0b;
+  --ui-ring: rgba(0, 74, 173, 0.3);
   --radius-xs: 0.5rem;
   --radius-sm: 0.75rem;
   --radius-md: 1rem;
-  --radius-lg: 1.25rem;
-  --radius-xl: 1.75rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -49,16 +49,16 @@
   --border-default: 1px;
   --border-strong: 1.5px;
   --border-heavy: 2px;
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 18px 38px rgba(15, 23, 42, 0.1);
+  --shadow-xs: 0 1px 2px rgba(0, 74, 173, 0.04);
+  --shadow-sm: 0 2px 8px rgba(0, 74, 173, 0.06);
+  --shadow-md: 0 8px 20px rgba(0, 74, 173, 0.08);
+  --shadow-lg: 0 16px 36px rgba(0, 74, 173, 0.1);
   --state-hover-bg: #f1f5f9;
-  --state-focus-ring: rgba(37, 99, 235, 0.32);
+  --state-focus-ring: rgba(0, 74, 173, 0.2);
   --state-disabled-opacity: 0.5;
-  --duration-fast: 140ms;
-  --duration-normal: 220ms;
-  --easing-standard: cubic-bezier(0.2, 0.65, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 *,
@@ -152,7 +152,7 @@ button {
   background: var(--ui-brand);
   color: #ffffff;
   border-radius: var(--radius-md);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 6px 16px rgba(0, 74, 173, 0.2);
   transition:
     background-color var(--duration-normal) var(--easing-standard),
     box-shadow var(--duration-normal) var(--easing-standard),
@@ -161,7 +161,7 @@ button {
 
 .clay-btn-primary:hover {
   background: var(--color-primary-dark);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.26);
+  box-shadow: 0 8px 18px rgba(0, 74, 173, 0.26);
 }
 
 .ui-loading {

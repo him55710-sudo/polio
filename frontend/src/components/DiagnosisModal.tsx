@@ -219,7 +219,7 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
                 exit={{ opacity: 0, x: -50 }}
                 className="flex h-full flex-col justify-center p-6 sm:p-8"
               >
-                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-xl shadow-blue-500/20">
+                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#004aad] to-[#003d8f] shadow-xl shadow-[#004aad]/20">
                   <Target size={30} className="text-white" />
                 </div>
                 <h3 className="mb-3 break-keep text-3xl font-extrabold leading-tight text-slate-800">
@@ -236,7 +236,7 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
                     if (event.key === 'Enter') handleCreateProject();
                   }}
                   placeholder="예: 경영학과, 컴퓨터공학과"
-                  className="w-full border-b-2 border-slate-200 pb-3 text-3xl font-bold text-slate-800 outline-none transition-colors placeholder:text-slate-300 focus:border-blue-500"
+                  className="w-full border-b-2 border-slate-200 pb-3 text-3xl font-bold text-slate-800 outline-none transition-colors placeholder:text-slate-300 focus:border-[#004aad]"
                   autoFocus
                 />
               </motion.div>
@@ -262,12 +262,12 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
                   })}
                   className={`group flex flex-1 cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed p-6 transition-all duration-300 ${
                     isDragActive
-                      ? 'border-blue-500 bg-blue-100'
-                      : 'border-blue-300 bg-blue-50/50 hover:border-blue-400 hover:bg-blue-50'
+                      ? 'border-[#004aad] bg-[#004aad]/5'
+                      : 'border-[#004aad]/20 bg-[#004aad]/5 hover:border-[#004aad]/40 hover:bg-[#004aad]/10'
                   } ${isBusy ? 'cursor-not-allowed opacity-70' : ''}`}
                 >
                   <input {...getInputProps()} />
-                  <div className="mb-6 flex h-20 w-20 rotate-3 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-blue-600 shadow-lg shadow-blue-500/30 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6">
+                  <div className="mb-6 flex h-20 w-20 rotate-3 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0055c7] to-[#004aad] shadow-lg shadow-[#004aad]/20 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6">
                     <FileText size={36} className="text-white" />
                   </div>
                   <h3 className="mb-2 text-center text-xl font-extrabold text-slate-800">
@@ -285,7 +285,7 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
                       handleOpenFileDialog();
                     }}
                     disabled={isBusy || !projectId}
-                    className="mb-6 inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 shadow-sm transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mb-6 inline-flex items-center gap-2 rounded-xl border border-[#004aad]/10 bg-white px-4 py-2 text-sm font-bold text-[#004aad] shadow-sm transition-colors hover:bg-[#004aad]/5 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <FileText size={15} />
                     파일 선택
@@ -308,18 +308,18 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
                 className="flex h-full flex-col items-center justify-center p-6 text-center"
               >
                 <div className="relative mb-8 flex h-32 w-32 items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+                  <div className="absolute inset-0 rounded-full border-4 border-[#004aad]/10" />
                   <div
-                    className="absolute inset-0 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"
+                    className="absolute inset-0 animate-spin rounded-full border-4 border-[#004aad] border-t-transparent"
                     style={{ animationDuration: '1.5s' }}
                   />
-                  <Search size={40} className="animate-pulse text-blue-500" />
+                  <Search size={40} className="animate-pulse text-[#004aad]" />
                 </div>
                 <h3 className="mb-3 text-2xl font-extrabold text-slate-800">
                   AI가 객관적 관점에서 간극(Gap)을 찾고 있습니다.
                 </h3>
                 <div className="flex flex-col gap-2">
-                  <p className="font-bold text-blue-500">
+                  <p className="font-bold text-[#004aad]">
                     과장된 합격 예측이 아닌, 명확한 다음 액션 플랜을 도출합니다.
                   </p>
                   {statusMessage && (
@@ -367,10 +367,10 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
               >
                 <div className="hide-scrollbar flex-1 space-y-8 overflow-y-auto p-6 pb-32 sm:p-8">
                   <div className="relative overflow-hidden bg-white p-8 text-center clay-card">
-                    <div className="absolute left-0 top-0 h-2 w-full bg-gradient-to-r from-blue-400 to-indigo-500" />
+                    <div className="absolute left-0 top-0 h-2 w-full bg-gradient-to-r from-[#004aad] to-[#0055c7]" />
                     
-                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5">
-                      <Zap size={16} className="text-blue-500" />
+                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#004aad]/10 bg-[#004aad]/5 px-4 py-1.5">
+                      <Zap size={16} className="text-[#004aad]" />
                       <span className="text-sm font-extrabold text-slate-600">
                         {major} 목표 대비 학생부 진단
                       </span>
@@ -434,12 +434,12 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
 
                 <div className="absolute bottom-0 left-0 w-full border-t border-slate-200 bg-white/90 p-6 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] backdrop-blur-md sm:px-8">
                   <div className="mb-4 flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500 font-extrabold text-white shadow-md">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#004aad] font-extrabold text-white shadow-md">
                       F
                     </div>
-                    <div className="flex-1 rounded-2xl rounded-tl-sm border border-blue-100 bg-blue-50 p-4">
-                      <p className="text-sm font-extrabold leading-snug text-blue-900 sm:text-base">
-                        <span className="mb-1 block text-xs font-black uppercase tracking-wider text-blue-500">Next Action Goal</span>
+                    <div className="flex-1 rounded-2xl rounded-tl-sm border border-[#004aad]/10 bg-[#004aad]/5 p-4">
+                      <p className="text-sm font-extrabold leading-snug text-[#004aad] sm:text-base">
+                        <span className="mb-1 block text-xs font-black uppercase tracking-wider text-[#004aad]/60">Next Action Goal</span>
                         {diagnosis.recommended_focus}
                       </p>
                     </div>

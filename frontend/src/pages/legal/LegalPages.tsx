@@ -12,7 +12,7 @@ function LegalSection({ title, icon, children }: LegalSectionProps) {
   return (
     <section className="mb-12">
       <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 shadow-sm">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#004aad]/10 bg-[#004aad]/5 text-[#004aad] shadow-sm">
           {icon}
         </div>
         <h2 className="text-xl font-black tracking-tight text-slate-800">{title}</h2>
@@ -137,7 +137,7 @@ export function TermsOfService() {
             '사용자 동의 없이 학생 기록을 외부에 공개하거나 판매하지 않습니다.',
           ].map(item => (
             <li key={item} className="flex items-start gap-3">
-              <CheckCircle2 size={16} className="mt-1 shrink-0 text-blue-500" />
+              <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#004aad]" />
               <span>{item}</span>
             </li>
           ))}
@@ -190,11 +190,11 @@ export function PrivacyPolicy() {
         </div>
         <ul className="space-y-3">
           <li className="flex items-start gap-3">
-            <CheckCircle2 size={16} className="mt-1 shrink-0 text-blue-500" />
+            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#004aad]" />
             <span>전송 구간 보호와 접근 통제를 우선합니다.</span>
           </li>
           <li className="flex items-start gap-3">
-            <CheckCircle2 size={16} className="mt-1 shrink-0 text-blue-500" />
+            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#004aad]" />
             <span>기록은 가능한 한 마스킹과 상태 관리 흐름을 거쳐 처리합니다.</span>
           </li>
         </ul>
@@ -219,11 +219,11 @@ export function RefundPolicy() {
       <LegalSection title="결제 및 환불 기준" icon={<Scale size={20} />}>
         <ul className="space-y-3">
           <li className="flex items-start gap-3">
-            <CheckCircle2 size={16} className="mt-1 shrink-0 text-blue-500" />
+            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#004aad]" />
             <span>서비스 이용 내역이 없는 경우, 결제일로부터 7일 이내에 전액 환불이 가능합니다.</span>
           </li>
           <li className="flex items-start gap-3">
-            <CheckCircle2 size={16} className="mt-1 shrink-0 text-blue-500" />
+            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#004aad]" />
             <span>AI 진단, 분석 등 핵심 서비스 이용 후에는 원칙적으로 환불이 불가능합니다. 단, 시스템 오류로 인한 미제공 시에는 전액 환불됩니다.</span>
           </li>
         </ul>

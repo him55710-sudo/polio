@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
   ArrowRight,
@@ -188,6 +188,24 @@ export function Record() {
   const { user, isGuestSession } = useAuth();
 
   const [targetMajor, setTargetMajor] = useState('');
+  
+  const goalList = useMemo(() => {
+    if (!user?.interest_universities) return [];
+    try {
+      const parsed = typeof user.interest_universities === 'string' 
+        ? JSON.parse(user.interest_universities) 
+        : user.interest_universities;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (goalList.length > 0 && !targetMajor) {
+      setTargetMajor(goalList[0].major);
+    }
+  }, [goalList, targetMajor]);
   const [document, setDocument] = useState<DocumentStatusResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isStartingParse, setIsStartingParse] = useState(false);
@@ -349,9 +367,15 @@ export function Record() {
       try {
         const formData = new FormData();
         formData.append('file', file);
-        if (targetMajor.trim()) {
-          formData.append('target_major', targetMajor.trim());
-          formData.append('title', `${targetMajor.trim()} 준비`);
+        if (targetMajor) {
+          formData.append('target_major', targetMajor);
+          const matchedGoal = goalList.find((g: any) => g.major === targetMajor) || goalList[0];
+          if (matchedGoal) {
+            formData.append('target_university', matchedGoal.university);
+            formData.append('title', `${matchedGoal.university} ${targetMajor} 기록 분석`);
+          } else {
+            formData.append('title', `${targetMajor} 기록 분석`);
+          }
         }
 
         const created = await api.post<DocumentStatusResponse>('/api/v1/documents/upload', formData);
@@ -457,12 +481,12 @@ export function Record() {
         title="빠른 업로드 가이드"
         description="업로드 전 체크리스트만 확인하고 바로 시작하세요."
         eyebrow="Quick Start"
-        className="border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50"
+        className="border-[#004aad]/10 bg-gradient-to-br from-[#004aad]/5 via-white to-[#004aad]/10"
         actions={
           <button
             type="button"
             onClick={() => navigate('/app/help/student-record-pdf')}
-            className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#004aad]/20 bg-white px-3 py-2 text-xs font-bold text-[#004aad] transition-colors hover:bg-[#004aad]/5"
           >
             학생부 PDF 다운로드 방법 보기
             <ArrowRight size={14} />
@@ -501,7 +525,7 @@ export function Record() {
             onSelect={suggestion => setTargetMajor(suggestion.label)}
             placeholder="예: 경영학과, 컴퓨터공학과"
             suggestions={majorSuggestions}
-            helperText="학과를 입력하면 아래에 관련 학과 목록이 자동으로 뜹니다."
+            helperText={goalList.length > 0 ? `${goalList[0].university} ${goalList[0].major}가 기본 목표로 설정되었습니다.` : "학과를 입력하면 아래에 관련 학과 목록이 자동으로 뜹니다."}
             emptyText="일치하는 학과가 아직 없어요. 다른 키워드로 검색해 보세요."
             suggestionTestIdPrefix="record-major-suggestion"
             inputTestId="record-target-major"
@@ -513,13 +537,13 @@ export function Record() {
               onKeyDown: handleDropzoneKeyDown,
             })}
             className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-left transition-all sm:p-8 ${
-              isDragActive ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-white'
+              isDragActive ? 'border-[#004aad]/40 bg-[#004aad]/5' : 'border-slate-300 bg-slate-50 hover:border-[#004aad]/30 hover:bg-white'
             } ${isBusy ? 'cursor-not-allowed opacity-70' : ''}`}
           >
             <input {...getInputProps({ 'aria-label': '학생부 PDF 업로드' })} />
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#004aad]/10 text-[#004aad]">
                   <FileUp size={26} />
                 </div>
                 <div className="min-w-0">
@@ -537,7 +561,7 @@ export function Record() {
                         handleOpenFileDialog();
                       }}
                       disabled={isBusy}
-                      className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 shadow-sm transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#004aad]/20 bg-white px-3 py-2 text-sm font-bold text-[#004aad] shadow-sm transition-colors hover:bg-[#004aad]/5 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <FileText size={15} />
                       파일 선택
@@ -589,15 +613,6 @@ export function Record() {
 
         <div className="space-y-6">
           <SectionCard title="개인정보 보호 요약" description="개인정보 숨김 처리 결과를 확인해요." eyebrow="보안" collapsible defaultCollapsed>
-            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-              <ShieldCheck size={18} className="mt-0.5 text-blue-700" />
-              <p className="text-sm font-medium leading-6 text-blue-900 break-keep">
-                문서 내용은 분석 전에 개인정보 보호 규칙이 먼저 적용돼요. 아래에서 처리 방식과 개수 정보를 확인할 수 있어요.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <SurfaceCard tone="muted" padding="sm">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">처리 방식</p>
                 <p className="mt-2 text-sm font-bold text-slate-700 break-keep">{maskingSummary?.methods?.join(', ') || '대기 중'}</p>
               </SurfaceCard>
               <SurfaceCard tone="muted" padding="sm">
@@ -623,7 +638,7 @@ export function Record() {
             {pdfAnalysis?.summary || canonicalRecord ? (
               <div className="space-y-4">
                 {canonicalRecord ? (
-                  <SurfaceCard tone="muted" padding="sm" className="space-y-3 border border-indigo-200 bg-indigo-50/70">
+                  <SurfaceCard tone="muted" padding="sm" className="space-y-3 border border-[#004aad]/20 bg-[#004aad]/5">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status="active">학생부 구조 분석</StatusBadge>
                       {typeof canonicalRecord.document_confidence === 'number' ? (

@@ -11,7 +11,7 @@ interface ButtonStyleOptions {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'border-transparent bg-blue-600 text-white shadow-md shadow-blue-900/15 hover:bg-blue-700',
+  primary: 'border-transparent bg-[#004aad] text-white shadow-md shadow-[#004aad]/15 hover:bg-[#003d8f]',
   secondary: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
   tertiary: 'border-transparent bg-slate-100 text-slate-700 hover:bg-slate-200',
   ghost: 'border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900',
@@ -30,7 +30,7 @@ export function buttonClassName(options: ButtonStyleOptions = {}) {
 
   return cn(
     'inline-flex items-center justify-center gap-2 border transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]/30 focus-visible:ring-offset-2',
     variantClasses[variant],
     sizeClasses[size],
     fullWidth && 'w-full',

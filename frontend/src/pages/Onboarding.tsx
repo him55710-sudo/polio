@@ -153,8 +153,8 @@ export function Onboarding() {
             <h1 className="text-3xl font-black text-slate-900">{step === 1 ? TEXT.profileTitle : TEXT.goalTitle}</h1>
           </div>
           <div className="flex gap-2">
-             <div className={`h-2.5 w-16 rounded-full ${step >= 1 ? 'bg-blue-600' : 'bg-slate-200'}`} />
-             <div className={`h-2.5 w-16 rounded-full ${step >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`} />
+             <div className={`h-2.5 w-16 rounded-full ${step >= 1 ? 'bg-[#004aad]' : 'bg-slate-200'}`} />
+             <div className={`h-2.5 w-16 rounded-full ${step >= 2 ? 'bg-[#004aad]' : 'bg-slate-200'}`} />
           </div>
         </div>
 
@@ -164,7 +164,7 @@ export function Onboarding() {
           {step === 1 ? (
             <div className="space-y-10">
               <div className="flex gap-4">
-                <div className="h-16 w-16 bg-blue-50 text-blue-600 flex items-center justify-center rounded-2xl"><User size={32}/></div>
+                <div className="h-16 w-16 bg-[#004aad]/5 text-[#004aad] flex items-center justify-center rounded-2xl"><User size={32}/></div>
                 <div><h2 className="text-xl font-black text-slate-800">{TEXT.profileSectionTitle}</h2><p className="text-slate-500 font-medium">{TEXT.profileSectionDescription}</p></div>
               </div>
               {goalList.length > 0 ? (
@@ -178,14 +178,14 @@ export function Onboarding() {
               <div className="grid md:grid-cols-2 gap-8">
                  <div className="space-y-2">
                     <label className="text-sm font-black text-slate-700">{TEXT.gradeLabel}</label>
-                    <select value={profile.grade} onChange={e => setProfile({ grade: e.target.value })} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500">
+                    <select value={profile.grade} onChange={e => setProfile({ grade: e.target.value })} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-[#004aad]">
                        <option value="">{TEXT.choose}</option>
                        {[TEXT.grade1, TEXT.grade2, TEXT.grade3, TEXT.nStudent].map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                  </div>
                  <div className="space-y-2">
                     <label className="text-sm font-black text-slate-700">{TEXT.trackLabel}</label>
-                    <select value={profile.track} onChange={e => setProfile({ track: e.target.value })} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500">
+                    <select value={profile.track} onChange={e => setProfile({ track: e.target.value })} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-[#004aad]">
                        <option value="">{TEXT.choose}</option>
                        {[TEXT.humanities, TEXT.natural, TEXT.arts, TEXT.other].map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
@@ -193,9 +193,9 @@ export function Onboarding() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-black text-slate-700">{TEXT.careerLabel}</label>
-                <input type="text" value={profile.career} onChange={e => setProfile({ career: e.target.value })} placeholder={TEXT.careerPlaceholder} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500" />
+                <input type="text" value={profile.career} onChange={e => setProfile({ career: e.target.value })} placeholder={TEXT.careerPlaceholder} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-[#004aad]" />
               </div>
-              <button onClick={submitProfile} disabled={!profile.grade || !profile.track || isLoading} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-40 shadow-lg shadow-blue-500/20">
+              <button onClick={submitProfile} disabled={!profile.grade || !profile.track || isLoading} className="w-full py-5 bg-[#004aad] text-white rounded-2xl font-black text-xl flex items-center justify-center gap-2 hover:bg-[#003882] disabled:opacity-40 shadow-lg shadow-[#004aad]/20">
                 {isLoading ? <Loader2 className="animate-spin"/> : <>{TEXT.next} <ArrowRight/></>}
               </button>
             </div>
@@ -205,14 +205,14 @@ export function Onboarding() {
                  {/* Selection Part */}
                  <div className="space-y-8">
                     <div className="flex gap-4">
-                      <div className="h-16 w-16 bg-blue-50 text-blue-600 flex items-center justify-center rounded-2xl"><Target size={32}/></div>
+                      <div className="h-16 w-16 bg-[#004aad]/5 text-[#004aad] flex items-center justify-center rounded-2xl"><Target size={32}/></div>
                       <div><h2 className="text-xl font-black text-slate-800">{TEXT.goalSectionTitle}</h2><p className="text-slate-500 font-medium whitespace-pre-line">{TEXT.goalSectionDescription}</p></div>
                     </div>
                     
                     <div className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] space-y-6">
                        <div className="relative">
                          <label className="text-xs font-black text-slate-400 mb-2 block">{TEXT.universityLabel}</label>
-                         <input type="text" value={univInput} onChange={e => setUnivInput(e.target.value)} placeholder="대학명 검색..." className="w-full p-4 pr-12 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-blue-500" />
+                         <input type="text" value={univInput} onChange={e => setUnivInput(e.target.value)} placeholder="대학명 검색..." className="w-full p-4 pr-12 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-[#004aad]" />
                          {logoPreviewName.length >= 2 ? (
                            <UniversityLogo
                              universityName={logoPreviewName}
@@ -243,14 +243,14 @@ export function Onboarding() {
 
                        {currentUniv && (
                          <div className="space-y-4">
-                            <div className="p-3 bg-white rounded-xl border border-blue-100 flex items-center justify-between gap-3">
+                            <div className="p-3 bg-white rounded-xl border border-[#004aad]/10 flex items-center justify-between gap-3">
                                <div className="flex min-w-0 items-center gap-2">
                                  <UniversityLogo
                                    universityName={currentUniv}
                                    className="h-7 w-7 rounded-md bg-slate-50 object-contain p-0.5 shadow-sm"
-                                   fallbackClassName="border border-blue-100"
+                                   fallbackClassName="border border-[#004aad]/10"
                                  />
-                                 <span className="truncate text-sm font-black text-blue-600">{currentUniv}</span>
+                                 <span className="truncate text-sm font-black text-[#004aad]">{currentUniv}</span>
                                </div>
                                <button onClick={() => setCurrentUniv('')} className="text-slate-400"><Trash2 size={16}/></button>
                             </div>
@@ -263,7 +263,7 @@ export function Onboarding() {
 
                        <div className="pt-4 border-t border-slate-200">
                           <label className="text-xs font-black text-slate-400 mb-2 block">{TEXT.admissionTypeLabel}</label>
-                          <select value={goals.admission_type} onChange={e => setGoals({ admission_type: e.target.value })} className="w-full p-4 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-blue-500">
+                          <select value={goals.admission_type} onChange={e => setGoals({ admission_type: e.target.value })} className="w-full p-4 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-[#004aad]">
                              <option value="">{TEXT.choose}</option>
                              {[TEXT.academic, TEXT.general, TEXT.essay, TEXT.regular, TEXT.practical].map(o => <option key={o} value={o}>{o}</option>)}
                           </select>
@@ -301,7 +301,7 @@ export function Onboarding() {
                               }}
                               onDragEnd={onGoalDragEnd}
                               className={`flex items-center gap-4 rounded-2xl border p-4 transition-all ${
-                                dragOverGoalId === g.id ? 'border-blue-300 bg-blue-50' : 'border-slate-100 bg-slate-50'
+                                dragOverGoalId === g.id ? 'border-[#004aad]/30 bg-[#004aad]/5' : 'border-slate-100 bg-slate-50'
                               } ${draggingGoalId === g.id ? 'opacity-60' : ''}`}
                            >
                               <div className="flex items-center gap-2 text-slate-400">
@@ -318,8 +318,8 @@ export function Onboarding() {
                                  <p className="text-[11px] font-bold text-slate-500">{g.major}</p>
                               </div>
                               <div className="flex gap-1">
-                                 <button onClick={() => moveGoal(idx, 'up')} disabled={idx===0} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-blue-500 disabled:opacity-30"><ChevronUp size={20}/></button>
-                                 <button onClick={() => moveGoal(idx, 'down')} disabled={idx===goalList.length-1} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-blue-500 disabled:opacity-30"><ChevronDown size={20}/></button>
+                                 <button onClick={() => moveGoal(idx, 'up')} disabled={idx===0} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-[#004aad] disabled:opacity-30"><ChevronUp size={20}/></button>
+                                 <button onClick={() => moveGoal(idx, 'down')} disabled={idx===goalList.length-1} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-[#004aad] disabled:opacity-30"><ChevronDown size={20}/></button>
                                  <button onClick={() => removeGoal(g.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 size={20}/></button>
                               </div>
                            </motion.div>

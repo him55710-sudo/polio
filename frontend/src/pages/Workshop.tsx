@@ -8,6 +8,7 @@ import {
   Loader2,
   Save,
   Send,
+  ShieldCheck,
   Sparkles,
   ToggleLeft,
   ToggleRight,
@@ -81,15 +82,15 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
         components={{
         h3: ({ children, ...props }) => {
           const text = React.Children.toArray(children).join('');
-          const isAISuggestion = !isUserMessage && (text.includes('[AI ?쒖븞 珥덉븞]') || text.includes('[AI Draft Suggestion]'));
+          const isAISuggestion = !isUserMessage && (text.includes('[AI 제안 초안]') || text.includes('[AI Draft Suggestion]'));
 
           if (isAISuggestion) {
             return (
               <h3
                 {...props}
-                className="mb-4 mt-8 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-800"
+                className="mb-4 mt-8 flex items-center gap-2 rounded-xl border border-[#004aad]/5 bg-[#004aad]/5 px-3 py-2 text-sm font-bold text-[#004aad]"
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-black text-white">AI</span>
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-[#004aad] text-[10px] font-black text-white">AI</span>
                 {children}
               </h3>
             );
@@ -107,7 +108,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             return (
               <p
                 {...props}
-                className="mb-5 rounded-lg border-l-4 border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium italic text-slate-700"
+                className="mb-5 rounded-lg border-l-4 border-[#004aad]/20 bg-[#004aad]/5 px-3 py-2 text-sm font-medium italic text-slate-700"
               />
             );
           }
@@ -121,7 +122,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
           const match = /language-(\w+)/.exec(className || '');
           const isInline = !match;
           return isInline ? (
-            <code {...props} className="rounded bg-slate-200 px-1.5 py-0.5 font-mono text-xs font-bold text-blue-700">
+            <code {...props} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-bold text-[#004aad]">
               {children}
             </code>
           ) : (
@@ -132,7 +133,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             </pre>
           );
         },
-        strong: ({ children }) => <strong className={cn("font-bold", isUserMessage ? "text-white" : "text-blue-900")}>{children}</strong>,
+        strong: ({ children }) => <strong className={cn("font-bold", isUserMessage ? "text-white" : "text-[#004aad]")}>{children}</strong>,
         }}
       >
         {content}
@@ -186,11 +187,42 @@ interface WorkshopSessionResponse {
   }>;
 }
 
+interface QualityLevelInfo {
+  level: QualityLevel;
+  label: string;
+  emoji: string;
+  color: string;
+  description: string;
+  detail: string;
+  student_fit: string;
+  safety_posture: string;
+  authenticity_policy: string;
+  hallucination_guardrail: string;
+  advanced_features_allowed: boolean;
+  minimum_turn_count: number;
+  minimum_reference_count: number;
+  render_threshold: number;
+}
+
+interface RenderRequirementInfo {
+  required_context_score: number;
+  minimum_turn_count: number;
+  minimum_reference_count: number;
+  current_context_score: number;
+  current_turn_count: number;
+  current_reference_count: number;
+  can_render: boolean;
+  missing: string[];
+}
+
 interface WorkshopStateResponse {
   session: WorkshopSessionResponse;
-  starter_choices: unknown[];
-  followup_choices: unknown[];
+  starter_choices: any[];
+  followup_choices: any[];
   message: string | null;
+  quality_level_info?: QualityLevelInfo;
+  available_quality_levels?: QualityLevelInfo[];
+  render_requirements?: RenderRequirementInfo;
   latest_artifact: DraftArtifact | null;
 }
 
@@ -211,12 +243,12 @@ interface StreamMetaPayload {
 }
 
 const QUALITY_META_MAP: Record<QualityLevel, { label: string; status: 'success' | 'active' | 'warning' }> = {
-  low: { label: '鍮좊Ⅸ ?묐떟', status: 'success' },
-  mid: { label: '洹좏삎 紐⑤뱶', status: 'active' },
-  high: { label: '?ы솕 紐⑤뱶', status: 'warning' },
+  low: { label: '빠른 응답', status: 'success' },
+  mid: { label: '균형 모드', status: 'active' },
+  high: { label: '심화 모드', status: 'warning' },
 };
 
-const GUIDED_CHAT_GREETING = '?덈뀞?섏꽭?? ?대뼡 二쇱젣??蹂닿퀬?쒕? ?⑤낵源뚯슂?';
+const GUIDED_CHAT_GREETING = '안녕하세요 어떤 주제로 보고서를 써볼까요?';
 
 function normalizeGuidedSuggestions(response: GuidedTopicSuggestionResponse): GuidedTopicSuggestion[] {
   return ensureThreeSuggestions(response).suggestions.slice(0, 3);
@@ -225,45 +257,45 @@ function normalizeGuidedSuggestions(response: GuidedTopicSuggestionResponse): Gu
 function formatGuidedSuggestionMessage(response: GuidedTopicSuggestionResponse) {
   const suggestions = normalizeGuidedSuggestions(response);
   const lines = [
-    `?붿껌?섏떊 '${response.subject}' 二쇱젣 湲곗??쇰줈 3媛吏 諛⑺뼢???쒖븞?쒕┰?덈떎.`,
+    `요청하신 '${response.subject}' 주제 기준으로 3가지 방향을 제안합니다.`,
     '',
     ...suggestions.flatMap((item, index) => {
       const chunk = [
         `${index + 1}. **${item.title}**`,
-        `- ?곹빀 ?댁쑀: ${item.why_fit_student}`,
-        `- 湲곕줉 ?곌껐: ${item.link_to_record_flow}`,
+        `- 적합 이유: ${item.why_fit_student}`,
+        `- 기록 연결: ${item.link_to_record_flow}`,
       ];
       if (item.link_to_target_major_or_university) {
-        chunk.push(`- 紐⑺몴 ?곌껐: ${item.link_to_target_major_or_university}`);
+        chunk.push(`- 목표 연결: ${item.link_to_target_major_or_university}`);
       }
       if (item.caution_note) {
-        chunk.push(`- 二쇱쓽: ${item.caution_note}`);
+        chunk.push(`- 주의: ${item.caution_note}`);
       }
       return chunk;
     }),
   ];
   if (response.evidence_gap_note) {
-    lines.push('', `李멸퀬: ${response.evidence_gap_note}`);
+    lines.push('', `참고: ${response.evidence_gap_note}`);
   }
-  lines.push('', '?꾨옒 移대뱶?먯꽌 ??媛吏瑜??좏깮??二쇱꽭??');
+  lines.push('', '아래 카드에서 한 가지를 선택해주세요');
   return lines.join('\n');
 }
 
 function formatGuidedSelectionMessage(response: GuidedTopicSelectionResponse) {
   const lines = [
-    `?좏깮?섏떊 二쇱젣??**${response.selected_title}**?낅땲??`,
+    `선택하신 주제는 **${response.selected_title}**입니다.`,
     '',
     response.guidance_message,
     '',
-    '沅뚯옣 遺꾨웾:',
+    '권장 분량:',
     ...response.recommended_page_ranges.map(
       range => `- ${range.label} (${range.min_pages}~${range.max_pages}p): ${range.why_this_length}`,
     ),
     '',
-    '沅뚯옣 媛쒖슂:',
+    '권장 개요:',
     ...response.recommended_outline.map(section => `- ${section.title}: ${section.purpose}`),
     '',
-    '?ㅻⅨ履?珥덉븞 ?⑤꼸???ㅽ???珥덉븞??梨꾩썙 ?먯뿀?듬땲?? ?ㅼ쓬 硫붿떆吏濡??몃? 臾몃떒???댁뼱媛 蹂댁꽭??',
+    '오른쪽 초안 패널에 스타트 초안을 채워 두었습니다. 다음 메시지로 세부 문단을 이어가 보세요',
   ];
   return lines.join('\n');
 }
@@ -418,7 +450,7 @@ async function streamFoliReply(
   }
 
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder('utf-8');
   let full = '';
   let buffer = '';
 
@@ -430,6 +462,39 @@ async function streamFoliReply(
     const chunks = buffer.split('\n\n');
     buffer = chunks.pop() || '';
 
+    for (const event of chunks) {
+      const line = event.split('\n').find(item => item.startsWith('data:'));
+      if (!line) continue;
+
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(line.replace(/^data:\s*/, ''));
+      } catch {
+        continue;
+      }
+
+      if (payload.done) break;
+      if (typeof payload.error === 'string' && payload.error.trim()) throw new Error(payload.error.trim());
+
+      if (payload.meta && typeof payload.meta === 'object') {
+        onMeta?.(payload.meta as StreamMetaPayload);
+      }
+
+      if (payload.draft_patch && typeof payload.draft_patch === 'object') {
+        onDraftPatch?.(payload.draft_patch as WorkshopDraftPatchProposal);
+      }
+
+      if (typeof payload.token === 'string' && payload.token) {
+        full += payload.token;
+        onDelta?.(payload.token);
+      }
+    }
+  }
+
+  // Flush decoder tail bytes to avoid partial UTF-8 character truncation on stream end.
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const chunks = buffer.split('\n\n');
     for (const event of chunks) {
       const line = event.split('\n').find(item => item.startsWith('data:'));
       if (!line) continue;
@@ -481,7 +546,7 @@ const ChatBubble = memo(function ChatBubble({
       <div
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-black shadow-sm transition-all",
-          isUser ? 'bg-slate-100 text-slate-500' : 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-blue-100'
+          isUser ? 'bg-slate-100 text-slate-500' : 'bg-[#004aad] text-white shadow-[#004aad]/10'
         )}
       >
         {isUser ? <User size={18} /> : <Bot size={18} />}
@@ -491,7 +556,7 @@ const ChatBubble = memo(function ChatBubble({
         className={cn(
           "relative max-w-[88%] rounded-2xl border px-4 py-3.5 shadow-sm transition-all duration-300 sm:max-w-[80%]",
           isUser 
-            ? 'border-blue-700 bg-blue-600 text-white shadow-md shadow-blue-100/50' 
+            ? 'border-[#004aad] bg-[#004aad] text-white shadow-lg shadow-[#004aad]/20' 
             : 'border-slate-200 bg-white text-slate-900 shadow-sm'
         )}
       >
@@ -505,8 +570,8 @@ const ChatBubble = memo(function ChatBubble({
           )}
           {isStreaming && (
             <div className="flex items-center gap-2 py-1 opacity-70">
-              <Loader2 size={12} className="animate-spin text-blue-600" />
-              <span className="text-[11px] font-bold text-slate-400">Uni Foli媛 ?묒꽦 以?..</span>
+              <Loader2 size={12} className="animate-spin text-[#004aad]" />
+              <span className="text-[11px] font-bold text-slate-400">Uni Foli가 작성 중..</span>
             </div>
           )}
         </div>
@@ -514,7 +579,7 @@ const ChatBubble = memo(function ChatBubble({
         {message.draftPatch ? (
           <SecondaryButton 
             size="sm" 
-            className="mt-3 w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 shadow-sm" 
+            className="mt-3 w-full border-[#004aad]/10 bg-[#004aad]/5 text-[#004aad] hover:bg-[#004aad]/10 shadow-sm" 
             onClick={() => onApplyDraftPatch(message.draftPatch as WorkshopDraftPatchProposal)}
           >
             <Sparkles size={14} className="mr-1.5" />
@@ -524,24 +589,24 @@ const ChatBubble = memo(function ChatBubble({
 
         {message.topicSuggestions?.length ? (
           <div className="mt-4 space-y-2.5">
-            <p className="px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Foli??異붿쿇 二쇱젣</p>
+            <p className="px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Foli의 추천 주제</p>
             {message.topicSuggestions.map((topic, index) => (
               <button
                 key={topic.id}
                 type="button"
                 onClick={() => onTopicSelect(topic.id, message.topicSubject || '')}
                 disabled={Boolean(selectingTopicId)}
-                className="group w-full rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 text-left transition-all hover:border-blue-200 hover:bg-blue-50/50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                className="group w-full rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 text-left transition-all hover:border-[#004aad]/10 hover:bg-[#004aad]/5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center justify-center rounded-lg bg-white px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-sm transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                    二쇱젣 {index + 1}
+                  <span className="inline-flex items-center justify-center rounded-lg bg-white px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-sm transition-colors group-hover:bg-[#004aad] group-hover:text-white">
+                    주제 {index + 1}
                   </span>
-                  {selectingTopicId === topic.id && <Loader2 size={12} className="animate-spin text-blue-600" />}
+                  {selectingTopicId === topic.id && <Loader2 size={12} className="animate-spin text-[#004aad]" />}
                 </div>
-                <p className="mt-2.5 text-[15px] font-bold leading-tight text-slate-900 group-hover:text-blue-700">{topic.title}</p>
+                <p className="mt-2.5 text-[15px] font-bold leading-tight text-slate-900 group-hover:text-[#004aad]">{topic.title}</p>
                 <p className="mt-1.5 text-xs font-medium leading-relaxed text-slate-500">
-                  {selectingTopicId === topic.id ? '?좏깮??二쇱젣濡?珥덉븞 ?몄뀡??以鍮?以묒엯?덈떎...' : '?대┃?섎㈃ ?뚰겕??珥덉븞??利됱떆 ?앹꽦?⑸땲??'}
+                  {selectingTopicId === topic.id ? '선택한 주제로 초안 섹션을 준비 중입니다...' : '클릭하면 워크숍 초안을 즉시 생성합니다.'}
                 </p>
               </button>
             ))}
@@ -552,6 +617,116 @@ const ChatBubble = memo(function ChatBubble({
   );
 });
 
+const WorkshopProgress = ({ 
+  requirements, 
+  qualityInfo 
+}: { 
+  requirements: RenderRequirementInfo; 
+  qualityInfo?: QualityLevelInfo | null;
+}) => {
+  const requiredContext = Math.max(1, Math.round(requirements.required_context_score || 1));
+  const currentContext = Math.round(requirements.current_context_score || 0);
+  const progressPercent = Math.min(100, Math.round((currentContext / requiredContext) * 100));
+
+  const policies = useMemo(() => {
+    if (!qualityInfo) return [];
+    return [
+      { label: 'Authenticity', value: qualityInfo.authenticity_policy },
+      { label: 'Guardrail', value: qualityInfo.hallucination_guardrail },
+      { label: 'Safety', value: qualityInfo.safety_posture },
+    ].filter(p => p.value);
+  }, [qualityInfo]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-widest text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <Sparkles size={12} className="text-[#004aad]" />
+          Drafting Progress
+        </span>
+        <span className="text-[#004aad]">{progressPercent}%</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${progressPercent}%` }}
+          transition={{ duration: 1, ease: 'easeOut' }}
+          className={cn(
+            'h-full rounded-full transition-all',
+            progressPercent >= 100 ? 'bg-green-500' : 'bg-[#004aad] shadow-[#004aad]/20',
+          )}
+        />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl bg-slate-50 p-2 text-center">
+          <p className="text-[10px] font-bold text-slate-400">턴수</p>
+          <p
+            className={cn(
+              'text-xs font-black',
+              requirements.current_turn_count >= requirements.minimum_turn_count ? 'text-green-600' : 'text-slate-700',
+            )}
+          >
+            {requirements.current_turn_count}/{requirements.minimum_turn_count}
+          </p>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-2 text-center">
+          <p className="text-[10px] font-bold text-slate-400">근거</p>
+          <p
+            className={cn(
+              'text-xs font-black',
+              requirements.current_reference_count >= requirements.minimum_reference_count
+                ? 'text-green-600'
+                : 'text-slate-700',
+            )}
+          >
+            {requirements.current_reference_count}/{requirements.minimum_reference_count}
+          </p>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-2 text-center">
+          <p className="text-[10px] font-bold text-slate-400">맥락</p>
+          <p
+            className={cn(
+              'text-xs font-black',
+              currentContext >= requiredContext ? 'text-green-600' : 'text-slate-700',
+            )}
+          >
+            {currentContext}/{requiredContext}
+          </p>
+        </div>
+      </div>
+
+      {qualityInfo && (
+        <div className="mt-2 rounded-xl border border-[#004aad]/10 bg-[#004aad]/5 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <ShieldCheck size={12} className="text-[#004aad]" />
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#004aad]">
+              {qualityInfo.label} Policies Active
+            </span>
+          </div>
+          {policies.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {policies.map((p, idx) => (
+                <span
+                  key={idx}
+                  title={p.value}
+                  className="rounded border border-[#004aad]/10 bg-white px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-[#004aad]/70"
+                >
+                  {p.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!requirements.can_render && requirements.missing.length > 0 && (
+        <p className="mt-2 border-t border-slate-100 pt-2 text-[10px] font-medium leading-relaxed text-slate-400">
+          Tip: {requirements.missing[0]} 항목을 보완하면 고품질 렌더링이 가능합니다.
+        </p>
+      )}
+    </div>
+  );
+};
 export function Workshop() {
   const { projectId } = useParams<{ projectId: string }>();
   const location = useLocation();
@@ -702,8 +877,8 @@ export function Workshop() {
                 id: 'guided-resume',
                 role: 'foli',
                 content: cachedSelectedTopic
-                  ? `??λ맂 二쇱젣 '${cachedSelectedTopic}' 珥덉븞??遺덈윭?붿뒿?덈떎. ?댁뼱??蹂닿컯??蹂댁꽭??`
-                  : '??λ맂 珥덉븞??遺덈윭?붿뒿?덈떎. ?댁뼱??蹂닿컯??蹂댁꽭??',
+                  ? `저장된 주제 '${cachedSelectedTopic}' 초안을 불러왔습니다. 이어가며 보강해 보세요`
+                  : '저장된 초안을 불러왔습니다. 이어가며 보강해 보세요',
               },
             ]);
           } else {
@@ -724,9 +899,9 @@ export function Workshop() {
         .catch(() => {});
     } catch (error) {
       console.error('Workshop init failed:', error);
-      toast.error('?뚰겕?띿쓣 遺덈윭?ㅼ? 紐삵뻽?듬땲?? 濡쒖뺄 紐⑤뱶濡??꾪솚?⑸땲??');
+      toast.error('워크숍을 불러오지 못했습니다. 로컬 모드로 전환합니다.');
       setIsGuidedTopicSelected(true);
-      setMessages([{ id: 'fallback', role: 'foli', content: '?몄뀡 ?곌껐???ㅽ뙣?덉뒿?덈떎. 濡쒖뺄?먯꽌 珥덉븞 ?묒꽦??吏꾪뻾?섏떎 ???덉뒿?덈떎.' }]);
+      setMessages([{ id: 'fallback', role: 'foli', content: '세션 연결에 실패했습니다. 로컬에서 초안 작성을 진행하실 수 있습니다.' }]);
     } finally {
       setIsSessionLoading(false);
     }
@@ -752,7 +927,7 @@ export function Workshop() {
     } else {
       setIsSessionLoading(false);
       setIsGuidedTopicSelected(true);
-      setMessages([{ id: 'demo-init', role: 'foli', content: '?곕え 紐⑤뱶?낅땲?? Uni Foli?먭쾶 吏덈Ц?섎㈃ 珥덉븞 ?묒꽦???꾩??쒕┰?덈떎.' }]);
+      setMessages([{ id: 'demo-init', role: 'foli', content: '데모 모드입니다. Uni Foli에게 질문하면 초안 작성을 도와드립니다.' }]);
     }
   }, [initialMajor, isProjectBacked, initWorkshop, questStart, documentContent]);
 
@@ -875,10 +1050,10 @@ export function Workshop() {
         setIsDraftOutOfSync(false);
         setIsGuidedTopicSelected(true);
         setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'foli', content: formatGuidedSelectionMessage(response) }]);
-        toast.success('?좏깮??二쇱젣 湲곗??쇰줈 ?꾨줈?앺듃瑜?援ъ꽦?덉뒿?덈떎.');
+        toast.success('선택한 주제 기준으로 프로젝트를 구성했습니다.');
       } catch (error) {
         console.error('Guided topic selection failed:', error);
-        toast.error('二쇱젣 ?좏깮 諛섏쁺???ㅽ뙣?덉뒿?덈떎.');
+        toast.error('주제 선택 반영에 실패했습니다.');
       } finally {
         setIsSelectingGuidedTopicId(null);
       }
@@ -895,7 +1070,7 @@ export function Workshop() {
         {
           id: pendingId,
           role: 'foli',
-          content: '二쇱젣 ?꾨낫瑜?鍮좊Ⅴ寃??뺣━?섍퀬 ?덉뒿?덈떎. ?좎떆留?湲곕떎??二쇱꽭??',
+          content: '주제 후보를 빠르게 정리하고 있습니다. 잠시만 기다려 주세요',
         },
       ]);
       try {
@@ -961,7 +1136,7 @@ export function Workshop() {
           toast.success('승인된 섹션 제안을 우측 구조 초안에 반영했습니다.');
         }
       } else if (blockedReason === 'student_content_protected') {
-        toast('학생이 직접 작성한 섹션이 길어 자동 덮어쓰기를 차단했습니다. 검토 후 수동 반영해 주세요.');
+        toast('학생이 직접 작성한 섹션이 길어 자동 덮어쓰기를 차단했습니다. 검토 후 수동 반영해 주세요');
       }
       return applied;
     },
@@ -1023,7 +1198,7 @@ export function Workshop() {
         await requestGuidedSuggestions(text);
       } catch (error) {
         console.error('Guided suggestion failed:', error);
-        toast.error('二쇱젣 ?쒖븞 ?앹꽦???ㅽ뙣?덉뒿?덈떎.');
+        toast.error('주제 제안 생성에 실패했습니다.');
       } finally {
         setIsTyping(false);
       }
@@ -1095,7 +1270,7 @@ export function Workshop() {
 
       const extracted = extractPatchTagFromRaw(raw);
       const resolvedPatch = streamedPatch || extracted.patch;
-      const responseContent = extracted.cleaned || raw || accumulated || '?묐떟???앹꽦?섏? 紐삵뻽?듬땲??';
+      const responseContent = extracted.cleaned || raw || accumulated || '응답을 생성하지 못했습니다.';
       const shouldAutoApplyPatch =
         resolvedPatch !== null &&
         coauthoringTier !== 'basic' &&
@@ -1121,7 +1296,7 @@ export function Workshop() {
       );
     } catch (error) {
       console.error('AI reply stream failed:', error);
-      toast.error('???以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.');
+      toast.error('대화 중 오류가 발생했습니다.');
     } finally {
       setIsTyping(false);
     }
@@ -1140,10 +1315,10 @@ export function Workshop() {
     setIsRendering(true);
     try {
       await api.post(`/api/v1/workshops/${workshopState.session.id}/render`);
-      toast.success('寃곌낵臾??앹꽦???붿껌?덉뒿?덈떎.');
+      toast.success('결과물 생성을 요청했습니다.');
     } catch (error) {
       console.error('Failed to render draft:', error);
-      toast.error('?앹꽦 ?붿껌???ㅽ뙣?덉뒿?덈떎.');
+      toast.error('생성 요청에 실패했습니다.');
     } finally {
       setIsRendering(false);
     }
@@ -1158,17 +1333,36 @@ export function Workshop() {
       createdAt: new Date().toISOString(),
       contentMarkdown: documentContent,
     });
-    toast.success('?뚰겕??珥덉븞????ν뻽?듬땲??');
+    toast.success('워크숍 초안을 저장했습니다.');
     confetti({ particleCount: 80, spread: 62, origin: { y: 0.65 } });
   };
 
   const handleUpdateVisualStatus = async (visualId: string, status: string) => {
-    if (!workshopState?.session.id) return;
+    if (!workshopState?.session.id || !workshopState.latest_artifact?.id) return;
     try {
-      await api.put(`/api/v1/workshops/${workshopState.session.id}/visuals/${visualId}/status`, { status });
-      toast.success('?곹깭瑜??낅뜲?댄듃?덉뒿?덈떎.');
-    } catch {
-      toast.error('?곹깭 ?낅뜲?댄듃 ?ㅽ뙣');
+      const response = await api.patch(
+        `/api/v1/workshops/${workshopState.session.id}/artifacts/${workshopState.latest_artifact.id}/visuals/${visualId}`,
+        { approval_status: status }
+      );
+      setWorkshopState(response.data);
+      toast.success('상태를 업데이트했습니다.');
+    } catch (error) {
+      console.error('Failed to update visual status:', error);
+      toast.error('상태 업데이트 실패');
+    }
+  };
+
+  const handleReplaceVisual = async (visualId: string) => {
+    if (!workshopState?.session.id || !workshopState.latest_artifact?.id) return;
+    try {
+      const response = await api.post(
+        `/api/v1/workshops/${workshopState.session.id}/artifacts/${workshopState.latest_artifact.id}/visuals/${visualId}/replace`
+      );
+      setWorkshopState(response.data);
+      toast.success('새로운 시각 자료를 생성했습니다.');
+    } catch (error) {
+      console.error('Failed to replace visual:', error);
+      toast.error('시각 자료 생성 실패');
     }
   };
 
@@ -1181,13 +1375,12 @@ export function Workshop() {
   const diagnosisHeadline = diagnosisSummary.headline;
   const diagnosisRisk = diagnosisSummary.risk_level;
   const diagnosisGapCount = diagnosisSummary.gaps?.length || 0;
-
   const inputPlaceholder = isProjectBacked && !isGuidedTopicSelected
-    ? '愿??怨쇰ぉ?대굹 二쇱젣瑜??낅젰??二쇱꽭??'
-    : '硫붿떆吏瑜??낅젰?섏꽭??..';
+    ? '관심 과목이나 주제를 입력해 주세요'
+    : '메시지를 입력하세요...';
 
   return (
-    <div className={cn("mx-auto max-w-[1800px] space-y-4 px-2.5 py-3 transition-all duration-700 sm:space-y-6 sm:px-4 sm:py-6", advancedMode && "rounded-[32px] bg-blue-50/30 shadow-[inset_0_0_100px_rgba(37,99,235,0.03)] sm:rounded-[48px]")}>
+    <div className={cn("mx-auto max-w-[1800px] space-y-4 px-2.5 py-3 transition-all duration-700 sm:space-y-6 sm:px-4 sm:py-6", advancedMode && "rounded-[32px] bg-[#004aad]/5 shadow-[inset_0_0_100px_rgba(0,74,173,0.02)] sm:rounded-[48px]")}>
       <motion.div
         animate={advancedMode ? { y: [0, -2, 0] } : {}}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
@@ -1206,7 +1399,10 @@ export function Workshop() {
                 {advancedMode ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                 {advancedMode ? 'Advanced mode' : 'Basic mode'}
               </SecondaryButton>
-              <SecondaryButton onClick={handleGenerateDraft} disabled={!workshopState || isRendering}>
+              <SecondaryButton
+                onClick={handleGenerateDraft}
+                disabled={!workshopState || isRendering || !workshopState.render_requirements?.can_render}
+              >
                 {isRendering ? <Loader2 size={16} className="animate-spin" /> : <WandSparkles size={16} />}
                 Render preview
               </SecondaryButton>
@@ -1234,19 +1430,20 @@ export function Workshop() {
               onClick={() => setMobileView('chat')}
               className={cn(
                 'h-10 flex-1 rounded-xl px-3 text-sm font-bold transition-all',
-                mobileView === 'chat' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
+                mobileView === 'chat' ? 'bg-[#004aad] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
               )}
             >
-              ???            </button>
+              채팅
+            </button>
             <button
               type="button"
               onClick={() => setMobileView('draft')}
               className={cn(
                 'h-10 flex-1 rounded-xl px-3 text-sm font-bold transition-all',
-                mobileView === 'draft' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
+                mobileView === 'draft' ? 'bg-[#004aad] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
               )}
             >
-              臾몄꽌
+              문서
             </button>
           </div>
         </div>
@@ -1263,16 +1460,25 @@ export function Workshop() {
           >
             <div className="flex h-full flex-col">
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6 scroll-smooth">
+                {workshopState?.render_requirements && (
+                  <div className="mb-2 border-b border-slate-100 bg-slate-50/30 px-4 py-4">
+                    <WorkshopProgress 
+                      requirements={workshopState.render_requirements} 
+                      qualityInfo={workshopState.quality_level_info}
+                    />
+                  </div>
+                )}
+
                 {diagnosisReport && (
-                  <SurfaceCard tone="muted" padding="none" className="mb-4 overflow-hidden border-blue-100 bg-blue-50/30">
+                  <SurfaceCard tone="muted" padding="none" className="mb-4 overflow-hidden border-[#004aad]/10 bg-[#004aad]/5">
                     <button
                       type="button"
                       onClick={() => setShowDiagnosis(prev => !prev)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-blue-50/50"
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-[#004aad]/10"
                     >
                       <span className="inline-flex items-center gap-2">
-                        <Sparkles size={15} className="text-blue-600" />
-                        理쒓렐 ?앷린遺 吏꾨떒 ?뺣낫
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#004aad] shadow-sm shadow-[#004aad]/50" />
+                        최근 생기부 진단 정보
                       </span>
                       {showDiagnosis ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
@@ -1282,13 +1488,13 @@ export function Workshop() {
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden border-t border-blue-100 px-4 pb-4"
+                          className="overflow-hidden border-t border-[#004aad]/10 px-4 pb-4"
                         >
                           <SurfaceCard padding="sm" className="mt-3 space-y-2 border-none bg-white/60">
                             <p className="text-sm font-bold text-slate-900">{diagnosisHeadline}</p>
                             <div className="flex flex-wrap items-center gap-2">
                               {diagnosisRisk && <StatusBadge status={diagnosisRisk === 'safe' ? 'success' : 'warning'}>{diagnosisRisk}</StatusBadge>}
-                              <StatusBadge status="neutral">蹂댁셿 {diagnosisGapCount}</StatusBadge>
+                              <StatusBadge status="neutral">보완 {diagnosisGapCount}</StatusBadge>
                             </div>
                           </SurfaceCard>
                         </motion.div>
@@ -1330,7 +1536,7 @@ export function Workshop() {
                   </div>
                 ) : (
                   <div className="flex h-full items-center justify-center py-20">
-                    <Loader2 size={24} className="animate-spin text-blue-600" />
+                    <Loader2 size={24} className="animate-spin text-[#004aad]" />
                   </div>
                 )}
               </div>
@@ -1348,13 +1554,13 @@ export function Workshop() {
                     }}
                     placeholder={inputPlaceholder}
                     disabled={isTyping || !!isSelectingGuidedTopicId}
-                    className="flex-1 h-12 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-[15px] font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 disabled:opacity-50"
+                    className="flex-1 h-12 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-[15px] font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#004aad] disabled:opacity-50"
                   />
                   <button
                     type="button"
                     onClick={() => void handleSend()}
                     disabled={!input.trim() || isTyping || !!isSelectingGuidedTopicId}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:bg-slate-200"
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#004aad] text-white shadow-lg shadow-[#004aad]/20 transition-all hover:bg-[#003a8a] disabled:bg-slate-200"
                   >
                     {isTyping ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                   </button>
@@ -1364,8 +1570,8 @@ export function Workshop() {
           </SectionCard>
 
           <SectionCard
-            title="珥덉븞 臾몄꽌"
-            description="Uni Foli媛 ?쒖븞???댁슜??諛뷀깢?쇰줈 援ъ꽦??臾몄꽌?낅땲?? ?먯쑀濡?쾶 ?섏젙?섏뿬 蹂닿??섏꽭??"
+            title="초안 문서"
+            description="Uni Foli가 제안한 내용을 바탕으로 구성된 문서입니다. 자유롭게 수정하며 보강하세요"
             eyebrow="Drafting"
             className={cn(
               'flex min-h-0 flex-col h-[calc(100dvh-15rem)] min-h-[520px] max-h-[800px]',
@@ -1412,8 +1618,8 @@ export function Workshop() {
               ) : null}
 
               {pendingDraftPatch ? (
-                <SurfaceCard tone="muted" className="mb-3 border-blue-100 bg-blue-50/50 p-3">
-                  <p className="text-xs font-black uppercase tracking-wide text-blue-700">Pending section proposal</p>
+                <SurfaceCard tone="muted" className="mb-3 border-[#004aad]/10 bg-[#004aad]/5 p-3">
+                  <p className="text-xs font-black uppercase tracking-wide text-[#004aad]">Pending section proposal</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">
                     {pendingDraftPatch.heading || pendingDraftPatch.block_id}
                   </p>
@@ -1439,7 +1645,7 @@ export function Workshop() {
               {showDraftControls ? (
                 <div className={cn("space-y-3", advancedMode && "lg:w-1/2")}>
                   <div className="grid gap-2 sm:grid-cols-4">
-                    {WORKSHOP_MODE_OPTIONS.map((option) => (
+                    {WORKSHOP_MODE_OPTIONS.map((option, idx) => (
                       <button
                         key={option.id}
                         type="button"
@@ -1448,9 +1654,9 @@ export function Workshop() {
                           setStructuredDraft((prev) => ({ ...prev, mode: option.id }));
                         }}
                         className={cn(
-                          'rounded-xl border px-3 py-2 text-left transition-all',
+                          'p-2.5 rounded-xl border transition-all text-xs font-semibold text-left',
                           workshopMode === option.id
-                            ? 'border-blue-300 bg-blue-50 shadow-sm'
+                            ? 'border-[#004aad]/20 bg-[#004aad]/5 shadow-sm'
                             : 'border-slate-200 bg-white hover:border-slate-300',
                         )}
                       >
@@ -1471,8 +1677,8 @@ export function Workshop() {
                     }
                     description={
                       coauthoringTier === 'basic'
-                        ? 'AI 제안은 승인 후 반영됩니다. 학생 작성 내용은 자동 덮어쓰기하지 않습니다.'
-                        : '채팅 중 섹션 제안이 실시간으로 연결됩니다. 승인 전에는 학생 작성 문단을 보호합니다.'
+                        ? 'AI 제안은 승인 시 반영됩니다. 학생 작성 내용은 자동 덮어쓰기되지 않습니다.'
+                        : '채팅 중 섹션 제안을 실시간으로 연결합니다. 승인 전에는 학생 작성 문단을 보호합니다.'
                     }
                   />
                 </div>
@@ -1508,7 +1714,7 @@ export function Workshop() {
                         <input
                           value={block.heading}
                           onChange={(event) => updateDraftHeading(definition.id, event.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-400 focus:bg-white"
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
                         />
                         <StatusBadge status={attributionStatus}>
                           {block.attribution}
@@ -1519,14 +1725,14 @@ export function Workshop() {
                           value={block.content_markdown}
                           onChange={(event) => updateDraftBlock(definition.id, event.target.value)}
                           placeholder="Title"
-                          className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-400 focus:bg-white"
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
                         />
                       ) : (
                         <textarea
                           value={block.content_markdown}
                           onChange={(event) => updateDraftBlock(definition.id, event.target.value)}
-                          placeholder={`${block.heading} 내용을 작성하세요.`}
-                          className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-blue-400 focus:bg-white"
+                          placeholder={`${block.heading} 내용을 작성하세요`}
+                          className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
                         />
                       )}
                     </SurfaceCard>
@@ -1548,7 +1754,7 @@ export function Workshop() {
                   {showAdvancedTools ? (
                     <div className="flex flex-col gap-4 overflow-y-auto pr-1 custom-scrollbar">
                       <EvidenceDrawer evidenceMap={renderArtifact?.evidence_map ?? null} />
-                      <SurfaceCard className="border-blue-100 bg-blue-50/20 p-4 shadow-sm">
+                      <SurfaceCard className="border-[#004aad]/5 bg-[#004aad]/5 p-4 shadow-sm">
                         <AdvancedPreview
                           workshopId={workshopState?.session.id || ''}
                           artifactId={workshopState?.latest_artifact?.id || ''}
@@ -1556,6 +1762,7 @@ export function Workshop() {
                           visualSpecs={renderArtifact?.visual_specs ?? []}
                           mathExpressions={renderArtifact?.math_expressions ?? []}
                           onUpdateVisualStatus={handleUpdateVisualStatus}
+                          onReplaceVisual={handleReplaceVisual}
                         />
                       </SurfaceCard>
                     </div>
@@ -1573,5 +1780,6 @@ export function Workshop() {
     </div>
   );
 }
-
-
+
+
+

@@ -725,7 +725,7 @@ def _extract_refs_from_value(value: Any) -> list[str]:
     if isinstance(value, dict):
         for key, item in value.items():
             key_text = str(key).strip().lower()
-            if key_text in {"source", "source_id", "supported_by", "citation", "reference", "출처", "異쒖쿂"}:
+            if key_text in {"source", "source_id", "supported_by", "citation", "reference", "출처"}:
                 refs.extend(_extract_refs_from_value(item))
             elif isinstance(item, str) and (item.startswith("reference:") or item.startswith("turn:") or item.startswith("document:") or item.startswith("chunk:")):
                 refs.append(item)

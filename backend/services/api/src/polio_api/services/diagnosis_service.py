@@ -326,6 +326,7 @@ def _infer_gap_axes(
     full_text: str,
     target_major: str | None,
     target_university: str | None,
+    interest_universities: list[str] | None = None,
     career_direction: str | None,
 ) -> list[GapAxis]:
     lowered = (full_text or "").lower()
@@ -351,7 +352,18 @@ def _infer_gap_axes(
     continuity_score = 40 + (inquiry_hits * 12) + (10 if word_count >= 220 else 0)
     evidence_score = 35 + min(word_count // 12, 25) + min(evidence_hits * 8, 20) + min(numeric_hits * 3, 12)
     process_score = 35 + (process_hits * 12) + (8 if "reflect" in lowered else 0)
-    alignment_score = 40 + (overlap_hits * 15) + (8 if target_university else 0)
+    
+    # Alignment score considering multiple targets
+    target_count = (1 if target_university else 0) + len(interest_universities or [])
+    alignment_score = 40 + (overlap_hits * 15) + (min(target_count * 4, 12))
+
+    alignment_rationale = (
+        "The record already connects subject work to the target direction in a believable way."
+        if alignment_score >= 75
+        else "The next activity should make the major link clearer without pretending the student already did more."
+    )
+    if target_count > 1 and alignment_score < 75:
+        alignment_rationale = f"Multiple targets ({target_count}) are identified, but the record needs more explicit links to cover this broader scope."
 
     return [
         _score_axis(
@@ -397,11 +409,7 @@ def _infer_gap_axes(
         _score_axis(
             key="subject_major_alignment",
             score=alignment_score,
-            rationale=(
-                "The record already connects subject work to the target direction in a believable way."
-                if alignment_score >= 75
-                else "The next activity should make the major link clearer without pretending the student already did more."
-            ),
+            rationale=alignment_rationale,
             evidence_hint="Keep the major link explicit but grounded in what the student really did.",
         ),
     ]
@@ -774,27 +782,58 @@ def _diagnosis_summary(*, gap_axes: list[GapAxis], target_university: str | None
     )
 
 
-def _build_guided_diagnosis(*, project_title: str, target_major: str | None, target_university: str | None, career_direction: str | None, full_text: str) -> DiagnosisResult:
+def _build_guided_diagnosis(
+    *,
+    project_title: str,
+    target_major: str | None,
+    target_university: str | None,
+    interest_universities: list[str] | None = None,
+    career_direction: str | None,
+    full_text: str,
+) -> DiagnosisResult:
+    # Construct multi-target label for display
+    targets = []
+    if target_university:
+        targets.append(f"{target_university} {target_major or ''}".strip())
+    if interest_universities:
+        targets.extend(interest_universities)
+    
+    target_context_label = " and ".join(targets[:2]) + (f" and {len(targets)-2} more" if len(targets) > 2 else "")
+    if not target_context_label:
+        target_context_label = target_major or "the selected major"
+
     major_label = target_major or "the selected major"
-    gap_axes = _infer_gap_axes(full_text=full_text, target_major=target_major, target_university=target_university, career_direction=career_direction)
+    gap_axes = _infer_gap_axes(
+        full_text=full_text,
+        target_major=target_major,
+        target_university=target_university,
+        interest_universities=interest_universities,
+        career_direction=career_direction,
+    )
     directions = _recommended_directions_from_axes(gap_axes=gap_axes, major_label=major_label, project_title=project_title)
     risk_level = _risk_level_from_axes(gap_axes)
     result = DiagnosisResult(
         headline=(
-            f"For {major_label}, the record is {'grounded enough to move carefully' if risk_level == 'safe' else 'still missing a few defendable pieces'}; "
+            f"For {target_context_label}, the record is {'grounded enough to move carefully' if risk_level == 'safe' else 'still missing a few defendable pieces'}; "
             "the next action should tighten evidence and direction rather than increase polish."
         ),
         strengths=_strengths_from_axes(gap_axes),
         gaps=_gaps_from_axes(gap_axes),
         detailed_gaps=_detailed_gaps_from_axes(gap_axes),
         recommended_focus=(
-            f"For {major_label}, the safest next step is to choose one direction that strengthens "
+            f"For {target_context_label}, the safest next step is to choose one direction that strengthens "
             f"{next((axis.label for axis in gap_axes if axis.severity != 'strong'), 'the current evidence base').lower()} "
             "without making broader claims than the record can support."
         ),
         action_plan=[DiagnosisQuest(title=direction.label, description=direction.summary, priority="high" if index == 0 else "medium") for index, direction in enumerate(directions)],
         risk_level=risk_level,
-        diagnosis_summary=_diagnosis_summary(gap_axes=gap_axes, target_university=target_university, target_major=target_major, career_direction=career_direction),
+        diagnosis_summary=_diagnosis_summary(
+            gap_axes=gap_axes,
+            target_university=target_university,
+            target_major=target_major,
+            interest_universities=interest_universities,
+            career_direction=career_direction,
+        ),
         gap_axes=gap_axes,
         recommended_directions=directions,
         recommended_default_action=_recommended_default_action_from_directions(directions),
@@ -808,12 +847,20 @@ def build_grounded_diagnosis_result(
     project_title: str,
     target_major: str | None,
     target_university: str | None = None,
+    interest_universities: list[str] | None = None,
     career_direction: str | None = None,
     document_count: int,
     full_text: str,
 ) -> DiagnosisResult:
     _ = document_count
-    return _build_guided_diagnosis(project_title=project_title, target_major=target_major, target_university=target_university, career_direction=career_direction, full_text=full_text)
+    return _build_guided_diagnosis(
+        project_title=project_title,
+        target_major=target_major,
+        target_university=target_university,
+        interest_universities=interest_universities,
+        career_direction=career_direction,
+        full_text=full_text,
+    )
 
 
 def _hydrate_guided_fields(
@@ -822,13 +869,22 @@ def _hydrate_guided_fields(
     project_title: str,
     target_major: str | None,
     target_university: str | None,
+    interest_universities: list[str] | None = None,
     career_direction: str | None,
     full_text: str,
 ) -> DiagnosisResult:
     if result.gap_axes and result.recommended_directions and result.diagnosis_summary is not None:
         _normalize_guided_choice_constraints(result)
         return result
-    fallback = build_grounded_diagnosis_result(project_title=project_title, target_major=target_major, target_university=target_university, career_direction=career_direction, document_count=1, full_text=full_text)
+    fallback = build_grounded_diagnosis_result(
+        project_title=project_title,
+        target_major=target_major,
+        target_university=target_university,
+        interest_universities=interest_universities,
+        career_direction=career_direction,
+        document_count=1,
+        full_text=full_text,
+    )
     if not result.diagnosis_summary:
         result.diagnosis_summary = fallback.diagnosis_summary
     if not result.gap_axes:
@@ -856,6 +912,7 @@ async def evaluate_student_record(
     masked_text: str,
     target_university: str | None = None,
     target_major: str | None = None,
+    interest_universities: list[str] | None = None,
     career_direction: str | None = None,
     project_title: str | None = None,
     scope_key: str = "global",
@@ -865,10 +922,16 @@ async def evaluate_student_record(
     from polio_api.core.config import get_settings
 
     system_instruction = _build_diagnosis_system_instruction()
+    extra_targets = ""
+    if interest_universities:
+        targets_str = ", ".join(interest_universities)
+        extra_targets = f"\nOther Interest Universities: {targets_str}"
+
     target_context = (
         f"Target University: {target_university or 'Not set'}\n"
         f"Target Major: {target_major or user_major}\n"
         f"Career Direction: {career_direction or 'Not set'}"
+        f"{extra_targets}"
     )
     prompt = _build_diagnosis_prompt(target_context=target_context, user_major=user_major, masked_text=masked_text)
 
@@ -901,7 +964,15 @@ async def evaluate_student_record(
             cached = fetch_cached_response(cache_db, cache_request)
         if cached:
             cached_result = DiagnosisResult.model_validate_json(cached)
-            return _hydrate_guided_fields(result=cached_result, project_title=project_title or "Student record", target_major=target_major or user_major, target_university=target_university, career_direction=career_direction, full_text=masked_text)
+            return _hydrate_guided_fields(
+                result=cached_result,
+                project_title=project_title or "Student record",
+                target_major=target_major or user_major,
+                target_university=target_university,
+                interest_universities=interest_universities,
+                career_direction=career_direction,
+                full_text=masked_text,
+            )
 
         result = await llm.generate_json(
             prompt=prompt,
@@ -909,12 +980,28 @@ async def evaluate_student_record(
             system_instruction=system_instruction,
             temperature=0.2,
         )
-        result = _hydrate_guided_fields(result=result, project_title=project_title or "Student record", target_major=target_major or user_major, target_university=target_university, career_direction=career_direction, full_text=masked_text)
+        result = _hydrate_guided_fields(
+            result=result,
+            project_title=project_title or "Student record",
+            target_major=target_major or user_major,
+            target_university=target_university,
+            interest_universities=interest_universities,
+            career_direction=career_direction,
+            full_text=masked_text,
+        )
         with SessionLocal() as cache_db:
             store_cached_response(cache_db, cache_request, response_payload=result.model_dump_json())
         return result
     except Exception as exc:  # noqa: BLE001
-        fallback = build_grounded_diagnosis_result(project_title=project_title or "Student record", target_major=target_major or user_major, target_university=target_university, career_direction=career_direction, document_count=1, full_text=masked_text)
+        fallback = build_grounded_diagnosis_result(
+            project_title=project_title or "Student record",
+            target_major=target_major or user_major,
+            target_university=target_university,
+            interest_universities=interest_universities,
+            career_direction=career_direction,
+            document_count=1,
+            full_text=masked_text,
+        )
         fallback.headline = f"{fallback.headline} AI diagnosis fallback applied after: {exc}"
         return fallback
 

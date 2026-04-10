@@ -60,7 +60,7 @@ function SettingToggleRow({
           aria-pressed={enabled}
           className={`inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-bold transition-colors sm:w-[96px] ${
             enabled
-              ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
+              ? 'bg-[#004aad] text-white shadow-sm shadow-[#004aad]/20'
               : 'border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
           }`}
         >
@@ -190,7 +190,7 @@ export function Settings() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SectionCard title="계정" description="로그인 상태와 연결 계정을 관리해요." eyebrow="프로필">
           <SurfaceCard padding="sm" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#004aad]/5 text-[#004aad]">
               <UserCircle2 size={22} />
             </div>
             <div>

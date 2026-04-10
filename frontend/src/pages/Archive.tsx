@@ -174,7 +174,7 @@ export function Archive() {
               <div className="mt-auto flex gap-2 border-t border-slate-100 pt-4">
                 <button
                   onClick={() => handleDownload(item, 'hwpx')}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-500 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-600"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#004aad] py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#003d8f]"
                 >
                   <FileText size={16} /> HWPX
                 </button>

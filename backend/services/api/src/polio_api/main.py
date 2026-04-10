@@ -5,7 +5,7 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 import uvicorn
 
 from polio_api.api.router import api_router
@@ -91,8 +91,15 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix=settings.api_prefix)
 
-    @app.get("/", include_in_schema=False, response_class=HTMLResponse)
-    def home_page() -> str:
+    @app.get("/", include_in_schema=False)
+    def home_page() -> Response:
+        # In deployed environments, the backend root should not look like a local/dev blueprint page.
+        # Route casual visitors to the public web app while preserving API routes unchanged.
+        if settings.app_env != "local" and settings.api_root_redirect_enabled:
+            target = (settings.public_app_base_url or "").strip()
+            if target:
+                return RedirectResponse(url=target, status_code=307)
+
         docs_card = (
             """
           <a class="card" href="/docs">
@@ -109,7 +116,8 @@ def create_app() -> FastAPI:
           </div>
             """.strip()
         )
-        return """
+        return HTMLResponse(
+            """
 <!doctype html>
 <html lang="en">
   <head>
@@ -253,7 +261,8 @@ def create_app() -> FastAPI:
     </main>
   </body>
 </html>
-        """.replace("__DOCS_CARD__", docs_card).strip()
+            """.replace("__DOCS_CARD__", docs_card).strip()
+        )
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:

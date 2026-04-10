@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from polio_api.core.config import Settings, get_settings
 from polio_api.core.database import SessionLocal
@@ -330,6 +331,195 @@ def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
     assert calls["llm"] == 0
     assert calls["fallback"] == 1
     assert calls["model_name"] == "grounded-fallback"
+
+
+def test_runtime_keeps_completed_diagnosis_when_blueprint_generation_fails(monkeypatch) -> None:
+    settings = Settings(llm_provider="gemini", gemini_api_key="DUMMY_KEY")
+    run = SimpleNamespace(
+        id="run-3",
+        policy_flags=[],
+        review_tasks=[],
+        result_payload=None,
+        status="PENDING",
+        error_message=None,
+        project_id="project-3",
+    )
+    project = SimpleNamespace(id="project-3", title="diagnosis project", target_major="Computer Science")
+    owner = SimpleNamespace(id="owner-3", career="AI Engineering")
+    document = SimpleNamespace(
+        id="doc-3",
+        sha256="sha-doc-3",
+        content_text="텍스트 기반 기록",
+        content_markdown="",
+        stored_path=None,
+        source_extension=".txt",
+        parse_metadata={"parse_confidence": 0.7, "needs_review": False},
+    )
+
+    class _FakeDB:
+        def __init__(self) -> None:
+            self.commit_count = 0
+            self.rollback_count = 0
+
+        def get(self, model, user_id):  # noqa: ANN001, ARG002
+            return owner
+
+        def add(self, obj):  # noqa: ANN001, ARG002
+            return None
+
+        def commit(self):
+            self.commit_count += 1
+
+        def refresh(self, obj):  # noqa: ANN001, ARG002
+            return None
+
+        def rollback(self):
+            self.rollback_count += 1
+
+    fake_db = _FakeDB()
+
+    def fake_build_grounded_diagnosis_result(**kwargs):  # noqa: ANN003
+        return _build_minimal_result("fallback path")
+
+    def fake_create_response_trace(db, **kwargs):  # noqa: ANN001, ANN003
+        return SimpleNamespace(id="trace-3"), []
+
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        lambda: {
+            "requested_llm_provider": "gemini",
+            "requested_llm_model": "gemini-1.5-pro",
+            "actual_llm_provider": None,
+            "actual_llm_model": None,
+            "llm_profile_used": "standard",
+            "should_use_llm": False,
+            "fallback_used": True,
+            "fallback_reason": "llm_unavailable",
+        },
+    )
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
+    monkeypatch.setattr(
+        "polio_api.services.diagnosis_runtime_service.create_blueprint_from_signals",
+        lambda db, project, diagnosis_run_id, signals: (_ for _ in ()).throw(RuntimeError("blueprint unavailable")),
+    )
+
+    completed = asyncio.run(
+        run_diagnosis_run(
+            fake_db,
+            run_id="run-3",
+            project_id="project-3",
+            owner_user_id="owner-3",
+            fallback_target_university="Test Univ",
+            fallback_target_major="Computer Science",
+        )
+    )
+
+    assert completed.status == "COMPLETED"
+    assert fake_db.commit_count >= 1
+    assert fake_db.rollback_count == 1
+
+
+def test_runtime_handles_sqlite_disk_full_during_chunk_hydration(monkeypatch) -> None:
+    settings = Settings(llm_provider="gemini", gemini_api_key="DUMMY_KEY")
+    run = SimpleNamespace(
+        id="run-disk-full",
+        policy_flags=[],
+        review_tasks=[],
+        result_payload=None,
+        status="PENDING",
+        error_message=None,
+        project_id="project-disk-full",
+    )
+    project = SimpleNamespace(id="project-disk-full", title="diagnosis project", target_major="Computer Science")
+    owner = SimpleNamespace(id="owner-disk-full", career="AI Engineering")
+    document = SimpleNamespace(
+        id="doc-disk-full",
+        sha256="sha-doc-disk-full",
+        content_text="기반 텍스트",
+        content_markdown="",
+        stored_path=None,
+        source_extension=".txt",
+        parse_metadata={"parse_confidence": 0.7, "needs_review": False},
+    )
+
+    class _FakeDB:
+        def __init__(self) -> None:
+            self.rollback_count = 0
+
+        def get(self, model, user_id):  # noqa: ANN001, ARG002
+            return owner
+
+        def add(self, obj):  # noqa: ANN001, ARG002
+            return None
+
+        def commit(self):
+            return None
+
+        def refresh(self, obj):  # noqa: ANN001, ARG002
+            return None
+
+        def rollback(self):
+            self.rollback_count += 1
+
+    fake_db = _FakeDB()
+
+    def fake_build_grounded_diagnosis_result(**kwargs):  # noqa: ANN003
+        return _build_minimal_result("fallback path")
+
+    def fake_create_response_trace(db, **kwargs):  # noqa: ANN001, ANN003
+        assert kwargs["chunks"] == []
+        return SimpleNamespace(id="trace-disk-full"), []
+
+    def raise_disk_full(db, project_id):  # noqa: ANN001, ARG001
+        raise OperationalError("SELECT ...", {"project_id": project_id}, Exception("database or disk is full"))
+
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        lambda: {
+            "requested_llm_provider": "gemini",
+            "requested_llm_model": "gemini-1.5-pro",
+            "actual_llm_provider": None,
+            "actual_llm_model": None,
+            "llm_profile_used": "standard",
+            "should_use_llm": False,
+            "fallback_used": True,
+            "fallback_reason": "llm_unavailable",
+        },
+    )
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.list_chunks_for_project", raise_disk_full)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
+    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
+
+    completed = asyncio.run(
+        run_diagnosis_run(
+            fake_db,
+            run_id="run-disk-full",
+            project_id="project-disk-full",
+            owner_user_id="owner-disk-full",
+            fallback_target_university="Test Univ",
+            fallback_target_major="Computer Science",
+        )
+    )
+
+    assert completed.status == "COMPLETED"
+    assert fake_db.rollback_count == 1
 
 
 def test_combine_project_text_uses_pdf_analysis_fallback(monkeypatch) -> None:

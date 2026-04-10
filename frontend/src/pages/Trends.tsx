@@ -365,8 +365,8 @@ export function Trends() {
             onClick={() => setActiveFilter(filter)}
             className={`rounded-full px-5 py-2.5 text-sm font-extrabold shadow-sm transition-all ${
               activeFilter === filter
-                ? 'scale-105 bg-slate-800 text-white shadow-md'
-                : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600'
+                ? 'scale-105 bg-[#004aad] text-white shadow-md'
+                : 'border border-slate-200 bg-white text-slate-600 hover:border-[#004aad]/30 hover:bg-[#004aad]/5 hover:text-[#004aad]'
             }`}
           >
             {filter}
@@ -394,18 +394,18 @@ export function Trends() {
             <div
               className={`mb-4 inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-extrabold ${
                 item.type === '도서 추천'
-                  ? 'border-blue-100 bg-blue-50 text-blue-600'
+                  ? 'border-[#004aad]/10 bg-[#004aad]/5 text-[#004aad]'
                   : item.type === '입시 이슈'
                     ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
                     : item.type === '합격 가이드'
-                      ? 'border-indigo-100 bg-indigo-50 text-indigo-600'
+                      ? 'border-[#004aad]/20 bg-[#004aad]/10 text-[#004aad]'
                       : 'border-amber-100 bg-amber-50 text-amber-600'
               }`}
             >
               <item.icon size={16} />
               {item.type}
             </div>
-            <h3 className="mb-2 h-[2.75rem] line-clamp-2 text-lg font-extrabold leading-tight text-slate-800 transition-colors group-hover:text-blue-600">
+            <h3 className="mb-2 h-[2.75rem] line-clamp-2 text-lg font-extrabold leading-tight text-slate-800 transition-colors group-hover:text-[#004aad]">
               {item.title}
             </h3>
             <p className="mb-4 h-[4.5rem] line-clamp-3 text-sm font-medium leading-relaxed text-slate-500">
@@ -414,8 +414,8 @@ export function Trends() {
 
             <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
               <span className="rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-400">조회수 1.2k</span>
-              <span className="flex items-center gap-1.5 rounded-xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-extrabold text-slate-800 shadow-sm transition-colors group-hover:border-blue-200 group-hover:text-blue-600">
-                자세히 <span className="transition-transform group-hover:translate-x-1">→</span>
+              <span className="flex items-center gap-1.5 rounded-xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-extrabold text-slate-800 shadow-sm transition-colors group-hover:border-[#004aad]/20 group-hover:text-[#004aad]">
+                자세히 <span className="transition-transform group-hover:translate-x-1 text-[#004aad]">→</span>
               </span>
             </div>
           </motion.button>
@@ -444,7 +444,7 @@ export function Trends() {
               >
                 <X size={18} />
               </button>
-              <div className="mb-5 inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-extrabold text-blue-600">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-xl border border-[#004aad]/10 bg-[#004aad]/5 px-3 py-1.5 text-xs font-extrabold text-[#004aad]">
                 <selectedTrend.icon size={16} />
                 {selectedTrend.type}
               </div>
@@ -466,7 +466,7 @@ export function Trends() {
                     toast.success('선택한 주제로 워크숍을 열었습니다.');
                     setSelectedTrend(null);
                   }}
-                  className="rounded-xl bg-blue-500 px-4 py-2.5 font-bold text-white transition-colors hover:bg-blue-600"
+                  className="rounded-xl bg-[#004aad] px-4 py-2.5 font-bold text-white transition-colors hover:bg-[#003882]"
                 >
                   이 주제로 작성 시작
                 </button>

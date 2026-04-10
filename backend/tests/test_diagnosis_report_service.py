@@ -7,6 +7,7 @@ import pytest
 
 from polio_api.schemas.diagnosis import DiagnosisResultPayload
 from polio_api.services import diagnosis_report_service as report_service
+from polio_api.services.prompt_registry import PromptAssetNotFoundError
 
 
 def _build_minimal_result_payload() -> DiagnosisResultPayload:
@@ -172,3 +173,34 @@ def test_generate_consultant_report_artifact_fallbacks_to_failed_status(monkeypa
     assert artifact.status == "FAILED"
     assert artifact.error_message
     assert db.added
+
+
+def test_generate_narratives_uses_deterministic_fallback_when_prompt_registry_missing(monkeypatch) -> None:
+    class _BrokenRegistry:
+        def compose_prompt(self, name: str) -> str:
+            raise PromptAssetNotFoundError(f"missing prompt: {name}")
+
+    def _unexpected_llm_client(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("LLM client should not be requested when prompt registry is unavailable")
+
+    monkeypatch.setattr(report_service, "get_prompt_registry", lambda: _BrokenRegistry())
+    monkeypatch.setattr(report_service, "get_llm_client", _unexpected_llm_client)
+
+    payload = asyncio.run(
+        report_service._generate_narratives(  # noqa: SLF001
+            project=SimpleNamespace(
+                id="project-registry-missing",
+                title="Prompt Registry Missing Project",
+                target_university="연세대학교",
+                target_major="경영학과",
+            ),
+            result=_build_minimal_result_payload(),
+            document_structure={"weak_sections": ["진로"], "section_density": {"세특": 0.5}},
+            uncertainty_notes=["학생부 일부 페이지의 판독 신뢰도가 낮습니다."],
+        )
+    )
+
+    assert payload.execution_metadata["fallback_used"] is True
+    assert payload.execution_metadata["fallback_reason"] == "prompt_registry_unavailable"
+    assert payload.narrative.executive_summary
+    assert payload.narrative.final_consultant_memo

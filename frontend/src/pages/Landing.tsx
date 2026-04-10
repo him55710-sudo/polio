@@ -94,41 +94,47 @@ export function Landing() {
   };
 
   return (
-    <div className="bg-slate-950 text-slate-100">
-      <section className="relative overflow-hidden border-b border-slate-800">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(37,99,235,0.4),transparent_40%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.3),transparent_36%),linear-gradient(180deg,#020617_0%,#0f172a_52%,#020617_100%)]" />
-        <div className="pointer-events-none absolute -left-28 top-24 h-72 w-72 rounded-full border border-blue-400/20" />
-        <div className="pointer-events-none absolute -right-24 bottom-10 h-64 w-64 rounded-full border border-cyan-300/20" />
+    <div className="bg-slate-50 text-slate-900">
+      <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(0,74,173,0.08),transparent_40%),radial-gradient(circle_at_82%_18%,rgba(59,130,246,0.1),transparent_36%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]" />
+        
+        {/* Subtle Decorative Elements */}
+        <div className="pointer-events-none absolute -left-28 top-24 h-72 w-72 rounded-full border border-[#004aad]/10" />
+        <div className="pointer-events-none absolute -right-24 bottom-10 h-64 w-64 rounded-full border border-[#004aad]/10" />
 
-        <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-14 sm:px-6 sm:pb-16 lg:px-8 lg:pt-20">
+        <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-24 lg:px-8 lg:pt-28">
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45 }}
-            className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]"
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="grid gap-16 lg:grid-cols-[1.1fr_0.9fr]"
           >
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-blue-300/40 bg-blue-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-blue-200">
-                <Sparkles size={14} />
+              <p className="inline-flex items-center gap-2.5 rounded-full border border-[#004aad]/10 bg-[#004aad]/5 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#004aad]">
+                <Sparkles size={14} className="animate-pulse" />
                 Evidence First Workflow
               </p>
-              <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
+              <h1 className="mt-8 max-w-3xl text-4xl font-black leading-[1.15] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
                 막막한 입시 준비를
-                <span className="block bg-gradient-to-r from-blue-300 via-cyan-300 to-sky-400 bg-clip-text text-transparent">근거 중심 실행 플랜</span>
+                <span className="mt-2 block bg-gradient-to-r from-[#004aad] via-[#1d72e8] to-[#0ea5e9] bg-clip-text text-transparent pb-1">근거 중심 실행 플랜</span>
                 으로 바꿔줍니다
               </h1>
-              <p className="mt-6 max-w-2xl text-base font-medium leading-8 text-slate-300 sm:text-lg">
-                목표 설정부터 학생부 분석, 진단 결과, 문서 초안까지. 한 화면에서 바로 이어지는 흐름으로
-                불안한 준비 과정을 실행 가능한 단계로 정리합니다.
+              <p className="mt-8 max-w-2xl text-lg font-medium leading-relaxed text-slate-600 sm:text-xl">
+                목표 설정부터 학생부 분석, 진단 결과, 문서 초안까지. <br className="hidden md:block" />
+                한 화면에서 바로 이어지는 흐름으로 불안한 준비 과정을 <br className="hidden md:block" />
+                확신 있는 발걸음으로 바꿉니다.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-10 flex flex-wrap gap-4">
                 <Link
                   to={startHref}
                   onClick={scrollToTop}
-                  className={cn(buttonClassName({ variant: 'primary', size: 'lg' }), 'rounded-2xl px-8 shadow-xl shadow-blue-900/40')}
+                  className={cn(
+                    buttonClassName({ variant: 'primary', size: 'lg' }), 
+                    'rounded-2xl px-10 py-7 text-lg shadow-2xl shadow-[#004aad]/20 bg-[#004aad] hover:bg-[#003882] transition-all hover:scale-[1.02] active:scale-[0.98]'
+                  )}
                 >
-                  <Rocket size={18} />
+                  <Rocket size={20} className="mr-1" />
                   지금 시작하기
                 </Link>
                 <Link
@@ -136,109 +142,121 @@ export function Landing() {
                   onClick={scrollToTop}
                   className={cn(
                     buttonClassName({ variant: 'ghost', size: 'lg' }),
-                    'rounded-2xl border border-white/20 px-8 text-white hover:bg-white/10',
+                    'rounded-2xl border border-slate-200 bg-white px-10 py-7 text-lg text-slate-700 hover:bg-slate-50 transition-all hover:border-slate-300',
                   )}
                 >
-                  문의하기
+                  무료 체험하기
                 </Link>
               </div>
 
-              <div className="mt-8 grid max-w-3xl gap-3 sm:grid-cols-3">
+              <div className="mt-12 grid max-w-3xl gap-4 sm:grid-cols-3">
                 {[
                   { label: '진단 흐름', value: '4 STEP', icon: Zap },
                   { label: '파일 업로드', value: 'PDF 지원', icon: FileSearch },
                   { label: '결과 연결', value: '문서 초안', icon: BookOpen },
                 ].map(item => (
-                  <div key={item.label} className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 backdrop-blur">
-                    <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                  <div key={item.label} className="group rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:border-[#004aad]/20 hover:shadow-md">
+                    <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400 group-hover:text-[#004aad]">
                       <item.icon size={14} />
                       {item.label}
                     </p>
-                    <p className="mt-2 text-xl font-black text-white">{item.value}</p>
+                    <p className="mt-2 text-xl font-extrabold text-slate-800">{item.value}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur sm:p-7">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">실행 프리뷰</p>
-              <h2 className="mt-3 text-2xl font-black tracking-tight text-white">오늘 해야 할 일만 선명하게</h2>
-              <p className="mt-2 text-sm font-medium leading-7 text-slate-300">
-                합격을 보장하는 과장 대신, 현재 기록에서 가능한 다음 액션을 우선순위로 제안합니다.
-              </p>
-
-              <div className="mt-6 space-y-3">
-                {[
-                  '학생부에서 근거 추출 완료',
-                  '강점/보완점 진단 결과 생성',
-                  '다음 행동 3개 자동 제안',
-                  '초안 작성 워크플로우 연결',
-                ].map((line, idx) => (
-                  <div key={line} className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-black text-white">
-                      {idx + 1}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-200">{line}</span>
+            <div className="relative">
+              <div className="absolute -inset-4 rounded-[40px] bg-gradient-to-br from-[#004aad]/10 via-transparent to-[#004aad]/5 blur-2xl" />
+              
+              <div className="relative h-full rounded-[32px] border border-slate-100 bg-white p-8 shadow-[0_32px_80px_rgba(0,74,173,0.08)] sm:p-10">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#004aad]">실행 프리뷰</p>
+                  <div className="flex gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full bg-slate-100" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-slate-100" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-slate-100" />
                   </div>
-                ))}
-              </div>
+                </div>
+                
+                <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-900">오늘 해야 할 일만 선명하게</h2>
+                <p className="mt-3 text-base font-medium leading-relaxed text-slate-500">
+                  합격을 보장하는 과장 대신, 현재 기록에서 가능한 다음 액션을 우선순위로 제안합니다.
+                </p>
 
-              <div className="mt-6 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
-                <p className="inline-flex items-center gap-2 text-sm font-black text-emerald-200">
-                  <ShieldCheck size={16} />
-                  안전 가이드
-                </p>
-                <p className="mt-2 text-sm font-medium leading-6 text-emerald-100">
-                  근거가 약한 영역은 "추정"으로 분리하고, 다음에 보완할 기록 포인트를 함께 안내합니다.
-                </p>
+                <div className="mt-8 space-y-4">
+                  {[
+                    { text: '학생부에서 근거 추출 완료', status: 'completed' },
+                    { text: '강점/보완점 진단 결과 생성', status: 'completed' },
+                    { text: '다음 행동 3개 자동 제안', status: 'active' },
+                    { text: '초안 작성 워크플로우 연결', status: 'pending' },
+                  ].map((item, idx) => (
+                    <div key={item.text} className={cn(
+                      "flex items-center gap-4 rounded-2xl border px-5 py-4 transition-all",
+                      item.status === 'completed' ? "border-slate-50 bg-slate-50/50 text-slate-400" : 
+                      item.status === 'active' ? "border-[#004aad]/20 bg-[#004aad]/5 text-[#004aad] shadow-sm" :
+                      "border-slate-50 bg-white text-slate-400 opacity-60"
+                    )}>
+                      {item.status === 'completed' ? <CheckCircle2 size={18} /> : 
+                       item.status === 'active' ? <Sparkles size={18} className="animate-pulse" /> : 
+                       <div className="h-[18px] w-[18px] rounded-full border-2 border-slate-200" />}
+                      <span className="text-sm font-bold">{item.text}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </motion.div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div className="grid gap-4 lg:grid-cols-4">
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-4">
           {workflowItems.map(item => (
-            <article key={item.title} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg shadow-slate-950/30 sm:p-6">
-              <p className="inline-flex items-center gap-2 text-sm font-black text-blue-300">
-                <item.icon size={15} />
+            <article key={item.title} className="group rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-[#004aad]/20 hover:shadow-xl">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#004aad]/5 text-[#004aad] transition-colors group-hover:bg-[#004aad] group-hover:text-white">
+                <item.icon size={24} />
+              </div>
+              <p className="mt-5 text-lg font-bold text-slate-900 leading-tight">
                 {item.title}
               </p>
-              <p className="mt-3 text-sm font-medium leading-6 text-slate-300 break-keep">{item.description}</p>
+              <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 break-keep">{item.description}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="border-y border-slate-800 bg-slate-900/70">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 sm:py-14 lg:grid-cols-2 lg:px-8">
+      <section className="border-y border-slate-100 bg-slate-50/50">
+        <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-2 lg:px-8">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">핵심 가치</p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight text-white">안전하게, 그러나 빠르게</h2>
-            <p className="mt-4 text-sm font-medium leading-7 text-slate-300 sm:text-base">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#004aad]">핵심 가치</p>
+            <h2 className="mt-4 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">안전하게, 그러나 빠르게</h2>
+            <p className="mt-6 text-lg font-medium leading-relaxed text-slate-600">
               Uni Foli는 그럴듯한 문장을 만드는 도구가 아니라, 실제 기록 기반으로 다음 행동을 좁혀주는 실행 도구입니다.
             </p>
-            <div className="mt-6 space-y-3">
+            <div className="mt-8 space-y-4">
               {trustPoints.map(point => (
-                <div key={point} className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
-                  <CheckCircle2 size={16} className="mt-1 text-emerald-400" />
-                  <p className="text-sm font-semibold leading-6 text-slate-200 break-keep">{point}</p>
+                <div key={point} className="flex items-start gap-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <CheckCircle2 size={14} />
+                  </div>
+                  <p className="text-sm font-bold leading-relaxed text-slate-700 break-keep">{point}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-3xl border border-blue-400/30 bg-gradient-to-br from-blue-500/15 via-slate-900 to-cyan-500/10 p-6 sm:p-8">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-200">Outcome</p>
-            <h3 className="mt-3 text-2xl font-black tracking-tight text-white">진단에서 작성까지 끊기지 않는 흐름</h3>
-            <ul className="mt-5 space-y-3">
+          <div className="rounded-[40px] border border-[#004aad]/10 bg-gradient-to-br from-[#004aad]/5 via-white to-[#004aad]/5 p-8 shadow-sm sm:p-10">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#004aad]">Outcome</p>
+            <h3 className="mt-4 text-2xl font-black tracking-tight text-slate-900">진단에서 작성까지 끊기지 않는 흐름</h3>
+            <ul className="mt-8 space-y-4">
               {[
                 '근거-문장 매핑으로 결과 신뢰도 확보',
                 '부족한 포인트를 즉시 보완 액션으로 전환',
                 '워크숍/에디터로 바로 이어지는 작성 동선',
               ].map(item => (
-                <li key={item} className="rounded-2xl border border-blue-300/20 bg-slate-950/60 px-4 py-3 text-sm font-semibold text-slate-100">
+                <li key={item} className="flex items-center gap-4 rounded-2xl border border-slate-50 bg-white px-5 py-4 text-sm font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50">
+                  <div className="h-2 w-2 rounded-full bg-[#004aad]" />
                   {item}
                 </li>
               ))}
@@ -247,54 +265,58 @@ export function Landing() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div className="rounded-[32px] border border-amber-300/30 bg-gradient-to-br from-amber-500/15 via-slate-900 to-orange-500/10 p-6 sm:p-8">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+        <div className="rounded-[40px] border border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-orange-50/20 p-8 shadow-sm sm:p-12 lg:p-16">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-amber-200">
+              <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600">
                 <Sparkles size={14} />
                 출시 기념 요금
               </p>
-              <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">요금제 안내</h2>
-              <p className="mt-2 text-sm font-medium text-slate-300 break-keep">정식 오픈 전 가격으로 먼저 시작할 수 있어요.</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">요금제 안내</h2>
+              <p className="mt-3 text-base font-medium text-slate-500 break-keep">정식 오픈 전 얼리버드 혜택으로 시작하세요.</p>
             </div>
-            <p className="text-xs font-bold text-amber-100">월 결제 기준 · VAT 포함</p>
+            <p className="text-sm font-bold text-slate-400">월 결제 기준 · VAT 포함</p>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="mt-10 grid gap-6 lg:grid-cols-3">
             {pricingPlans.map(plan => (
               <article
                 key={plan.name}
                 className={cn(
-                  'rounded-2xl border bg-slate-950/70 p-5 shadow-lg shadow-slate-950/40 sm:p-6',
-                  plan.featured ? 'border-blue-300/60' : 'border-slate-700',
+                  'relative flex flex-col rounded-[32px] border bg-white p-7 shadow-sm transition-all hover:shadow-xl sm:p-8',
+                  plan.featured ? 'border-[#004aad]/20 scale-[1.02] z-10 shadow-xl shadow-[#004aad]/5' : 'border-slate-100',
                 )}
               >
-                <div className="flex items-start justify-between gap-3">
+                {plan.featured && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-[#004aad] px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-xl">
+                    Most Popular
+                  </div>
+                )}
+                <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{plan.name}</p>
-                    <p className="mt-2 text-3xl font-black tracking-tight text-white">{plan.monthlyPrice}</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{plan.name}</p>
+                    <div className="mt-3 flex items-baseline gap-1">
+                      <span className="text-4xl font-black tracking-tight text-slate-900">{plan.monthlyPrice}</span>
+                    </div>
                     {plan.originalPrice ? (
-                      <p className="mt-1 text-xs font-bold text-rose-300 line-through">{plan.originalPrice}</p>
+                      <p className="mt-2 text-xs font-bold text-rose-500 line-through opacity-60">{plan.originalPrice}</p>
                     ) : (
-                      <p className="mt-1 text-xs font-bold text-emerald-300">항상 무료</p>
+                      <p className="mt-2 text-xs font-bold text-emerald-600">항상 무료</p>
                     )}
                   </div>
-                  <span
-                    className={cn(
-                      'rounded-full px-3 py-1 text-xs font-black',
-                      plan.featured ? 'bg-blue-500 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200',
-                    )}
-                  >
-                    {plan.badge}
-                  </span>
                 </div>
 
-                <p className="mt-4 text-sm font-medium leading-6 text-slate-300 break-keep">{plan.description}</p>
-                <ul className="mt-4 space-y-2">
+                <p className="mt-6 text-sm font-medium leading-relaxed text-slate-500 break-keep">{plan.description}</p>
+                
+                <div className="my-8 h-px bg-slate-100 w-full" />
+
+                <ul className="flex-1 space-y-4">
                   {plan.highlights.map(highlight => (
-                    <li key={highlight} className="flex items-start gap-2 text-sm font-semibold text-slate-200">
-                      <CheckCircle2 size={15} className="mt-0.5 text-cyan-300" />
+                    <li key={highlight} className="flex items-start gap-3 text-sm font-bold text-slate-700">
+                      <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#004aad]/5 text-[#004aad]">
+                        <CheckCircle2 size={12} />
+                      </div>
                       <span className="break-keep">{highlight}</span>
                     </li>
                   ))}
@@ -306,14 +328,15 @@ export function Landing() {
                   className={cn(
                     buttonClassName({
                       variant: plan.featured ? 'primary' : 'secondary',
-                      size: 'md',
+                      size: 'lg',
                       fullWidth: true,
                     }),
-                    'mt-6',
+                    'mt-10 rounded-2xl py-6 font-bold transition-all',
+                    plan.featured ? 'bg-[#004aad] hover:bg-[#003882] shadow-lg shadow-[#004aad]/20' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
                   )}
                 >
                   {plan.cta}
-                  <ArrowRight size={16} />
+                  <ArrowRight size={18} className="ml-1" />
                 </Link>
               </article>
             ))}
@@ -321,55 +344,59 @@ export function Landing() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div className="flex items-end justify-between gap-4">
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">FAQ</p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-white">자주 묻는 질문</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">FAQ</p>
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900">자주 묻는 질문</h2>
           </div>
           <Link
             to="/faq"
             onClick={scrollToTop}
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-100"
+            className="inline-flex items-center gap-2 rounded-[20px] border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
           >
             전체 보기
-            <ArrowRight size={14} />
+            <ArrowRight size={16} />
           </Link>
         </div>
-        <div className="mt-6">
+        <div className="mt-10">
           <FaqAccordion items={faqPreviewItems} initialOpenId={faqPreviewItems[0]?.id} compact />
         </div>
       </section>
 
-      <section className="border-t border-slate-800 bg-slate-950">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
-          <div className="rounded-2xl border border-slate-700 bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950 p-6 text-center sm:p-8 lg:p-12">
-            <p className="mx-auto text-xs font-black uppercase tracking-[0.16em] text-blue-300">Start Now</p>
-            <h2 className="mx-auto mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl break-keep">
-              오늘의 준비를 실행 가능한 계획으로 바꿔보세요
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-sm font-medium leading-7 text-slate-300 break-keep">
-              기록 업로드부터 진단, 문서 초안 연결까지 바로 시작할 수 있습니다.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <Link
-                to={startHref}
-                onClick={scrollToTop}
-                className={cn(buttonClassName({ variant: 'primary', size: 'lg' }), 'rounded-2xl px-8 shadow-xl shadow-blue-900/50 sm:px-10')}
-              >
-                <BookOpen size={18} />
-                준비 시작하기
-              </Link>
-              <Link
-                to="/contact?type=partnership"
-                onClick={scrollToTop}
-                className={cn(
-                  buttonClassName({ variant: 'ghost', size: 'lg' }),
-                  'rounded-2xl border border-white/20 px-8 text-white hover:bg-white/10 sm:px-10',
-                )}
-              >
-                제휴 문의
-              </Link>
+      <section className="border-t border-slate-100 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+          <div className="relative overflow-hidden rounded-[40px] bg-slate-900 px-8 py-16 text-center sm:px-16 sm:py-24">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(0,74,173,0.3),transparent_40%),radial-gradient(circle_at_80%_70%,rgba(59,130,246,0.2),transparent_40%)]" />
+            <div className="relative z-10">
+              <p className="mx-auto text-xs font-bold uppercase tracking-[0.2em] text-[#004aad]/60">Start Now</p>
+              <h2 className="mx-auto mt-6 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl break-keep">
+                오늘의 준비를 실행 가능한 <br className="hidden md:block" /> 계획으로 바꿔보세요
+              </h2>
+              <p className="mx-auto mt-6 max-w-2xl text-lg font-medium leading-relaxed text-slate-400 break-keep">
+                기록 업로드부터 진단, 문서 초안 연결까지 <br className="hidden md:block" /> 
+                한 번에 이어지는 몰입의 워크플로우를 경험하세요.
+              </p>
+              <div className="mt-12 flex flex-wrap justify-center gap-4">
+                <Link
+                  to={startHref}
+                  onClick={scrollToTop}
+                  className={cn(buttonClassName({ variant: 'primary', size: 'lg' }), 'rounded-[20px] px-10 py-7 text-lg shadow-2xl shadow-[#004aad]/40 bg-[#004aad] hover:bg-[#003882] sm:px-12')}
+                >
+                  <BookOpen size={20} className="mr-1" />
+                  준비 시작하기
+                </Link>
+                <Link
+                  to="/contact?type=partnership"
+                  onClick={scrollToTop}
+                  className={cn(
+                    buttonClassName({ variant: 'ghost', size: 'lg' }),
+                    'rounded-[20px] border border-white/10 bg-white/5 px-10 py-7 text-lg text-white hover:bg-white/10 sm:px-12',
+                  )}
+                >
+                  제휴 문의
+                </Link>
+              </div>
             </div>
           </div>
         </div>

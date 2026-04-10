@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import logging
 import os
 import re
 from typing import Annotated
@@ -9,6 +10,8 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from polio_shared.paths import find_project_root, resolve_runtime_path
+
+logger = logging.getLogger("polio.api.config")
 
 
 class Settings(BaseSettings):
@@ -19,6 +22,8 @@ class Settings(BaseSettings):
     app_debug: bool = False
     api_prefix: str = "/api/v1"
     api_docs_enabled: bool = False
+    api_root_redirect_enabled: bool = True
+    public_app_base_url: str = "https://uni-foli.vercel.app/app"
     database_url: str = "sqlite:///./storage/runtime/polio.db?check_same_thread=False&timeout=30"
     database_echo: bool = False
     database_auto_create_tables: bool = True
@@ -268,6 +273,8 @@ class Settings(BaseSettings):
                 raise ValueError("TOSS_PAYMENTS_FRONTEND_BASE_URL must be a valid http(s) URL.")
 
         if self.app_env != "local":
+            if self.api_root_redirect_enabled and not _is_valid_http_url(self.public_app_base_url):
+                raise ValueError("PUBLIC_APP_BASE_URL must be a valid http(s) URL when API_ROOT_REDIRECT_ENABLED=true.")
             if self.app_debug:
                 raise ValueError("APP_DEBUG must be false outside local development.")
             if self.auth_allow_local_dev_bypass:
@@ -321,8 +328,9 @@ class Settings(BaseSettings):
             if not _is_valid_http_url(self.ollama_base_url):
                 raise ValueError("OLLAMA_BASE_URL must be a valid http(s) URL when LLM_PROVIDER=ollama.")
             if self.app_env != "local" and _is_local_host_url(self.ollama_base_url):
-                raise ValueError(
-                    "OLLAMA_BASE_URL must point to a remote host outside local development."
+                logger.warning(
+                    "OLLAMA_BASE_URL points to localhost outside local development. "
+                    "Continuing startup so runtime can use deterministic fallback mode."
                 )
             if self.ollama_timeout_seconds <= 0:
                 raise ValueError("OLLAMA_TIMEOUT_SECONDS must be greater than zero.")

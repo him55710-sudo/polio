@@ -30,7 +30,11 @@ from polio_api.schemas.diagnosis import (
     DiagnosisResultPayload,
 )
 from polio_api.services.document_service import list_documents_for_project
-from polio_api.services.prompt_registry import get_prompt_registry
+from polio_api.services.prompt_registry import (
+    PromptAssetNotFoundError,
+    PromptRegistryError,
+    get_prompt_registry,
+)
 from polio_domain.enums import RenderFormat
 from polio_render.diagnosis_report_design_contract import get_diagnosis_report_design_contract
 from polio_render.diagnosis_report_pdf_renderer import render_consultant_diagnosis_pdf
@@ -863,14 +867,36 @@ async def _generate_narratives(
         },
     }
 
-    registry = get_prompt_registry()
-    system_instruction = registry.compose_prompt("diagnosis.consultant-report-orchestration")
-    prompt = (
-        f"{registry.compose_prompt('diagnosis.executive-summary-writer')}\n\n"
-        f"{registry.compose_prompt('diagnosis.roadmap-generator')}\n\n"
-        "[진단 컨텍스트 JSON]\n"
-        f"{json.dumps(context_payload, ensure_ascii=False, indent=2)}"
-    )
+    try:
+        registry = get_prompt_registry()
+        system_instruction = registry.compose_prompt("diagnosis.consultant-report-orchestration")
+        prompt = (
+            f"{registry.compose_prompt('diagnosis.executive-summary-writer')}\n\n"
+            f"{registry.compose_prompt('diagnosis.roadmap-generator')}\n\n"
+            "[진단 컨텍스트 JSON]\n"
+            f"{json.dumps(context_payload, ensure_ascii=False, indent=2)}"
+        )
+    except (PromptAssetNotFoundError, PromptRegistryError) as exc:
+        logger.warning(
+            "Prompt registry unavailable for consultant narratives. Deterministic fallback applied: %s",
+            exc,
+        )
+        fallback_execution["fallback_reason"] = "prompt_registry_unavailable"
+        return _NarrativeGenerationResult(
+            narrative=_ConsultantNarrativePayload(
+                executive_summary=fallback_summary,
+                current_record_status_brief=None,
+                strengths_brief=None,
+                weaknesses_risks_brief=None,
+                major_fit_brief=None,
+                section_diagnosis_brief=None,
+                topic_strategy_brief=None,
+                roadmap_bridge=None,
+                uncertainty_bridge=None,
+                final_consultant_memo=fallback_memo,
+            ),
+            execution_metadata=fallback_execution,
+        )
 
     try:
         llm = get_llm_client(profile="render")

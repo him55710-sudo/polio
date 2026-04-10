@@ -16,7 +16,7 @@ export function PageHeader({ eyebrow, title, description, actions, evidence, cla
       <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           {eyebrow ? (
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">{eyebrow}</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#004aad]">{eyebrow}</p>
           ) : null}
           <h1 className="mt-2 break-keep text-2xl font-black tracking-tight text-slate-900 sm:text-4xl">{title}</h1>
           {description ? <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500 sm:text-base sm:leading-7">{description}</p> : null}

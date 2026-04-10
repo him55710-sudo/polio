@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, load_only
 
 from polio_api.core.config import get_settings
 from polio_api.core.database import SessionLocal
@@ -404,7 +404,20 @@ def list_chunks_for_document(db: Session, document_id: str) -> list[DocumentChun
 def list_chunks_for_project(db: Session, project_id: str, *, limit: int | None = None) -> list[DocumentChunk]:
     stmt = (
         select(DocumentChunk)
-        .options(joinedload(DocumentChunk.document))
+        .options(
+            load_only(
+                DocumentChunk.id,
+                DocumentChunk.document_id,
+                DocumentChunk.project_id,
+                DocumentChunk.chunk_index,
+                DocumentChunk.page_number,
+                DocumentChunk.content_text,
+            ),
+            joinedload(DocumentChunk.document)
+            .load_only(ParsedDocument.id, ParsedDocument.upload_asset_id)
+            .joinedload(ParsedDocument.upload_asset)
+            .load_only(UploadAsset.id, UploadAsset.original_filename),
+        )
         .where(DocumentChunk.project_id == project_id)
         .order_by(DocumentChunk.chunk_index.asc())
     )

@@ -63,7 +63,7 @@ export function CatalogMultiSelectInput({
                 type="button"
                 onClick={() => onSetRepresentative(univ)}
                 className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${
-                  isRepresentative ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400 hover:bg-slate-300'
+                  isRepresentative ? 'bg-[#004aad] text-white' : 'bg-slate-200 text-slate-400 hover:bg-slate-300'
                 }`}
                 title={isRepresentative ? '대표 대학' : '대표 대학으로 설정'}
               >
@@ -149,7 +149,7 @@ export function CatalogMultiSelectInput({
                   setIsOpen(false);
                 }
               }}
-              className="group cursor-pointer rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+              className="group cursor-pointer rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500 hover:bg-[#004aad]/5 hover:text-[#004aad]"
             >
               {emptyText} <span className="font-bold">"{inputValue}"</span> 추가하기
             </div>

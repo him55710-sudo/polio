@@ -44,7 +44,7 @@ const FORMAT_OPTIONS: Array<{
     id: 'docx',
     label: 'DOCX (Word)',
     description: 'Microsoft Word로 추가 편집이 가능합니다.',
-    icon: <FileType2 size={22} className="text-blue-600" />,
+    icon: <FileType2 size={22} className="text-[#004aad]" />,
   },
   {
     id: 'html',
@@ -116,7 +116,7 @@ export function ExportModal({ isOpen, onClose, documentTitle, getJSON, getHTML }
               <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50">
-                    <Download size={18} className="text-blue-600" />
+                    <Download size={18} className="text-[#004aad]" />
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-slate-900">문서 내보내기</h2>
@@ -210,7 +210,7 @@ export function ExportModal({ isOpen, onClose, documentTitle, getJSON, getHTML }
                 <button
                   onClick={handleExport}
                   disabled={isExporting || !filename.trim()}
-                  className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-10 items-center gap-2 rounded-xl bg-[#004aad] px-5 text-sm font-bold text-white transition hover:bg-[#003d8f] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isExporting ? (
                     <>

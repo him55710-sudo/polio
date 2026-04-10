@@ -48,7 +48,7 @@ export function Faq() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
       <section className="rounded-[34px] border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-        <p className="text-sm font-black uppercase tracking-[0.22em] text-blue-600">FAQ</p>
+        <p className="text-sm font-black uppercase tracking-[0.22em] text-[#004aad]">FAQ</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-5xl break-keep">
           자주 묻는 질문을 한눈에 정리했어요.
         </h1>
@@ -64,7 +64,7 @@ export function Faq() {
               className={cn(
                 'rounded-full border px-4 py-2 text-sm font-bold transition-all',
                 activeKeyword === null
-                  ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                  ? 'border-[#004aad] bg-[#004aad]/5 text-[#004aad] shadow-sm'
                   : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
               )}
             >
@@ -77,7 +77,7 @@ export function Faq() {
                 className={cn(
                   'rounded-full border px-4 py-2 text-sm font-bold transition-all',
                   activeKeyword === chip.id
-                    ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                    ? 'border-[#004aad] bg-[#004aad]/5 text-[#004aad] shadow-sm'
                     : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
                 )}
               >
@@ -88,11 +88,11 @@ export function Faq() {
         </div>
 
         {activeKeyword ? (
-          <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-            <p className="text-sm font-black text-blue-800">관련 질문 사례</p>
+          <div className="mt-5 rounded-2xl border border-[#004aad]/10 bg-[#004aad]/5 p-4">
+            <p className="text-sm font-black text-[#004aad]">관련 질문 사례</p>
             <div className="mt-2 grid gap-2">
               {relatedQuestionExamples.map(question => (
-                <p key={question} className="text-sm font-medium text-blue-900 break-keep">
+                <p key={question} className="text-sm font-medium text-slate-700 break-keep">
                   - {question}
                 </p>
               ))}
@@ -108,7 +108,7 @@ export function Faq() {
               className={cn(
                 'rounded-full border px-4 py-2 text-sm font-bold transition-all',
                 activeCategory === null
-                  ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                  ? 'border-[#004aad] bg-[#004aad]/5 text-[#004aad] shadow-sm'
                   : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
               )}
             >
@@ -121,7 +121,7 @@ export function Faq() {
                 className={cn(
                   'rounded-full border px-4 py-2 text-sm font-bold transition-all',
                   activeCategory === category
-                    ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                    ? 'border-[#004aad] bg-[#004aad]/5 text-[#004aad] shadow-sm'
                     : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
                 )}
               >
@@ -146,10 +146,10 @@ export function Faq() {
         )}
       </section>
 
-      <section className="mt-10 rounded-[32px] border border-blue-100 bg-blue-50 p-6 sm:mt-12 sm:p-8">
+      <section className="mt-10 rounded-[32px] border border-[#004aad]/10 bg-[#004aad]/5 p-6 sm:mt-12 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
+            <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-[#004aad] shadow-sm">
               <CheckCircle2 size={18} />
             </div>
             <div>

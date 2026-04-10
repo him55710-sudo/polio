@@ -148,7 +148,7 @@ export function ProcessTimingDashboard({
                         ? 'bg-red-400'
                         : phase.status === 'done'
                           ? 'bg-emerald-500'
-                          : 'bg-blue-500',
+                          : 'bg-[#004aad]',
                     )}
                     style={{ width: `${phasePercent}%` }}
                   />

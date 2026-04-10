@@ -23,7 +23,7 @@ function StatusBadge({ status }: { status: ClaimSupportStatus }) {
 function ProvenanceStyle(type: ClaimProvenanceType) {
   switch (type) {
     case 'student_record':
-      return 'bg-blue-50 border-blue-200 text-blue-900 border-l-4 border-l-blue-500';
+      return 'bg-[#004aad]/5 border-[#004aad]/10 text-[#004aad] border-l-4 border-l-[#004aad]';
     case 'external_research':
       return 'bg-amber-50 border-amber-200 text-amber-900 border-l-4 border-l-amber-500';
     case 'ai_interpretation':

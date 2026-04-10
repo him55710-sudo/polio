@@ -6,11 +6,13 @@ import time
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from polio_api.core.config import get_settings
 from polio_api.core.llm import GeminiClient, OllamaClient, get_llm_client
+from polio_api.core.security import sanitize_public_error
 from polio_api.db.models.diagnosis_run import DiagnosisRun
 from polio_api.db.models.project import Project
 from polio_api.db.models.response_trace import ResponseTrace
@@ -42,9 +44,13 @@ MAX_COMBINED_TEXT_CHARS = 120_000
 MAX_METADATA_SUMMARY_CHARS = 1_600
 MAX_DIAGNOSIS_LLM_INPUT_CHARS = 30_000
 MAX_SEMANTIC_INPUT_CHARS = 15_000
-SEMANTIC_EXTRACTION_TIMEOUT_SECONDS = 12.0
+SEMANTIC_EXTRACTION_TIMEOUT_SECONDS = 60.0
 
 logger = logging.getLogger("polio.api.diagnosis_runtime")
+
+
+def _is_sqlite_disk_full_error(exc: Exception) -> bool:
+    return "database or disk is full" in str(exc).lower()
 
 
 def _extract_document_text(document: Any) -> str:
@@ -261,6 +267,42 @@ def _apply_structured_backbone(*, result, sheet: DiagnosisScoringSheet) -> None:
     result.risk_level = sheet.risk_level
 
 
+def _safe_db_rollback(db: Session) -> None:
+    rollback = getattr(db, "rollback", None)
+    if callable(rollback):
+        rollback()
+
+
+def _persist_run(db: Session, run: DiagnosisRun, *, commit: bool = True) -> None:
+    db.add(run)
+    if commit:
+        db.commit()
+
+
+def _update_run_status(
+    db: Session,
+    run: DiagnosisRun,
+    *,
+    status_message: str,
+    status: str | None = None,
+) -> None:
+    if status is not None:
+        run.status = status
+    run.status_message = status_message
+    _persist_run(db, run)
+
+
+def _diagnosis_runtime_failure_message(exc: Exception) -> str:
+    fallback = "Diagnosis job failed. Retry after checking the project evidence."
+    normalized = sanitize_public_error(str(exc), fallback=fallback)
+    lowered = normalized.lower()
+    if "database is locked" in lowered:
+        return "Diagnosis storage is temporarily busy. Retry after a short wait."
+    if "database or disk is full" in lowered:
+        return "Diagnosis storage is temporarily saturated on the server. Retry after a short wait."
+    return normalized
+
+
 async def run_diagnosis_run(
     db: Session,
     *,
@@ -269,177 +311,236 @@ async def run_diagnosis_run(
     owner_user_id: str,
     fallback_target_university: str | None,
     fallback_target_major: str | None,
+    interest_universities: list[str] | None = None,
 ) -> DiagnosisRun:
     run = get_run_with_relations(db, run_id)
     if run is None:
         raise ValueError(f"Diagnosis run not found: {run_id}")
 
-    resolved_owner_user_id = owner_user_id.strip() or None
-    if resolved_owner_user_id:
-        project = get_project(db, project_id, owner_user_id=resolved_owner_user_id)
-    else:
-        project = db.get(Project, project_id)
-    if project is None:
-        raise ValueError("Project not found.")
-    if not resolved_owner_user_id:
-        resolved_owner_user_id = project.owner_user_id
-    owner = db.get(User, resolved_owner_user_id) if resolved_owner_user_id else None
-    if owner is None:
-        raise ValueError("Project owner not found.")
+    try:
+        resolved_owner_user_id = owner_user_id.strip() or None
+        if resolved_owner_user_id:
+            project = get_project(db, project_id, owner_user_id=resolved_owner_user_id)
+        else:
+            project = db.get(Project, project_id)
+        if project is None:
+            raise ValueError("Project not found.")
+        if not resolved_owner_user_id:
+            resolved_owner_user_id = project.owner_user_id
+        owner = db.get(User, resolved_owner_user_id) if resolved_owner_user_id else None
+        if owner is None:
+            raise ValueError("Project owner not found.")
 
-    documents, full_text = combine_project_text(project_id, db)
-    chunks = list_chunks_for_project(db, project_id)
-    started_at = time.perf_counter()
-
-    policy_scan_text = build_policy_scan_text(documents) or full_text
-    diagnosis_input_text = full_text[:MAX_DIAGNOSIS_LLM_INPUT_CHARS]
-    semantic_input_text = full_text[:MAX_SEMANTIC_INPUT_CHARS]
-    llm_strategy = _diagnosis_llm_strategy()
-    should_use_llm = bool(llm_strategy.get("should_use_llm"))
-    model_name = str(llm_strategy.get("actual_llm_model") or "grounded-fallback")
-
-    run.status_message = "검색된 문서들의 정책 준수 여부를 검토하고 있습니다..."
-    db.commit()
-    
-    findings = detect_policy_flags(policy_scan_text)
-    flag_records = run.policy_flags
-    review_task = run.review_tasks[0] if run.review_tasks else None
-    if findings and not run.policy_flags:
-        flag_records = attach_policy_flags_to_run(db, run=run, project=project, user=owner, findings=findings)
-        review_task = ensure_review_task_for_flags(db, run=run, project=project, user=owner, findings=findings)
-
-    target_major = fallback_target_major or project.target_major
-    user_major = project.target_major or fallback_target_major or "General Studies"
-    evidence_keys = [
-        document.sha256 or document.id
-        for document in documents
-        if (document.sha256 or document.id)
-    ]
-    run.status_message = "생활기록부 데이터의 특징점(분량, 키워드 등)을 추출하고 있습니다..."
-    db.commit()
-    
-    features = extract_student_record_features(
-        documents=documents,
-        full_text=full_text,
-        target_major=target_major,
-        career_direction=owner.career,
-    )
-
-    semantic_data = None
-    if should_use_llm and semantic_input_text:
-        from polio_api.services.diagnosis_scoring_service import extract_semantic_diagnosis
-
-        run.status_message = "추출된 데이터를 기반으로 심화 의미 분석을 수행하고 있습니다..."
-        db.commit()
+        documents, full_text = combine_project_text(project_id, db)
         try:
-            semantic_data = await asyncio.wait_for(
-                extract_semantic_diagnosis(
-                    masked_text=semantic_input_text,
-                    target_major=target_major or "일반 전형",
+            chunks = list_chunks_for_project(db, project_id)
+        except OperationalError as exc:
+            if not _is_sqlite_disk_full_error(exc):
+                raise
+            _safe_db_rollback(db)
+            logger.warning(
+                "Skipping chunk hydration due sqlite disk pressure. run_id=%s project_id=%s",
+                run_id,
+                project_id,
+            )
+            chunks = []
+        started_at = time.perf_counter()
+
+        policy_scan_text = build_policy_scan_text(documents) or full_text
+        diagnosis_input_text = full_text[:MAX_DIAGNOSIS_LLM_INPUT_CHARS]
+        semantic_input_text = full_text[:MAX_SEMANTIC_INPUT_CHARS]
+        llm_strategy = _diagnosis_llm_strategy()
+        should_use_llm = bool(llm_strategy.get("should_use_llm"))
+        model_name = str(llm_strategy.get("actual_llm_model") or "grounded-fallback")
+
+        _update_run_status(
+            db,
+            run,
+            status="RUNNING",
+            status_message="업로드된 문서 근거를 검토하고 있습니다...",
+        )
+        findings = detect_policy_flags(policy_scan_text)
+        flag_records = run.policy_flags
+        review_task = run.review_tasks[0] if run.review_tasks else None
+        if findings and not run.policy_flags:
+            flag_records = attach_policy_flags_to_run(db, run=run, project=project, user=owner, findings=findings)
+            review_task = ensure_review_task_for_flags(db, run=run, project=project, user=owner, findings=findings)
+
+        target_major = fallback_target_major or project.target_major
+        user_major = project.target_major or fallback_target_major or "General Studies"
+        evidence_keys = [document.sha256 or document.id for document in documents if (document.sha256 or document.id)]
+
+        _update_run_status(
+            db,
+            run,
+            status_message="생활기록부 특징점을 추출하고 있습니다...",
+        )
+        features = extract_student_record_features(
+            documents=documents,
+            full_text=full_text,
+            target_major=target_major,
+            career_direction=owner.career,
+        )
+
+        semantic_data = None
+        if should_use_llm and semantic_input_text:
+            from polio_api.services.diagnosis_scoring_service import extract_semantic_diagnosis
+
+            _update_run_status(
+                db,
+                run,
+                status_message="추출된 근거를 바탕으로 심화 의미 분석을 수행하고 있습니다...",
+            )
+            try:
+                semantic_data = await asyncio.wait_for(
+                    extract_semantic_diagnosis(
+                        masked_text=semantic_input_text,
+                        target_major=target_major or "일반 전형",
+                        target_university=fallback_target_university,
+                        interest_universities=interest_universities,
+                    ),
+                    timeout=SEMANTIC_EXTRACTION_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Semantic extraction timed out for run %s after %.1fs",
+                    run.id,
+                    SEMANTIC_EXTRACTION_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Semantic extraction skipped for run %s: %s", run.id, exc)
+
+        scoring_sheet = build_diagnosis_scoring_sheet(
+            features=features,
+            project_title=project.title,
+            target_major=target_major,
+            target_university=fallback_target_university,
+            interest_universities=interest_universities,
+            semantic=semantic_data,
+        )
+
+        if should_use_llm:
+            _update_run_status(
+                db,
+                run,
+                status_message="상세 진단 내용을 생성하고 근거 데이터를 매핑하고 있습니다...",
+            )
+            try:
+                result = await evaluate_student_record(
+                    user_major=user_major,
+                    masked_text=diagnosis_input_text,
                     target_university=fallback_target_university,
-                ),
-                timeout=SEMANTIC_EXTRACTION_TIMEOUT_SECONDS,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Semantic extraction skipped for run %s: %s", run.id, exc)
-
-    run.status_message = "진단 리포트의 체계를 구성하고 점수를 산출하고 있습니다..."
-    db.commit()
-
-    scoring_sheet = build_diagnosis_scoring_sheet(
-        features=features,
-        project_title=project.title,
-        target_major=target_major,
-        target_university=fallback_target_university,
-        semantic=semantic_data,
-    )
-
-    if should_use_llm:
-        run.status_message = "상세 진단 내용을 생성하고 근거 데이터를 매핑하고 있습니다..."
-        db.commit()
-        try:
-            result = await evaluate_student_record(
-                user_major=user_major,
-                masked_text=diagnosis_input_text,
-                target_university=fallback_target_university,
-                target_major=target_major,
-                career_direction=owner.career,
-                project_title=project.title,
-                scope_key=f"project:{project.id}",
-                evidence_keys=evidence_keys,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("LLM diagnosis failed for run %s. Falling back: %s", run.id, exc)
-            model_name = "grounded-fallback"
+                    target_major=target_major,
+                    interest_universities=interest_universities,
+                    career_direction=owner.career,
+                    project_title=project.title,
+                    scope_key=f"project:{project.id}",
+                    evidence_keys=evidence_keys,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("LLM diagnosis failed for run %s. Falling back: %s", run.id, exc)
+                model_name = "grounded-fallback"
+                llm_strategy["actual_llm_provider"] = "deterministic_fallback"
+                llm_strategy["actual_llm_model"] = "grounded-fallback"
+                llm_strategy["fallback_used"] = True
+                llm_strategy["fallback_reason"] = f"generation_failed:{type(exc).__name__}"
+                result = build_grounded_diagnosis_result(
+                    project_title=project.title,
+                    target_major=target_major,
+                    target_university=fallback_target_university,
+                    interest_universities=interest_universities,
+                    career_direction=owner.career,
+                    document_count=len(documents),
+                    full_text=diagnosis_input_text or full_text,
+                )
+        else:
             llm_strategy["actual_llm_provider"] = "deterministic_fallback"
             llm_strategy["actual_llm_model"] = "grounded-fallback"
-            llm_strategy["fallback_used"] = True
-            llm_strategy["fallback_reason"] = f"generation_failed:{type(exc).__name__}"
             result = build_grounded_diagnosis_result(
                 project_title=project.title,
                 target_major=target_major,
                 target_university=fallback_target_university,
+                interest_universities=interest_universities,
                 career_direction=owner.career,
                 document_count=len(documents),
                 full_text=diagnosis_input_text or full_text,
             )
-    else:
-        llm_strategy["actual_llm_provider"] = "deterministic_fallback"
-        llm_strategy["actual_llm_model"] = "grounded-fallback"
-        result = build_grounded_diagnosis_result(
-            project_title=project.title,
-            target_major=target_major,
-            target_university=fallback_target_university,
-            career_direction=owner.career,
-            document_count=len(documents),
-            full_text=diagnosis_input_text or full_text,
 
+        _apply_structured_backbone(result=result, sheet=scoring_sheet)
+        processing_duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
+        result.requested_llm_provider = str(llm_strategy.get("requested_llm_provider") or "")
+        result.requested_llm_model = str(llm_strategy.get("requested_llm_model") or "")
+        result.actual_llm_provider = str(llm_strategy.get("actual_llm_provider") or "")
+        result.actual_llm_model = str(llm_strategy.get("actual_llm_model") or "")
+        result.llm_profile_used = str(llm_strategy.get("llm_profile_used") or "standard")
+        result.fallback_used = bool(llm_strategy.get("fallback_used"))
+        result.fallback_reason = str(llm_strategy.get("fallback_reason") or "").strip() or None
+        result.processing_duration_ms = processing_duration_ms
+
+        trace, citation_records = create_response_trace(
+            db,
+            run=run,
+            project=project,
+            user=owner,
+            input_text=full_text,
+            result=result,
+            chunks=chunks,
+            model_name=model_name,
         )
-    _apply_structured_backbone(result=result, sheet=scoring_sheet)
-    processing_duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
-    result.requested_llm_provider = str(llm_strategy.get("requested_llm_provider") or "")
-    result.requested_llm_model = str(llm_strategy.get("requested_llm_model") or "")
-    result.actual_llm_provider = str(llm_strategy.get("actual_llm_provider") or "")
-    result.actual_llm_model = str(llm_strategy.get("actual_llm_model") or "")
-    result.llm_profile_used = str(llm_strategy.get("llm_profile_used") or "standard")
-    result.fallback_used = bool(llm_strategy.get("fallback_used"))
-    result.fallback_reason = (
-        str(llm_strategy.get("fallback_reason") or "").strip() or None
-    )
-    result.processing_duration_ms = processing_duration_ms
+        result.citations = [DiagnosisCitation.model_validate(serialize_citation(item)) for item in citation_records]
+        result.policy_codes = [flag.code for flag in flag_records]
+        result.review_required = bool(review_task or run.review_tasks or findings)
+        result.response_trace_id = trace.id
 
-    trace, citation_records = create_response_trace(
-        db,
-        run=run,
-        project=project,
-        user=owner,
-        input_text=full_text,
-        result=result,
-        chunks=chunks,
-        model_name=model_name,
-    )
-    result.citations = [DiagnosisCitation.model_validate(serialize_citation(item)) for item in citation_records]
-    result.policy_codes = [flag.code for flag in flag_records]
-    result.review_required = bool(review_task or run.review_tasks or findings)
-    result.response_trace_id = trace.id
+        run.result_payload = result.model_dump_json()
+        run.status = "COMPLETED"
+        run.status_message = "진단이 완료되었습니다."
+        run.error_message = None
+        _persist_run(db, run)
+        db.refresh(run)
 
-    run.result_payload = result.model_dump_json()
-    run.status = "COMPLETED"
-    run.error_message = None
-    db.add(run)
+        try:
+            create_blueprint_from_signals(
+                db,
+                project=project,
+                diagnosis_run_id=run.id,
+                signals=build_blueprint_signals(
+                    headline=result.headline,
+                    strengths=result.strengths,
+                    gaps=result.gaps,
+                    risk_level=result.risk_level,
+                    recommended_focus=result.recommended_focus,
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            _safe_db_rollback(db)
+            logger.exception(
+                "Blueprint generation failed after diagnosis completion. run_id=%s project_id=%s",
+                run.id,
+                run.project_id,
+            )
+        return run
+    except Exception as exc:  # noqa: BLE001
+        _safe_db_rollback(db)
+        public_reason = _diagnosis_runtime_failure_message(exc)
+        logger.exception(
+            "Diagnosis run failed. run_id=%s project_id=%s reason=%s",
+            run_id,
+            project_id,
+            public_reason,
+        )
 
-    create_blueprint_from_signals(
-        db,
-        project=project,
-        diagnosis_run_id=run.id,
-        signals=build_blueprint_signals(
-            headline=result.headline,
-            strengths=result.strengths,
-            gaps=result.gaps,
-            risk_level=result.risk_level,
-            recommended_focus=result.recommended_focus,
-        ),
-    )
-    db.commit()
-    db.refresh(run)
-    return run
+        try:
+            latest_run = get_run_with_relations(db, run_id) or run
+            latest_run.status = "FAILED"
+            latest_run.status_message = "진단 실행이 실패했습니다."
+            latest_run.error_message = public_reason
+            _persist_run(db, latest_run)
+        except Exception:  # noqa: BLE001
+            _safe_db_rollback(db)
+            logger.exception(
+                "Failed to persist diagnosis failure state. run_id=%s project_id=%s",
+                run_id,
+                project_id,
+            )
+        raise

@@ -82,7 +82,7 @@ export function AsyncJobStatusCard({
           </div>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-          <div className={status === 'failed' ? 'h-full rounded-full bg-red-500' : 'h-full rounded-full bg-blue-600'} style={{ width: `${progressPct}%` }} />
+          <div className={status === 'failed' ? 'h-full rounded-full bg-red-500' : 'h-full rounded-full bg-[#004aad]'} style={{ width: `${progressPct}%` }} />
         </div>
       </div>
 

@@ -106,10 +106,10 @@ export function AppSidebar({
         {/* Logo Section */}
         <div className={cn("p-6 mb-2", !isOpen && "px-2 py-6")}>
           <div className="flex items-center gap-3">
-            <div className="flex bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-200">
+            <div className="flex bg-[#004aad] p-2 rounded-xl text-white shadow-lg shadow-[#004aad]/20">
               <Sparkles size={20} />
             </div>
-            {isOpen && <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Uni Foli</span>}
+            {isOpen && <span className="text-xl font-bold bg-gradient-to-r from-[#004aad] to-[#0055c7] bg-clip-text text-transparent">Uni Foli</span>}
           </div>
         </div>
 
@@ -151,7 +151,7 @@ export function AppSidebar({
                         className={cn(
                           'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200',
                           active 
-                            ? 'bg-blue-600 text-white shadow-md shadow-blue-100 font-semibold' 
+                            ? 'bg-[#004aad] text-white shadow-md shadow-[#004aad]/10 font-semibold' 
                             : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
                           !isOpen && 'justify-center px-0 h-10 w-10 mx-auto',
                         )}
