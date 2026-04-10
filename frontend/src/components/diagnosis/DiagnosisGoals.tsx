@@ -1,0 +1,266 @@
+import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Trash2, Plus, CheckCircle2, ArrowRight } from 'lucide-react';
+import { SectionCard, SecondaryButton, SurfaceCard, PrimaryButton, EmptyState } from '../primitives';
+import { UniversityLogo } from '../UniversityLogo';
+import { CatalogAutocompleteInput } from '../CatalogAutocompleteInput';
+import { searchUniversities, searchMajors } from '../../lib/educationCatalog';
+
+interface Goal {
+  id: string;
+  university: string;
+  major: string;
+}
+
+interface DiagnosisGoalsProps {
+  goalList: Goal[];
+  isEditingGoals: boolean;
+  setIsEditingGoals: (val: boolean) => void;
+  univInput: string;
+  setUnivInput: (val: string) => void;
+  currentUniv: string;
+  setCurrentUniv: (val: string) => void;
+  currentMajor: string;
+  setCurrentMajor: (val: string) => void;
+  handleAddGoal: () => void;
+  removeGoal: (id: string) => void;
+  saveGoals: () => void;
+  onContinue: () => void;
+  cancelEdit: () => void;
+}
+
+export const DiagnosisGoals: React.FC<DiagnosisGoalsProps> = ({
+  goalList,
+  isEditingGoals,
+  setIsEditingGoals,
+  univInput,
+  setUnivInput,
+  currentUniv,
+  setCurrentUniv,
+  currentMajor,
+  setCurrentMajor,
+  handleAddGoal,
+  removeGoal,
+  saveGoals,
+  onContinue,
+  cancelEdit,
+}) => {
+  const univPreviewName = (currentUniv || univInput).trim();
+
+  return (
+    <motion.div
+      key="goals"
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      className="space-y-6"
+    >
+      <SectionCard
+        title="목표 대학 및 학과 선택"
+        description="설정한 목표를 바탕으로 생기부를 분석합니다. 대학별 인재상에 맞춰 정밀하게 진단합니다."
+        className="border-none bg-white/60 shadow-xl backdrop-blur-2xl ring-1 ring-white/50"
+        actions={
+          !isEditingGoals ? (
+            <SecondaryButton data-testid="diagnosis-edit-goals" onClick={() => setIsEditingGoals(true)}>
+              설정 수정하기
+            </SecondaryButton>
+          ) : null
+        }
+      >
+        {isEditingGoals ? (
+          <div className="grid gap-8 lg:grid-cols-2">
+            <SurfaceCard tone="muted" className="border-none bg-slate-50 shadow-inner">
+              <div className="relative">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                  목표 대학교 검색
+                </label>
+                <input
+                  data-testid="diagnosis-university-search"
+                  type="text"
+                  value={univInput}
+                  onChange={(event) => setUnivInput(event.target.value)}
+                  placeholder="예: 서울대학교"
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 pr-12 text-sm font-semibold shadow-sm transition-all outline-none focus:border-[#004aad] focus:ring-4 focus:ring-[#004aad]/10"
+                />
+                {univPreviewName.length >= 2 ? (
+                  <UniversityLogo
+                    universityName={univPreviewName}
+                    className="pointer-events-none absolute right-3 top-[34px] h-8 w-8 rounded-lg bg-white object-contain p-1 shadow-sm"
+                    fallbackClassName="border border-slate-100"
+                  />
+                ) : null}
+                {univInput ? (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-60 overflow-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl backdrop-blur-xl">
+                    {searchUniversities(univInput, {
+                      excludeNames: goalList.map((goal) => goal.university),
+                    }).map((suggestion, index) => (
+                      <button
+                        key={suggestion.label}
+                        type="button"
+                        data-testid={`diagnosis-university-option-${index}`}
+                        onClick={() => {
+                          setCurrentUniv(suggestion.label);
+                          setUnivInput('');
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#004aad]/5"
+                      >
+                        <UniversityLogo
+                          universityName={suggestion.label}
+                          className="h-6 w-6 rounded-md bg-white object-contain p-0.5"
+                        />
+                        <span className="text-sm font-bold text-slate-700">{suggestion.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              {currentUniv ? (
+                <div className="mt-8 space-y-5 rounded-3xl border border-[#004aad]/10 bg-gradient-to-br from-[#004aad]/5 to-transparent p-6">
+                  <div className="flex items-center justify-between gap-2 border-b border-[#004aad]/10 pb-4">
+                    <div className="flex items-center gap-3">
+                      <UniversityLogo
+                        universityName={currentUniv}
+                        className="h-10 w-10 rounded-xl bg-white object-contain p-1 shadow-md"
+                      />
+                      <h4 className="text-lg font-black text-slate-900">{currentUniv}</h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentUniv('')}
+                      className="rounded-xl p-2 text-slate-400 hover:bg-white hover:text-red-500"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                  <CatalogAutocompleteInput
+                    label="희망 학과"
+                    value={currentMajor}
+                    onChange={setCurrentMajor}
+                    placeholder="학과명을 직접 입력하거나 검색하세요"
+                    suggestions={searchMajors(currentMajor, currentUniv, 15)}
+                    onSelect={(item) => setCurrentMajor(item.label)}
+                  />
+                  <PrimaryButton
+                    data-testid="diagnosis-add-goal"
+                    onClick={handleAddGoal}
+                    disabled={!currentUniv || currentMajor.length < 2 || goalList.length >= 6}
+                    fullWidth
+                    size="lg"
+                    className="shadow-lg shadow-blue-500/10"
+                  >
+                    <Plus size={18} />
+                    목표 리스트에 추가
+                  </PrimaryButton>
+                </div>
+              ) : null}
+            </SurfaceCard>
+
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                나의 선택 리스트 ({goalList.length}/6)
+              </p>
+              <AnimatePresence initial={false}>
+                {goalList.map((goal, index) => (
+                  <motion.div
+                    key={goal.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                  >
+                    <SurfaceCard
+                      padding="sm"
+                      className="flex items-center justify-between gap-4 border-slate-100 shadow-sm transition-all hover:border-[#004aad]/20"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <UniversityLogo
+                          universityName={goal.university}
+                          className="h-10 w-10 rounded-xl bg-slate-50 object-contain p-1.5"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
+                          <p className="truncate text-xs font-bold text-slate-500">{goal.major}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {index === 0 ? (
+                          <div className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-black text-[#004aad]">
+                            대표
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => removeGoal(goal.id)}
+                          className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </SurfaceCard>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </div>
+        ) : goalList.length ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {goalList.map((goal, index) => (
+              <div
+                key={goal.id}
+                className="group relative overflow-hidden rounded-3xl border border-slate-100 bg-slate-50/50 p-5 transition-all hover:bg-white hover:shadow-xl hover:shadow-blue-500/5"
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <div className={`h-10 w-10 rounded-2xl p-1.5 shadow-sm bg-white`}>
+                    <UniversityLogo universityName={goal.university} className="h-full w-full object-contain" />
+                  </div>
+                  {index === 0 ? (
+                    <span className="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-black text-white shadow-lg shadow-blue-500/20">
+                      대표 목표
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-400">목표 {index + 1}</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-black text-slate-900 group-hover:text-[#004aad] transition-colors">
+                    {goal.university}
+                  </p>
+                  <p className="mt-0.5 truncate text-sm font-bold text-slate-500">{goal.major}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="설정한 목표가 없습니다" description="나의 입시 전략을 구축할 목표 대학을 선택해 주세요." />
+        )}
+      </SectionCard>
+
+      {isEditingGoals ? (
+        <div className="flex items-center justify-end gap-3">
+          <SecondaryButton className="bg-white border-slate-200" onClick={cancelEdit}>
+            변경 취소
+          </SecondaryButton>
+          <PrimaryButton data-testid="diagnosis-save-goals" size="lg" onClick={saveGoals}>
+            설정 완료
+          </PrimaryButton>
+        </div>
+      ) : goalList.length > 0 ? (
+        <div className="flex flex-col items-center gap-6 pt-4">
+          <div className="inline-flex items-center gap-3 rounded-2xl bg-[#004aad]/5 px-6 py-3 text-sm font-bold text-[#004aad]">
+            <CheckCircle2 size={20} className="text-[#004aad]" />
+            <span>{goalList.length}개의 목표가 성공적으로 설정되었습니다.</span>
+          </div>
+          <PrimaryButton
+            data-testid="diagnosis-goals-continue"
+            onClick={onContinue}
+            size="lg"
+            className="h-14 px-10 text-lg shadow-2xl shadow-blue-500/20"
+          >
+            다음: 생기부 등록하기
+            <ArrowRight size={22} className="ml-2" />
+          </PrimaryButton>
+        </div>
+      ) : null}
+    </motion.div>
+  );
+};

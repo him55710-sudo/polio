@@ -29,8 +29,14 @@ import {
   SurfaceCard,
   WorkflowNotice,
 } from '../components/primitives';
+import { 
+  DocumentStatus, 
+  IN_PROGRESS_STATUSES, 
+  SUCCESS_STATUSES,
+  TERMINAL_STATUSES
+} from '../types/domain';
+import { useAsyncJob } from '../hooks/useAsyncJob';
 
-type DocumentStatus = 'uploaded' | 'masking' | 'parsing' | 'retrying' | 'parsed' | 'partial' | 'failed';
 type MaskingStatus = 'pending' | 'masking' | 'masked' | 'failed';
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 type RecordTimingPhaseKey = 'upload' | 'parse';
@@ -106,25 +112,8 @@ interface DocumentStatusResponse {
       evidence_gaps?: string[];
       page_insights?: Array<{ page_number?: number; summary?: string }>;
     };
-    student_record_canonical?: {
-      schema_version?: string;
-      document_confidence?: number;
-      timeline_signals?: Array<{ signal?: string }>;
-      grades_subjects?: Array<{ subject?: string }>;
-      subject_special_notes?: Array<{ label?: string }>;
-      extracurricular?: Array<{ label?: string }>;
-      career_signals?: Array<{ label?: string }>;
-      reading_activity?: Array<{ label?: string }>;
-      behavior_opinion?: Array<{ label?: string }>;
-      major_alignment_hints?: Array<{ hint?: string }>;
-      weak_or_missing_sections?: Array<{ section?: string; status?: string }>;
-      uncertainties?: Array<{ message?: string }>;
-    };
   };
 }
-
-const IN_PROGRESS_STATUSES = new Set<DocumentStatus>(['masking', 'parsing', 'retrying']);
-const SUCCESS_STATUSES = new Set<DocumentStatus>(['parsed', 'partial']);
 
 const UPLOAD_READY_CHECKLIST = [
   '파일 확장자가 .pdf인지 확인하기',
@@ -138,8 +127,6 @@ function createInitialTimingPhases(): RecordTimingPhaseMap {
     parse: { status: 'idle', startedAt: null, finishedAt: null, note: '문서 내용을 확인할 준비 중' },
   };
 }
-
-function formatBytes(value: number | null): string {
 
 function formatBytes(value: number | null): string {
   if (!value) return '0 B';
@@ -278,20 +265,16 @@ export function Record() {
     [targetMajor],
   );
 
-  useEffect(() => {
-    if (!document || !IN_PROGRESS_STATUSES.has(document.status)) return undefined;
-
-    const intervalId = window.setInterval(async () => {
-      try {
-        const fresh = await api.get<DocumentStatusResponse>(`/api/v1/documents/${document.id}`);
-        setDocument(fresh);
-      } catch (error) {
-        console.error('Failed to poll document status:', error);
-      }
-    }, 1500);
-
-    return () => window.clearInterval(intervalId);
-  }, [document]);
+  useAsyncJob<DocumentStatusResponse>({
+    url: document && IN_PROGRESS_STATUSES.has(document.status) ? `/api/v1/documents/${document.id}` : null,
+    isTerminal: (data) => TERMINAL_STATUSES.has(data.status),
+    onSuccess: (fresh) => {
+      setDocument(fresh);
+    },
+    onError: (error) => {
+      console.error('Failed to poll document status:', error);
+    },
+  });
 
   useEffect(() => {
     if (!document) return;

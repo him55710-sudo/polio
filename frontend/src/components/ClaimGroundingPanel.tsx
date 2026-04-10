@@ -52,7 +52,7 @@ function ClaimCard({ claim }: { claim: ClaimGrounding }) {
               {ProvenanceName(claim.provenance_type)}
             </span>
             <span className="text-[10px] font-black text-slate-400">
-               분석 신뢰도: {Math.round(claim.confidence * 100)}%
+              분석 신뢰도: {Math.round(claim.confidence * 100)}%
             </span>
           </div>
           <StatusBadge status={claim.support_status} />
@@ -126,7 +126,7 @@ export function ClaimGroundingPanel({ claims }: ClaimGroundingPanelProps) {
             <FileSearch size={22} />
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tight">AI 분석 근거지 공인</h3>
+            <h3 className="text-xl font-black text-slate-800 tracking-tight">AI 분석 근거 검증</h3>
             <p className="text-xs font-bold text-slate-400">AI가 추출한 주요 주장들과 생기부 내 원문 근거 일치 여부를 확인합니다.</p>
           </div>
         </div>
