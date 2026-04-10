@@ -31,7 +31,7 @@ from polio_render.template_registry import (
 from polio_shared.paths import to_stored_path
 from polio_shared.storage import get_storage_provider
 
-logger = logging.getLogger("polio.api.render_jobs")
+logger = logging.getLogger("unifoli.api.render_jobs")
 
 
 def _serialize_template(template: RenderTemplate) -> RenderTemplateInfo:

@@ -2,7 +2,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Pretendard", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Pretendard Variable", "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --color-primary: #004aad;
   --color-primary-light: #3079ed;
   --color-primary-dark: #003780;
@@ -13,6 +13,11 @@
   --color-danger: #e11d48;
   --color-safe: #10b981;
   --color-accent: #004aad;
+}
+
+html,
+#root {
+  font-family: var(--font-sans);
 }
 
 :root {

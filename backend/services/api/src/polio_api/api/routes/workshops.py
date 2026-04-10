@@ -68,7 +68,7 @@ from polio_api.services.workshop_render_service import SSEEvent, _parse_artifact
 from polio_domain.enums import QualityLevel, TurnType, WorkshopStatus
 
 router = APIRouter()
-logger = logging.getLogger("polio.api.workshops")
+logger = logging.getLogger("unifoli.api.workshops")
 _STREAM_TOKEN_TTL_SECONDS = 300
 
 

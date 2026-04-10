@@ -14,6 +14,7 @@ interface CatalogAutocompleteInputProps {
   autoFocus?: boolean;
   inputTestId?: string;
   suggestionTestIdPrefix?: string;
+  hideSecondaryForMajor?: boolean;
 }
 
 export function CatalogAutocompleteInput({
@@ -29,6 +30,7 @@ export function CatalogAutocompleteInput({
   autoFocus = false,
   inputTestId,
   suggestionTestIdPrefix,
+  hideSecondaryForMajor = true,
 }: CatalogAutocompleteInputProps) {
   const [isOpen, setIsOpen] = useState(false);
   const shouldShowPanel = isOpen && (suggestions.length > 0 || (value.trim().length > 0 && emptyText));
@@ -75,14 +77,14 @@ export function CatalogAutocompleteInput({
                   <span className="block truncate text-sm font-extrabold text-slate-800">
                     {suggestion.label}
                   </span>
-                  {suggestion.secondary ? (
+                  {suggestion.secondary && !(hideSecondaryForMajor && suggestion.type === 'major') ? (
                     <span className="mt-1 block truncate text-xs font-medium text-slate-500">
                       {suggestion.secondary}
                     </span>
                   ) : null}
                 </span>
                 <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  {suggestion.type}
+                  {suggestion.type === 'major' ? '학과' : '대학'}
                 </span>
               </button>
             ))

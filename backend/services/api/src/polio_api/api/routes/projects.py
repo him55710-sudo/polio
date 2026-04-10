@@ -38,7 +38,7 @@ except ImportError:
     from polio_domain.enums import RenderFormat
 
 router = APIRouter()
-logger = logging.getLogger("polio.api.projects")
+logger = logging.getLogger("unifoli.api.projects")
 
 
 class DiagnosisOverall(BaseModel):

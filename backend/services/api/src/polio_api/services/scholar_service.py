@@ -85,7 +85,7 @@ async def search_semantic_scholar_papers(query: str, limit: int = 5) -> ScholarS
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "polio-research-copilot/1.0",
+        "User-Agent": "unifoli-research-copilot/1.0",
     }
     if settings.semantic_scholar_api_key:
         headers["x-api-key"] = settings.semantic_scholar_api_key

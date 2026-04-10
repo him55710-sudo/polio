@@ -6,8 +6,8 @@ from polio_api.core.config import get_settings
 
 
 def utc_now() -> datetime:
-    """Returns a naive UTC datetime for SQLite compatibility."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    """Returns an aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):

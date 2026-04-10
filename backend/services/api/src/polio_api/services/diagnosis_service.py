@@ -760,9 +760,17 @@ def _recommended_default_action_from_directions(
     )
 
 
-def _diagnosis_summary(*, gap_axes: list[GapAxis], target_university: str | None, target_major: str | None, career_direction: str | None) -> DiagnosisSummary:
+def _diagnosis_summary(
+    *,
+    gap_axes: list[GapAxis],
+    target_university: str | None,
+    target_major: str | None,
+    interest_universities: list[str] | None = None,
+    career_direction: str | None,
+) -> DiagnosisSummary:
     weak_axes = [axis.label for axis in gap_axes if axis.severity != "strong"]
     strong_axes = [axis.label for axis in gap_axes if axis.severity == "strong"]
+    extra_targets = f" / Other interest universities: {', '.join(interest_universities)}" if interest_universities else ""
     return DiagnosisSummary(
         overview=(
             "The current record is strongest where "
@@ -773,6 +781,7 @@ def _diagnosis_summary(*, gap_axes: list[GapAxis], target_university: str | None
             f"Target university: {target_university or 'Not set'} / "
             f"Target major: {target_major or 'Not set'} / "
             f"Career direction: {career_direction or 'Not set'}"
+            f"{extra_targets}"
         ),
         reasoning=(
             "The guided directions below were ranked around "
@@ -1389,6 +1398,9 @@ def _build_diagnosis_prompt(
     return (
         f"[Target Context]\n{target_context}\n\n"
         f"[Primary Major Context]\n{user_major}\n\n"
+        "[Grounding Rules]\n"
+        "- Never invent strengths, activities, awards, or outcomes that are not explicitly supported by the masked student record.\n"
+        "- If the evidence is weak or missing, explicitly state the limitation and keep conclusions conservative.\n\n"
         f"{_guided_choice_contract_block()}\n\n"
         f"{_template_catalog_prompt_block()}\n\n"
         f"[Masked Student Record]\n{masked_text}"

@@ -76,7 +76,7 @@ async def search_live_web_papers(query: str, limit: int = 5) -> ScholarSearchRes
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "polio-live-web-search/1.0",
+        "User-Agent": "unifoli-live-web-search/1.0",
     }
 
     try:

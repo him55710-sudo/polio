@@ -179,8 +179,15 @@ export function resolveDiagnosisDeliveryState(
 }
 
 export function formatAsyncJobStatus(status: string | null | undefined): string {
-  if (!status) return 'Waiting';
-  return status
+  const normalized = (status || '').trim().toLowerCase();
+  if (!normalized) return '대기 중';
+  if (normalized === 'queued') return '분석 예약됨';
+  if (normalized === 'running') return '진단 진행 중';
+  if (normalized === 'retrying') return '다시 시도 중';
+  if (normalized === 'succeeded') return '완료됨';
+  if (normalized === 'failed') return '점검 필요';
+
+  return normalized
     .split('_')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

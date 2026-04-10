@@ -13,7 +13,7 @@ from polio_api.core.config import get_settings
 from polio_api.core.database import initialize_database
 from polio_shared.paths import ensure_app_directories
 
-logger = logging.getLogger("polio.api")
+logger = logging.getLogger("unifoli.api")
 
 
 @asynccontextmanager

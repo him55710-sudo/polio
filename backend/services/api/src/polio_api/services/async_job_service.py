@@ -30,7 +30,7 @@ from polio_api.services.render_job_service import process_render_job
 from polio_api.services.research_service import ingest_research_document
 from polio_domain.enums import AsyncJobStatus, AsyncJobType, RenderStatus
 
-logger = logging.getLogger("polio.api.async_jobs")
+logger = logging.getLogger("unifoli.api.async_jobs")
 _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
 _ASYNC_BRIDGE_THREAD: Thread | None = None
 _ASYNC_BRIDGE_READY = Event()
@@ -38,7 +38,7 @@ _ASYNC_BRIDGE_LOCK = Lock()
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc)
 
 
 def create_async_job(
@@ -100,7 +100,7 @@ def dispatch_job_if_enabled(job_id: str) -> None:
         target=run_async_job,
         args=(job_id,),
         daemon=True,
-        name=f"polio-async-job-{job_id}",
+        name=f"unifoli-async-job-{job_id}",
     )
     worker.start()
 
@@ -130,7 +130,7 @@ def _ensure_async_bridge_loop() -> asyncio.AbstractEventLoop:
         _ASYNC_BRIDGE_THREAD = Thread(
             target=_async_bridge_loop_runner,
             daemon=True,
-            name="polio-async-bridge-loop",
+            name="unifoli-async-bridge-loop",
         )
         _ASYNC_BRIDGE_THREAD.start()
 
@@ -259,7 +259,7 @@ def _claim_job(db: Session, job_id: str) -> AsyncJob | None:
         )
         .execution_options(synchronize_session=False)
     )
-    result = db.execute(stmt)
+    result = db.execute(stmt, execution_options={"synchronize_session": False})
     if result.rowcount == 0:
         db.rollback()
         return None
@@ -381,6 +381,7 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
             owner_user_id=str(payload.get("owner_user_id") or ""),
             fallback_target_university=_opt_str(payload.get("fallback_target_university")),
             fallback_target_major=_opt_str(payload.get("fallback_target_major")),
+            interest_universities=_normalize_interest_universities(payload.get("interest_universities")),
         )
         db.expire_all()
         completed_run = db.get(DiagnosisRun, str(completed_run_id or run_id))
@@ -767,6 +768,13 @@ def _opt_str(value: Any) -> str | None:
     return normalized or None
 
 
+def _normalize_interest_universities(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    normalized = [str(item).strip() for item in value if str(item).strip()]
+    return normalized or None
+
+
 def _format_internal_failure_reason(exc: Exception) -> str:
     detail = f"{type(exc).__name__}: {exc}"
     stack = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).strip()
@@ -782,6 +790,7 @@ async def _run_diagnosis_with_worker_session(
     owner_user_id: str,
     fallback_target_university: str | None,
     fallback_target_major: str | None,
+    interest_universities: list[str] | None,
 ) -> str:
     with SessionLocal() as worker_db:
         run = await run_diagnosis_run(
@@ -791,6 +800,7 @@ async def _run_diagnosis_with_worker_session(
             owner_user_id=owner_user_id,
             fallback_target_university=fallback_target_university,
             fallback_target_major=fallback_target_major,
+            interest_universities=interest_universities,
         )
         return run.id
 

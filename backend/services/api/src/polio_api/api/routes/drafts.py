@@ -24,7 +24,7 @@ from polio_api.services.workshop_document_grounding_service import build_worksho
 
 router = APIRouter()
 chat_router = APIRouter()
-logger = logging.getLogger("polio.api.drafts")
+logger = logging.getLogger("unifoli.api.drafts")
 
 
 class ReferenceMaterial(BaseModel):

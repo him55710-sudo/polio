@@ -16,7 +16,9 @@ import { ProcessTimingDashboard, type TimingPhaseStatus } from '../components/Pr
 import { api, shouldUseSynchronousApiJobs } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
 import { searchMajors } from '../lib/educationCatalog';
+import { buildRankedGoals } from '../lib/rankedGoals';
 import { CatalogAutocompleteInput } from '../components/CatalogAutocompleteInput';
+import { useAuthStore } from '../store/authStore';
 import {
   PageHeader,
   PrimaryButton,
@@ -132,8 +134,8 @@ const UPLOAD_READY_CHECKLIST = [
 
 function createInitialTimingPhases(): RecordTimingPhaseMap {
   return {
-    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '파일 업로드' },
-    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '파싱/마스킹' },
+    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '파일 업로드 준비 중' },
+    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '문서 내용을 확인할 준비 중' },
   };
 }
 
@@ -149,17 +151,17 @@ function formatStatusLabel(status: DocumentStatus): string {
     case 'uploaded':
       return '업로드 완료';
     case 'masking':
-      return '개인정보 보호 처리 중';
+      return '개인정보 보안 처리 중';
     case 'parsing':
-      return '내용 분석 중';
+      return '문서 내용 분석 중';
     case 'retrying':
-      return '다시 시도 중';
+      return '분석 다시 시도 중';
     case 'parsed':
       return '분석 완료';
     case 'partial':
-      return '부분 완료';
+      return '분석 일부 완료';
     case 'failed':
-      return '실패';
+      return '확인 필요';
     default:
       return status;
   }
@@ -185,27 +187,19 @@ function getStepState(
 
 export function Record() {
   const navigate = useNavigate();
-  const { user, isGuestSession } = useAuth();
+  const { user: authUser, isGuestSession } = useAuth();
+  const { user: profileUser } = useAuthStore();
 
   const [targetMajor, setTargetMajor] = useState('');
   
-  const goalList = useMemo(() => {
-    if (!user?.interest_universities) return [];
-    try {
-      const parsed = typeof user.interest_universities === 'string' 
-        ? JSON.parse(user.interest_universities) 
-        : user.interest_universities;
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }, [user]);
+  const goalList = useMemo(() => buildRankedGoals(profileUser, 6), [profileUser]);
 
   useEffect(() => {
-    if (goalList.length > 0 && !targetMajor) {
-      setTargetMajor(goalList[0].major);
+    const preferredMajor = profileUser?.target_major?.trim() || goalList[0]?.major || '';
+    if (preferredMajor && !targetMajor) {
+      setTargetMajor(preferredMajor);
     }
-  }, [goalList, targetMajor]);
+  }, [goalList, profileUser?.target_major, targetMajor]);
   const [document, setDocument] = useState<DocumentStatusResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isStartingParse, setIsStartingParse] = useState(false);
@@ -302,12 +296,12 @@ export function Record() {
       finishTimingPhase('parse', 'done', parseNote);
       toast.success('업로드와 분석이 모두 완료됐어요.');
     } else if (document.status === 'partial') {
-      const partialNote = document.page_count ? `부분 완료 (${document.page_count}페이지)` : '부분 완료';
+      const partialNote = document.page_count ? `분석 일부 완료 (${document.page_count}페이지)` : '분석 일부 완료';
       finishTimingPhase('parse', 'done', partialNote);
       toast('일부 경고가 있지만 분석은 완료됐어요. 내용을 확인해 주세요.', { icon: '!' });
     } else if (document.status === 'failed') {
       const failureMessage =
-        document.latest_async_job_error || document.last_error || '분석에 실패했어요. 파일 상태를 확인한 뒤 다시 시도해 주세요.';
+        document.latest_async_job_error || document.last_error || '문서 분석에 실패했어요. 파일 상태를 확인한 뒤 다시 시도해 주세요.';
       finishTimingPhase('parse', 'failed', failureMessage);
       toast.error(
         failureMessage,
@@ -318,7 +312,7 @@ export function Record() {
   }, [document, finishTimingPhase]);
 
   const startParse = useCallback(async (documentId: string, source: 'initial' | 'retry' = 'retry') => {
-    beginTimingPhase('parse', source === 'initial' ? '문서 분석 진행 중' : '분석 재시도 진행 중');
+    beginTimingPhase('parse', source === 'initial' ? '문서 내용을 꼼꼼하게 읽어보는 중' : '문서를 다시 확인하는 중');
     setIsStartingParse(true);
     try {
       const parseUrl = useSynchronousApiJobs
@@ -353,7 +347,7 @@ export function Record() {
         return;
       }
 
-      if (isGuestSession && !user) {
+      if (isGuestSession && !authUser) {
         toast.error('현재 게스트 체험 상태에서는 업로드가 제한돼요. 로그인 후 다시 시도해 주세요.');
         navigate('/auth');
         return;
@@ -369,7 +363,12 @@ export function Record() {
         formData.append('file', file);
         if (targetMajor) {
           formData.append('target_major', targetMajor);
-          const matchedGoal = goalList.find((g: any) => g.major === targetMajor) || goalList[0];
+          const matchedGoal =
+            goalList.find((g) => g.major === targetMajor)
+            || goalList[0]
+            || (profileUser?.target_university
+              ? { university: profileUser.target_university, major: profileUser.target_major || '' }
+              : null);
           if (matchedGoal) {
             formData.append('target_university', matchedGoal.university);
             formData.append('title', `${matchedGoal.university} ${targetMajor} 기록 분석`);
@@ -402,7 +401,10 @@ export function Record() {
       resetTimingPhases,
       startParse,
       targetMajor,
-      user,
+      goalList,
+      profileUser?.target_major,
+      profileUser?.target_university,
+      authUser,
     ],
   );
 
@@ -443,18 +445,18 @@ export function Record() {
   const pdfFallbackReason = pdfAnalysis?.failure_reason;
   const stepItems = [
     { id: 'upload', label: '업로드', description: '파일 등록', state: getStepState(document, 'upload') },
-    { id: 'masking', label: '개인정보 보호', description: '이름/연락처 숨김 처리', state: getStepState(document, 'masking') },
-    { id: 'parsing', label: '내용 분석', description: '텍스트 구조 분석', state: getStepState(document, 'parsing') },
+    { id: 'masking', label: '보안 처리', description: '개인정보 안전 보호', state: getStepState(document, 'masking') },
+    { id: 'parsing', label: '문서 읽기', description: '문서 내용을 꼼꼼히 확인', state: getStepState(document, 'parsing') },
     {
       id: 'done',
-      label: '작성 화면 이동',
-      description: '다음 단계 진입 가능',
+      label: '다음 단계 이동',
+      description: '진단 또는 워크숍으로 이동',
       state: canContinue ? 'done' : document?.status === 'failed' ? 'error' : 'pending' as 'done' | 'active' | 'pending' | 'error',
     },
   ] as Array<{ id: string; label: string; description: string; state: 'done' | 'active' | 'pending' | 'error' }>;
   const timingPhaseItems = [
     { id: 'upload', label: '업로드', expectedSeconds: 20, ...timingPhases.upload },
-    { id: 'parse', label: '파싱', expectedSeconds: 90, ...timingPhases.parse },
+    { id: 'parse', label: '문서 읽기', expectedSeconds: 90, ...timingPhases.parse },
   ];
   const shouldShowTimingDashboard = timingPhaseItems.some((phase) => phase.startedAt !== null);
   const diagnosisPath = document?.project_id
@@ -587,7 +589,7 @@ export function Record() {
               <p className="mt-2 text-sm font-bold text-slate-700">{document?.page_count ?? 0}p</p>
             </SurfaceCard>
             <SurfaceCard tone="muted" padding="sm">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">분석 조각</p>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">읽은 문단 수</p>
               <p className="mt-2 text-sm font-bold text-slate-700">{document?.parse_metadata?.chunk_count ?? 0}개</p>
             </SurfaceCard>
           </div>
@@ -597,30 +599,33 @@ export function Record() {
               <TimerReset size={16} />
               분석 다시 시도
             </SecondaryButton>
-            <SecondaryButton onClick={() => navigate(diagnosisPath)} disabled={!canContinue}>
-              진단 결과 보기
+            <PrimaryButton data-testid="record-go-diagnosis" onClick={() => navigate(diagnosisPath)} disabled={!canContinue}>
+              바로 진단하기
               <FileSearch size={16} />
-            </SecondaryButton>
-            <PrimaryButton
+            </PrimaryButton>
+            <SecondaryButton
               onClick={() => navigate(`/app/workshop/${document?.project_id}?major=${encodeURIComponent(targetMajor.trim())}`)}
               disabled={!canContinue}
             >
               작성 화면으로 이동
               <ArrowRight size={16} />
-            </PrimaryButton>
+            </SecondaryButton>
           </div>
         </SectionCard>
 
         <div className="space-y-6">
           <SectionCard title="개인정보 보호 요약" description="개인정보 숨김 처리 결과를 확인해요." eyebrow="보안" collapsible defaultCollapsed>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <SurfaceCard tone="muted" padding="sm">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">처리 방식</p>
                 <p className="mt-2 text-sm font-bold text-slate-700 break-keep">{maskingSummary?.methods?.join(', ') || '대기 중'}</p>
               </SurfaceCard>
               <SurfaceCard tone="muted" padding="sm">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">치환 개수</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">보안 처리 건수</p>
                 <p className="mt-2 text-sm font-bold text-slate-700">{maskingSummary?.replacement_count ?? 0}건</p>
               </SurfaceCard>
               <SurfaceCard tone="muted" padding="sm">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">표 보존</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">문서 구조 인식</p>
                 <p className="mt-2 text-sm font-bold text-slate-700">{document?.parse_metadata?.table_count ?? 0}개</p>
               </SurfaceCard>
             </div>

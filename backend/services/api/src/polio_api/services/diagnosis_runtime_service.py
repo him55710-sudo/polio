@@ -46,7 +46,7 @@ MAX_DIAGNOSIS_LLM_INPUT_CHARS = 30_000
 MAX_SEMANTIC_INPUT_CHARS = 15_000
 SEMANTIC_EXTRACTION_TIMEOUT_SECONDS = 60.0
 
-logger = logging.getLogger("polio.api.diagnosis_runtime")
+logger = logging.getLogger("unifoli.api.diagnosis_runtime")
 
 
 def _is_sqlite_disk_full_error(exc: Exception) -> bool:
@@ -249,6 +249,13 @@ def _merge_unique(items: list[str], extra: list[str], *, limit: int) -> list[str
     return merged
 
 
+def _normalize_interest_universities(values: list[str] | None) -> list[str] | None:
+    if not values:
+        return None
+    normalized = [str(item).strip() for item in values if str(item).strip()]
+    return normalized or None
+
+
 def _apply_structured_backbone(*, result, sheet: DiagnosisScoringSheet) -> None:  # noqa: ANN001
     result.overview = sheet.overview
     result.document_quality = sheet.document_quality
@@ -330,6 +337,9 @@ async def run_diagnosis_run(
         owner = db.get(User, resolved_owner_user_id) if resolved_owner_user_id else None
         if owner is None:
             raise ValueError("Project owner not found.")
+        resolved_interest_universities = _normalize_interest_universities(
+            interest_universities if interest_universities is not None else owner.interest_universities
+        )
 
         documents, full_text = combine_project_text(project_id, db)
         try:
@@ -397,7 +407,7 @@ async def run_diagnosis_run(
                         masked_text=semantic_input_text,
                         target_major=target_major or "일반 전형",
                         target_university=fallback_target_university,
-                        interest_universities=interest_universities,
+                        interest_universities=resolved_interest_universities,
                     ),
                     timeout=SEMANTIC_EXTRACTION_TIMEOUT_SECONDS,
                 )
@@ -415,7 +425,7 @@ async def run_diagnosis_run(
             project_title=project.title,
             target_major=target_major,
             target_university=fallback_target_university,
-            interest_universities=interest_universities,
+            interest_universities=resolved_interest_universities,
             semantic=semantic_data,
         )
 
@@ -431,7 +441,7 @@ async def run_diagnosis_run(
                     masked_text=diagnosis_input_text,
                     target_university=fallback_target_university,
                     target_major=target_major,
-                    interest_universities=interest_universities,
+                    interest_universities=resolved_interest_universities,
                     career_direction=owner.career,
                     project_title=project.title,
                     scope_key=f"project:{project.id}",
@@ -448,7 +458,7 @@ async def run_diagnosis_run(
                     project_title=project.title,
                     target_major=target_major,
                     target_university=fallback_target_university,
-                    interest_universities=interest_universities,
+                    interest_universities=resolved_interest_universities,
                     career_direction=owner.career,
                     document_count=len(documents),
                     full_text=diagnosis_input_text or full_text,
@@ -460,7 +470,7 @@ async def run_diagnosis_run(
                 project_title=project.title,
                 target_major=target_major,
                 target_university=fallback_target_university,
-                interest_universities=interest_universities,
+                interest_universities=resolved_interest_universities,
                 career_direction=owner.career,
                 document_count=len(documents),
                 full_text=diagnosis_input_text or full_text,

@@ -17,7 +17,7 @@ from polio_api.core.config import get_settings
 T = TypeVar("T", bound=BaseModel)
 LLMProfile = Literal["fast", "standard", "render"]
 
-logger = logging.getLogger("polio.llm")
+logger = logging.getLogger("unifoli.llm")
 _OLLAMA_LOG_COOLDOWN_SECONDS = 120.0
 _last_ollama_failure_logs: dict[str, float] = {}
 

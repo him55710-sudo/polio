@@ -11,7 +11,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from polio_shared.paths import find_project_root, resolve_runtime_path
 
-logger = logging.getLogger("polio.api.config")
+logger = logging.getLogger("unifoli.api.config")
 
 
 class Settings(BaseSettings):

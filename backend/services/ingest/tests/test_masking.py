@@ -8,7 +8,7 @@ def test_hard_redactions():
     
     assert "[학생명]" in result["redacted_text"]
     assert "[주민등록번호]" in result["redacted_text"]
-    assert "[전화번호]" in result["redacted_text"]
+    assert "[PHONE_MASKED]" in result["redacted_text"]
     assert "김철수" not in result["redacted_text"]
     assert "060101-3123456" not in result["redacted_text"]
 

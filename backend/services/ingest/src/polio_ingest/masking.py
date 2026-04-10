@@ -41,6 +41,7 @@ class StudentLifeRecordRedactor:
             "rrn": re.compile(r"\b\d{6}-?\d{7}\b"),  # Resident Registration Number
             "rrn_masked": re.compile(r"\b\d{6}-\*{6,7}\b"),
             "phone": re.compile(r"\b0\d{1,2}-\d{3,4}-\d{4}\b"),
+            "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
             "doc_num": re.compile(r"(?:문서확인번호|발급번호|졸업대장번호)\s*[:：]?\s*([A-Za-z0-9-]+)"),
             "address": re.compile(r"(?:주소|거주지)\s*[:：]?\s*([^\n\r,]+(?:길|로|동|읍|면|리|구|시)\s*\d+[^(\n\r]+)"),
             "student_label": re.compile(r"(?:성명|이름)\s*[:：]?\s*([\uAC00-\uD7A3]{2,4})"),
@@ -58,7 +59,10 @@ class StudentLifeRecordRedactor:
 
         # 3. Repeated Layout Patterns (Headers/Footers)
         # Typically: [School Name] [YYYY.MM.DD] [Page Num] [Student ID] [Student Name]
-        self.FOOTER_PATTERN = re.compile(r"^(?:[\uAC00-\uD7A3]+\s*고등학교.*|\d{4}\.\d{2}\.\d{2}.*|.*\d+\s*/\s*\d+\s*페이지.*)$", re.MULTILINE)
+        self.FOOTER_PATTERN = re.compile(
+            r"^(?:[\uAC00-\uD7A3]+\s*고등학교\s+\d{4}\.\d{2}\.\d{2}\s+\d+\s*/\s*\d+\s*페이지.*|.*\d+\s*/\s*\d+\s*페이지.*)$",
+            re.MULTILINE,
+        )
 
     def redact(self, text: str, layout_blocks: Optional[List[Dict[str, Any]]] = None) -> RedactionResponse:
         """
@@ -121,8 +125,12 @@ class StudentLifeRecordRedactor:
         if count: report["hard_redactions"].append(f"Masked SSN Pattern ({count})")
 
         # Phone Number
-        res, count = self.HARD_PATTERNS["phone"].subn("[전화번호]", res)
+        res, count = self.HARD_PATTERNS["phone"].subn("[PHONE_MASKED]", res)
         if count: report["hard_redactions"].append(f"Phone Number ({count})")
+
+        # Email Address
+        res, count = self.HARD_PATTERNS["email"].subn("[EMAIL_MASKED]", res)
+        if count: report["hard_redactions"].append(f"Email Address ({count})")
 
         # Document IDs
         res, count = self.HARD_PATTERNS["doc_num"].subn("[문서 식별 번호]", res)
@@ -172,7 +180,7 @@ class StudentLifeRecordRedactor:
             # 1st: March - August -> YYYY년 1학기
             # 2nd: September - February (academic year is y-1 if Jan/Feb) -> YYYY학년도 2학기
             if self.config.academic_year_start_month <= m_int <= self.config.first_semester_end_month:
-                return f"{y_int}년 1학기"
+                return f"{y_int}학년도 1학기"
             else:
                 target_year = y_int if m_int >= self.config.academic_year_start_month else y_int - 1
                 return f"{target_year}학년도 2학기"
@@ -236,12 +244,20 @@ class MaskingPipeline:
     def mask_text(self, text: str) -> MaskingResult:
         res = self.redactor.redact(text)
         report = res["redaction_report"]
-        
-        # Map report to pattern hits for compatibility
-        pattern_hits = {item: 1 for item in report["hard_redactions"] + report["generalizations"]}
-        
+
+        # Preserve rough counts from labels like "Phone Number (2)".
+        pattern_hits: Dict[str, int] = {}
+        total_replacements = 0
+        for item in report["hard_redactions"] + report["generalizations"]:
+            match = re.search(r"\((\d+)\)$", item)
+            count = int(match.group(1)) if match else 1
+            key = re.sub(r"\s*\(\d+\)$", "", item).strip() or item
+            pattern_hits[key] = pattern_hits.get(key, 0) + count
+            total_replacements += count
+
         return MaskingResult(
             text=res["redacted_text"],
+            replacements=total_replacements,
             pattern_hits=pattern_hits,
             warnings=res["review_flags"]
         )

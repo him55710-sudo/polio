@@ -17,7 +17,7 @@ from polio_api.schemas.inquiry import InquiryCreate
 from polio_api.services.prompt_registry import PromptRegistryError, get_prompt_registry
 
 TRIAGE_PROMPT_NAME = "inquiry-support.contact-triage"
-_INQUIRY_LOGGER = logging.getLogger("polio.api.inquiries")
+_INQUIRY_LOGGER = logging.getLogger("unifoli.api.inquiries")
 _SMTP_TIMEOUT_SECONDS = 20.0
 _SMTP_DISABLED_REASON = "SMTP_ENABLED=false"
 _GENERIC_INQUIRY_DELIVERY_FAILURE = "Inquiry email delivery failed. Retry after checking SMTP configuration."

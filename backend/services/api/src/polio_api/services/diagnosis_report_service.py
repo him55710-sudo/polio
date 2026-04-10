@@ -42,7 +42,7 @@ from polio_render.template_registry import get_template
 from polio_shared.storage import get_storage_provider, get_storage_provider_name
 
 
-logger = logging.getLogger("polio.api.diagnosis_report")
+logger = logging.getLogger("unifoli.api.diagnosis_report")
 
 _DEFAULT_TEMPLATE_BY_MODE: dict[str, str] = {
     "compact": "consultant_diagnosis_compact",

@@ -58,7 +58,7 @@ from polio_domain.enums import AsyncJobType
 from polio_shared.paths import get_export_root, resolve_project_path
 
 router = APIRouter()
-logger = logging.getLogger("polio.api.diagnosis")
+logger = logging.getLogger("unifoli.api.diagnosis")
 
 
 def _normalize_report_mode(value: str | None) -> str:

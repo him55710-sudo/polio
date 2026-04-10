@@ -16,7 +16,7 @@ _SECTION_KEYS = (
     "수상경력",
 )
 _TOKEN_RE = re.compile(r"[A-Za-z가-힣]{2,}")
-logger = logging.getLogger("polio.api.student_record_features")
+logger = logging.getLogger("unifoli.api.student_record_features")
 
 
 class StudentRecordFeatures(BaseModel):

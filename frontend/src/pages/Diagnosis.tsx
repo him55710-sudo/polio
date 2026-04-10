@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, ArrowRight, CheckCircle2, FileUp, Loader2, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, FileUp, Plus, Trash2 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -28,6 +28,7 @@ import {
   resolveDiagnosisDeliveryState,
 } from '../lib/diagnosis';
 import { searchUniversities, searchMajors } from '../lib/educationCatalog';
+import { buildRankedGoals } from '../lib/rankedGoals';
 import { CatalogAutocompleteInput } from '../components/CatalogAutocompleteInput';
 import {
   EmptyState,
@@ -91,7 +92,7 @@ const PARSE_TERMINAL_STATUSES = new Set<DocumentLifecycleStatus>(['parsed', 'par
 function createInitialTimingPhases(): TimingPhaseMap {
   return {
     upload: { status: 'idle', startedAt: null, finishedAt: null, note: '파일 전송' },
-    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '파싱/마스킹' },
+    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '내용 분석 중' },
     diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: 'AI 진단' },
   };
 }
@@ -131,10 +132,11 @@ export function Diagnosis() {
   const { goals, setGoals, submitGoals } = useOnboardingStore();
   const preselectedProjectId = searchParams.get('project_id')?.trim() || null;
   const autoLoadedProjectRef = useRef<string | null>(null);
+  const autoSkipGoalStepRef = useRef(false);
   const diagnosisProcessKickoffRef = useRef<Set<string>>(new Set());
   const parseProcessKickoffRef = useRef<Set<string>>(new Set());
 
-  const [step, setStep] = useState<DiagnosisStep>('GOALS');
+  const [step, setStep] = useState<DiagnosisStep>(() => (preselectedProjectId ? 'ANALYSING' : 'GOALS'));
   const [goalList, setGoalList] = useState<Array<{ id: string; university: string; major: string }>>([]);
   const [isEditingGoals, setIsEditingGoals] = useState(false);
   const [univInput, setUnivInput] = useState('');
@@ -259,17 +261,18 @@ export function Diagnosis() {
   useEffect(() => {
     if (!user) return;
 
-    const initial: Array<{ id: string; university: string; major: string }> = [];
-    if (user.target_university && user.target_major) {
-      initial.push({ id: 'main', university: user.target_university, major: user.target_major });
+    const initial = buildRankedGoals(user, 6).map((goal, idx) => ({
+      id: idx === 0 ? 'main' : `interest-${idx - 1}`,
+      university: goal.university,
+      major: goal.major,
+    }));
+    setGoalList(initial);
+
+    if (!autoSkipGoalStepRef.current && !preselectedProjectId && user.target_university) {
+      setStep((previous) => (previous === 'GOALS' ? 'UPLOAD' : previous));
+      autoSkipGoalStepRef.current = true;
     }
-    user.interest_universities?.forEach((interest, idx) => {
-      const match = interest.match(/^(.+)\s\((.+)\)$/);
-      if (match) initial.push({ id: `interest-${idx}`, university: match[1], major: match[2] });
-      else initial.push({ id: `interest-${idx}`, university: interest, major: '' });
-    });
-    setGoalList(initial.slice(0, 6));
-  }, [user]);
+  }, [preselectedProjectId, user]);
 
   const handleAddGoal = () => {
     if (!currentUniv || !currentMajor || goalList.length >= 6) return;
@@ -590,8 +593,8 @@ export function Diagnosis() {
       setIsUploading(true);
       setTimingPhases({
         upload: { status: 'done', startedAt: now, finishedAt: now, note: '기록 업로드 완료' },
-        parse: { status: 'done', startedAt: now, finishedAt: now, note: '문서 파싱 완료' },
-        diagnosis: { status: 'running', startedAt: now, finishedAt: null, note: '진단 진행 중' },
+        parse: { status: 'running', startedAt: now, finishedAt: null, note: '문서 내용을 꼼꼼하게 분석 중' },
+        diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: '진단 대기 중' },
       });
 
       try {
@@ -618,11 +621,13 @@ export function Diagnosis() {
             if (latestRun.async_job_id) {
               triggerInlineDiagnosisProcessingRef.current(latestRun.async_job_id);
             }
+            beginTimingPhase('diagnosis', '진단 진행 중');
             toast.success('진행 중이던 진단 작업을 이어 보여드릴게요.', { id: loadingId });
             return;
           }
         }
 
+        beginTimingPhase('diagnosis', '진단 생성 진행 중');
         const started = await startDiagnosisForProjectRef.current(preselectedProjectId);
         if (!cancelled && started) {
           toast.success('업로드한 기록으로 진단을 시작했어요.', { id: loadingId });
@@ -644,7 +649,7 @@ export function Diagnosis() {
     return () => {
       cancelled = true;
     };
-  }, [preselectedProjectId]);
+  }, [beginTimingPhase, preselectedProjectId]);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -680,7 +685,7 @@ export function Diagnosis() {
         setProjectId(uploadRes.project_id);
         finishTimingPhase('upload', 'done', `업로드 완료 (${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
 
-        beginTimingPhase('parse', '문서 파싱/마스킹 진행 중');
+        beginTimingPhase('parse', '기록 내용을 꼼꼼히 읽고 있어요');
         setStep('ANALYSING');
         const parseUrl = useSynchronousApiJobs
           ? `/api/v1/documents/${uploadRes.id}/parse?wait_for_completion=true`
@@ -716,7 +721,7 @@ export function Diagnosis() {
           return;
         }
 
-        const parseNote = parsedDocument.page_count ? `파싱 완료 (${parsedDocument.page_count}페이지)` : '파싱 완료';
+        const parseNote = parsedDocument.page_count ? `분석 완료 (${parsedDocument.page_count}쪽)` : '분석 완료';
         finishTimingPhase('parse', 'done', parseNote);
         beginTimingPhase('diagnosis', '진단 생성 진행 중');
 
@@ -827,15 +832,15 @@ export function Diagnosis() {
 
   const headerDescription =
     step === 'GOALS' ? '목표가 분명할수록 진단 결과와 워크숍 추천의 정확도가 높아집니다.' :
-    step === 'UPLOAD' ? 'PDF 1개를 업로드하면 파싱, 마스킹, 진단이 순차적으로 진행됩니다.' :
+    step === 'UPLOAD' ? 'PDF 1개를 업로드하면 개인정보 보안 처리와 문서 확인 후 진단이 순차적으로 진행됩니다.' :
     step === 'ANALYSING' ? '근거 매핑과 위험 신호 분석을 진행 중입니다.' :
     step === 'RESULT' ? '강점, 보완점, 액션 플랜을 확인한 후 워크숍으로 이동하세요.' :
     '실패 원인과 작업 상태를 확인하고 안전하게 다시 시도해 주세요.';
 
   const timingPhaseItems = [
     { id: 'upload', label: '업로드', expectedSeconds: 20, ...timingPhases.upload },
-    { id: 'parse', label: '파싱', expectedSeconds: 90, ...timingPhases.parse },
-    { id: 'diagnosis', label: '진단', expectedSeconds: 120, ...timingPhases.diagnosis },
+    { id: 'parse', label: '기록 분석', expectedSeconds: 90, ...timingPhases.parse },
+    { id: 'diagnosis', label: '정밀 진단', expectedSeconds: 120, ...timingPhases.diagnosis },
   ];
   const shouldShowTimingDashboard = timingPhaseItems.some((phase) => phase.startedAt !== null);
 
@@ -1039,11 +1044,11 @@ export function Diagnosis() {
           <motion.div key="upload" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
             <SectionCard
               title="PDF 업로드"
-              description="파일 1개(최대 50MB)를 올리면 업로드 이후 파싱 및 진단이 자동으로 이어집니다."
+              description="파일 1개(최대 50MB)를 올리면 업로드 이후 기록 분석 및 진단이 자동으로 이어집니다."
             >
               <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
                 <p className="text-sm font-semibold text-slate-700">1. PDF 선택</p>
-                <p className="text-sm font-semibold text-slate-700">2. 자동 파싱 확인</p>
+                <p className="text-sm font-semibold text-slate-700">2. 자동 분석 확인</p>
                 <p className="text-sm font-semibold text-slate-700">3. 진단 결과 확인</p>
               </div>
               <div
@@ -1057,7 +1062,17 @@ export function Diagnosis() {
               >
                 <input data-testid="diagnosis-upload-input" {...getInputProps()} />
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-[#004aad] shadow-sm">
-                  {isUploading ? <Loader2 size={26} className="animate-spin" /> : <FileUp size={26} />}
+                  {isUploading ? (
+                    <div className="w-9">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[#004aad]/15">
+                        <motion.div
+                          className="h-full rounded-full bg-[#004aad]"
+                          animate={{ x: ['-100%', '100%'] }}
+                          transition={{ duration: 1.15, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                      </div>
+                    </div>
+                  ) : <FileUp size={26} />}
                 </div>
                 <p className="text-xl font-black tracking-tight text-slate-900">학생부 PDF를 드래그하거나 클릭하여 업로드하세요</p>
                 <p className="mt-2 text-base font-medium text-slate-600">업로드 이후에 페이지를 유지하면 자동으로 상태가 갱신됩니다</p>
@@ -1086,8 +1101,8 @@ export function Diagnosis() {
           <motion.div key="analysing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
             <WorkflowNotice
               tone="loading"
-              title="문서 분석과 진단 생성을 진행 중입니다"
-              description="파싱이 끝나면 자동으로 진단 생성 단계로 넘어가며, 페이지를 유지하면 상태가 자동 갱신됩니다"
+              title="학생부 기록을 꼼꼼하게 분석하고 있습니다"
+              description="내용 분석이 끝나면 자동으로 진단 단계로 넘어가며, 페이지를 유지하면 상태가 자동 갱신됩니다"
             />
             <AsyncJobStatusCard job={diagnosisJob} runStatus={diagnosisRun?.status} errorMessage={diagnosisRun?.error_message} />
           </motion.div>

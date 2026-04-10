@@ -78,7 +78,7 @@ def create_toss_checkout_session(
     _ensure_toss_enabled(settings)
     plan_meta = _resolve_plan(payload.plan_code, settings)
     success_url, fail_url = _resolve_callback_urls(settings)
-    order_id = f"polio-{secrets.token_hex(12)}"
+    order_id = f"unifoli-{secrets.token_hex(12)}"
 
     order = PaymentOrder(
         user_id=current_user.id,
