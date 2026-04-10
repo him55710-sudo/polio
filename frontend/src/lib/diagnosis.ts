@@ -66,7 +66,7 @@ export function getDiagnosisFailureMessage(
   return (
     run?.error_message ||
     job?.failure_reason ||
-    'The diagnosis could not be completed. Review the status details and try again.'
+    '진단을 완료하지 못했습니다. 분석 과정에서 문제가 발생했으니 다시 시도해 주세요.'
   );
 }
 
@@ -153,7 +153,7 @@ export function resolveDiagnosisDeliveryState(
       reportFailed: true,
       diagnosisStatus,
       reportStatus,
-      message: run.report_error_message || 'Report generation failed. Please retry generation.',
+      message: run.report_error_message || '진단서 생성에 실패했습니다. 생성을 다시 요청해 주세요.',
     };
   }
 
@@ -195,9 +195,9 @@ export function formatAsyncJobStatus(status: string | null | undefined): string 
 }
 
 export function formatRiskLevel(level: DiagnosisRiskLevel): string {
-  if (level === 'danger') return 'Needs evidence';
-  if (level === 'warning') return 'Needs support';
-  return 'Grounded enough';
+  if (level === 'danger') return '근거 보완 필요';
+  if (level === 'warning') return '일부 지원 필요';
+  return '근거 충분함';
 }
 
 export function formatDateTime(value: string | null | undefined): string | null {

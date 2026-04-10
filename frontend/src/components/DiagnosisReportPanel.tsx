@@ -31,13 +31,13 @@ const MODE_OPTIONS: Array<{
 }> = [
   {
     value: 'premium_10p',
-    label: 'Premium 10p',
-    description: '10-page consultant layout with evidence appendix and uncertainty boundaries.',
+    label: '프리미엄 정밀 진단서 (10P)',
+    description: '컨설턴트 등급의 레이아웃으로 상세 근거와 입시 분석을 포함한 종합 진단서입니다.',
   },
   {
     value: 'compact',
-    label: 'Compact',
-    description: 'Shorter diagnostic report for quick review.',
+    label: '컴팩트 요약 보고서',
+    description: '핵심 내용만 빠르게 확인할 수 있는 요약형 보고서입니다.',
   },
 ];
 
@@ -45,15 +45,15 @@ const REPORT_IN_PROGRESS_STATUS = new Set(['AUTO_STARTING', 'QUEUED', 'RUNNING',
 const REPORT_SYNC_RECOVERY_TRIGGER = 3;
 const REPORT_SYNC_MAX_RETRIES = 24;
 const PREMIUM_SECTION_ARCHITECTURE: Array<{ id: string; label: string }> = [
-  { id: 'executive_summary', label: 'Executive Summary' },
-  { id: 'record_baseline_dashboard', label: 'Baseline Dashboard' },
-  { id: 'narrative_timeline', label: 'Narrative Timeline' },
-  { id: 'evidence_cards', label: 'Evidence Cards' },
-  { id: 'strength_analysis', label: 'Strengths' },
-  { id: 'risk_analysis', label: 'Risks' },
-  { id: 'major_fit', label: 'Major-fit Analysis' },
-  { id: 'interview_questions', label: 'Interview Questions' },
-  { id: 'roadmap', label: 'Roadmap (1m / 3m / 6m)' },
+  { id: 'executive_summary', label: '종합 진단 요약' },
+  { id: 'record_baseline_dashboard', label: '학생부 역량 대시보드' },
+  { id: 'narrative_timeline', label: '핵심 활동 타임라인' },
+  { id: 'evidence_cards', label: '역량별 근거 데이터' },
+  { id: 'strength_analysis', label: '주요 강점 분석' },
+  { id: 'risk_analysis', label: '보완점 및 리스크' },
+  { id: 'major_fit', label: '전공 적합성 상세 분석' },
+  { id: 'interview_questions', label: '예상 면접 질문 선별' },
+  { id: 'roadmap', label: '향후 활동 로드맵' },
 ];
 const SECTION_LABEL_BY_ID = PREMIUM_SECTION_ARCHITECTURE.reduce<Record<string, string>>(
   (acc, item) => ({ ...acc, [item.id]: item.label }),
@@ -89,11 +89,11 @@ function resolveBadgeStatus(status: string | null): 'success' | 'warning' | 'dan
 }
 
 function resolveBadgeLabel(status: string | null): string {
-  if (status === 'READY') return 'Ready';
-  if (status === 'FAILED') return 'Failed';
-  if (status === 'AUTO_STARTING') return 'Auto starting';
-  if (status && REPORT_IN_PROGRESS_STATUS.has(status)) return `Auto ${status.toLowerCase()}`;
-  return 'Not generated';
+  if (status === 'READY') return '준비 완료';
+  if (status === 'FAILED') return '생성 실패';
+  if (status === 'AUTO_STARTING') return '생성 준비 중';
+  if (status && REPORT_IN_PROGRESS_STATUS.has(status)) return '분석 진행 중';
+  return '미생성';
 }
 
 function humanizeSectionId(value: string): string {
@@ -211,14 +211,14 @@ export function DiagnosisReportPanel({
       setReportSyncRetries(0);
       setErrorMessage(recovered.status === 'FAILED' ? recovered.error_message || 'Report generation failed.' : null);
       if (recovered.status === 'READY') {
-        toast.success('Report sync recovered.');
+        toast.success('보고서 정보를 성공적으로 불러왔습니다.');
       }
     } catch (error: any) {
       const detail = error?.response?.data?.detail;
       setErrorMessage(
         typeof detail === 'string' && detail.trim()
           ? detail
-          : 'Report metadata sync is delayed. Please retry generation.',
+          : '보고서 정보 동기화가 지연되고 있습니다. 잠시 후 다시 재생성을 시도해 주세요.',
       );
     } finally {
       setIsRecovering(false);
@@ -254,7 +254,7 @@ export function DiagnosisReportPanel({
       setIncludeAppendix(existing.include_appendix);
       setIncludeCitations(existing.include_citations);
       if (existing.status === 'FAILED') {
-        setErrorMessage(existing.error_message || 'Report generation failed. Try regenerate.');
+        setErrorMessage(existing.error_message || '보고서 생성 중 오류가 발생했습니다. 재생성을 시도해 주세요.');
       }
     } catch (error: any) {
       if (error?.response?.status === 404) {
@@ -267,7 +267,7 @@ export function DiagnosisReportPanel({
           setErrorMessage(null);
         }
       } else {
-        setErrorMessage('Failed to load existing report artifact.');
+        setErrorMessage('보고서 정보를 불러오는 데 실패했습니다.');
       }
     } finally {
       setIsLoading(false);
@@ -323,17 +323,17 @@ export function DiagnosisReportPanel({
         );
         setArtifact(created);
         if (created.status === 'FAILED') {
-          setErrorMessage(created.error_message || 'Report generation failed.');
-          toast.error('Report generation failed.');
+          setErrorMessage(created.error_message || '보고서 생성에 실패했습니다.');
+          toast.error('보고서 생성 실패');
           return;
         }
-        toast.success('Consultant report generated.');
+        toast.success('전문 진단서 생성이 완료되었습니다.');
       } catch (error: any) {
         const detail = error?.response?.data?.detail;
         const message =
           typeof detail === 'string' && detail.trim()
             ? detail
-            : 'An error occurred while generating the report.';
+            : '보고서 생성 중 예기치 않은 오류가 발생했습니다.';
         setErrorMessage(message);
         toast.error(message);
       } finally {
@@ -368,9 +368,9 @@ export function DiagnosisReportPanel({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      toast.success('PDF download started.');
+      toast.success('PDF 다운로드를 시작합니다.');
     } catch {
-      toast.error('Failed to download PDF.');
+      toast.error('PDF 다운로드에 실패했습니다.');
     } finally {
       setIsDownloading(false);
     }
@@ -378,9 +378,9 @@ export function DiagnosisReportPanel({
 
   return (
     <SectionCard
-      title="Consultant Report"
-      eyebrow="Premium Diagnosis"
-      description="Auto-generates after diagnosis completion. You can still regenerate manually."
+      title="컨설턴트 진단 보고서"
+      eyebrow="프리미엄 진단"
+      description="진단 완료 후 자동으로 생성됩니다. 수동으로 재생성할 수도 있습니다."
       actions={
         <div className="flex items-center gap-2">
           <StatusBadge status={resolveBadgeStatus(effectiveStatus)}>
@@ -393,7 +393,7 @@ export function DiagnosisReportPanel({
         {isAutoGenerating ? (
           <WorkflowNotice
             tone="loading"
-            title="Auto report generation in progress"
+            title="보고서 자동 생성 중"
             description="진단이 완료되었고, 전문 진단서를 준비하고 있습니다."
           />
         ) : null}
@@ -401,7 +401,7 @@ export function DiagnosisReportPanel({
         {isRunMarkedReady ? (
           <WorkflowNotice
             tone="loading"
-            title="Report generated, syncing preview"
+            title="보고서 생성 완료, 동기화 중"
             description="진단 보고서 생성은 완료되었습니다. 미리보기와 다운로드 정보를 불러오는 중입니다."
           />
         ) : null}
@@ -409,11 +409,11 @@ export function DiagnosisReportPanel({
         {!artifact && normalizedRunReportStatus === 'READY' && reportSyncRetries >= REPORT_SYNC_RECOVERY_TRIGGER ? (
           <WorkflowNotice
             tone="warning"
-            title="Report sync is delayed"
+            title="보고서 동기화 지연"
             description={
               isRecovering
                 ? '자동 복구를 시도하고 있습니다. 잠시만 기다려주세요.'
-                : '동기화가 지연되고 있습니다. Regenerate 버튼으로 즉시 복구할 수 있습니다.'
+                : '동기화가 지연되고 있습니다. 재생성 버튼으로 즉시 복구할 수 있습니다.'
             }
           />
         ) : null}
@@ -421,17 +421,17 @@ export function DiagnosisReportPanel({
         {!artifact && normalizedRunReportStatus === 'FAILED' ? (
           <WorkflowNotice
             tone="danger"
-            title="Auto report generation failed"
-            description={reportStateMessage || 'You can regenerate manually with one click.'}
+            title="보고서 자동 생성 실패"
+            description={reportStateMessage || '버튼을 눌러 수동으로 재생성할 수 있습니다.'}
           />
         ) : null}
 
         {reportStateMessage && !isAutoGenerating && (artifact?.status === 'FAILED' || normalizedRunReportStatus === 'FAILED') ? (
-          <WorkflowNotice tone="danger" title="Report status" description={reportStateMessage} />
+          <WorkflowNotice tone="danger" title="보고서 상태" description={reportStateMessage} />
         ) : (
           <WorkflowNotice
             tone="info"
-            title={`Selected mode: ${selectedMode.label}`}
+            title={`선택된 모드: ${selectedMode.label}`}
             description={selectedMode.description}
           />
         )}
@@ -440,27 +440,27 @@ export function DiagnosisReportPanel({
           {canDownloadReport ? (
             <PrimaryButton onClick={downloadReport} disabled={isDownloading}>
               {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-              Download PDF
+              PDF 다운로드
             </PrimaryButton>
           ) : (
             <PrimaryButton onClick={() => generateReport(false)} disabled={isGenerating || isLoading}>
               {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-              Generate report
+              보고서 생성
             </PrimaryButton>
           )}
           <SecondaryButton onClick={() => generateReport(true)} disabled={isGenerating || isLoading || isRecovering}>
             <RefreshCw size={14} />
-            {isRecovering ? 'Recovering...' : 'Regenerate'}
+            {isRecovering ? '복구 중...' : '재생성'}
           </SecondaryButton>
         </div>
 
         <SurfaceCard tone="muted" padding="sm">
           <details>
             <summary className="cursor-pointer list-none text-sm font-bold text-slate-800">
-              Report settings
+              보고서 상세 설정
             </summary>
             <p className="mt-1 text-xs font-medium text-slate-500">
-              Change mode and appendix/citation options only when needed.
+              보고서 모드와 상세 옵션(부록, 주석)을 필요한 경우 변경할 수 있습니다.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {MODE_OPTIONS.map((option) => (
@@ -487,7 +487,7 @@ export function DiagnosisReportPanel({
                   onChange={(event) => setIncludeAppendix(event.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-[#004aad]"
                 />
-                Include appendix
+                근거 부록(Appendix) 포함
               </label>
               <label className="inline-flex items-center gap-2">
                 <input
@@ -496,7 +496,7 @@ export function DiagnosisReportPanel({
                   onChange={(event) => setIncludeCitations(event.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-[#004aad]"
                 />
-                Include citations
+                출처/주석(Citations) 포함
               </label>
             </div>
           </details>
@@ -505,7 +505,7 @@ export function DiagnosisReportPanel({
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
             <Loader2 size={16} className="animate-spin" />
-            Loading report artifact...
+            보고서 데이터를 불러오는 중...
           </div>
         ) : null}
 
@@ -518,13 +518,13 @@ export function DiagnosisReportPanel({
             <p className="text-sm font-medium leading-6 text-slate-600">{payload.subtitle}</p>
             <div className="grid gap-2 md:grid-cols-3">
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                sections: {payload.sections.length}
+                분석 섹션: {payload.sections.length}개
               </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                citations: {payload.citations.length}
+                기록 근거: {payload.citations.length}건
               </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                uncertainty notes: {payload.uncertainty_notes.length}
+                정밀 검토 메모: {payload.uncertainty_notes.length}건
               </div>
             </div>
 
@@ -542,8 +542,8 @@ export function DiagnosisReportPanel({
         ) : (
           <WorkflowNotice
             tone="info"
-            title="Report preview is not ready yet"
-            description="When generation completes, section preview and PDF download will appear here."
+            title="리포트 미리보기가 준비되지 않았습니다"
+            description="보고서 생성이 완료되면 섹션별 요약과 PDF 다운로드 버튼이 이곳에 나타납니다."
           />
         )}
 
@@ -551,12 +551,12 @@ export function DiagnosisReportPanel({
           <SurfaceCard tone="muted" padding="sm">
             <details>
               <summary className="cursor-pointer list-none text-sm font-bold text-slate-800">
-                Advanced report metadata
+                보고서 생성 상세 정보 (관리용)
               </summary>
               {architectureChecklist.length ? (
                 <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Section architecture
+                    리포트 섹션 구성 현황
                   </p>
                   <div className="mt-2 grid gap-2 md:grid-cols-2">
                     {architectureChecklist.map((section) => (
@@ -570,7 +570,7 @@ export function DiagnosisReportPanel({
                       >
                         <p className="text-xs font-semibold text-slate-700">{section.label}</p>
                         <p className="text-[11px] font-semibold text-slate-500">
-                          {section.included ? 'Included' : 'Pending'}
+                          {section.included ? '포함됨' : '데이터 대기 중'}
                         </p>
                       </div>
                     ))}
@@ -580,21 +580,21 @@ export function DiagnosisReportPanel({
 
               <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-600 md:grid-cols-2">
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  storage: {artifact?.storage_provider || 'unknown'} / {artifact?.storage_key || 'n/a'}
+                  저장소: {artifact?.storage_provider || '알 수 없음'} / {artifact?.storage_key || '없음'}
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  llm: {String(executionMeta?.actual_llm_provider || 'unknown')} / {String(executionMeta?.actual_llm_model || 'unknown')}
+                  분석 엔진: {String(executionMeta?.actual_llm_provider || '알 수 없음')} / {String(executionMeta?.actual_llm_model || '알 수 없음')}
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  fallback: {String(executionMeta?.fallback_used ?? false)}
+                  우회 실행: {executionMeta?.fallback_used ? '예' : '아니오'}
                   {executionMeta?.fallback_reason ? ` (${String(executionMeta.fallback_reason)})` : ''}
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  duration: {String(executionMeta?.processing_duration_ms ?? 'n/a')}ms
+                  소요 시간: {String(executionMeta?.processing_duration_ms ?? '확인 불가')}ms
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 md:col-span-2">
-                  design contract:{' '}
-                  {String(designContract?.contract_id || executionMeta?.design_contract_id || 'n/a')}
+                  디자인 계약(ID):{' '}
+                  {String(designContract?.contract_id || executionMeta?.design_contract_id || '없음')}
                 </div>
               </div>
             </details>

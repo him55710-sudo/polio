@@ -147,18 +147,16 @@ export function searchMajors(
     return [];
   }
 
-  const source = universityName && universityMap.has(universityName)
-    ? universityMap.get(universityName)?.majors ?? []
-    : catalog.all_majors;
+  // Always search from all_majors to show all possible department names
+  // as per user request to see "all majors" instead of just university-specific ones
+  const source = catalog.all_majors;
 
   return searchNames(source, query, limit).map((name) => {
-    const relatedUniversities = majorUniversityMap.get(name) ?? [];
     return {
       id: `major:${universityName ?? 'all'}:${name}`,
       label: name,
-      secondary: universityName
-        ? universityName
-        : relatedUniversities.slice(0, 2).join(', ') || undefined,
+      // Removed secondary label to satisfy user request: "차라리 밑에 대학은 뜨지 않고 그냥 학과에 대해서만 뜨는 것도 좋을 것 같음"
+      secondary: undefined,
       type: 'major' as const,
     };
   });

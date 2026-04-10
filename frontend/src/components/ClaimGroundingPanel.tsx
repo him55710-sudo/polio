@@ -10,13 +10,13 @@ interface ClaimGroundingPanelProps {
 function StatusBadge({ status }: { status: ClaimSupportStatus }) {
   switch (status) {
     case 'supported':
-      return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 shadow-sm border border-emerald-200"><ShieldCheck size={12}/> Supported</span>;
+      return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 shadow-sm border border-emerald-200"><ShieldCheck size={12}/> 근거 확인됨</span>;
     case 'weak':
-      return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700 shadow-sm border border-amber-200"><Shield size={12}/> Weakly Supported</span>;
+      return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700 shadow-sm border border-amber-200"><Shield size={12}/> 근거 부족</span>;
     case 'mixed':
-      return <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-purple-700 shadow-sm border border-purple-200"><Search size={12}/> Mixed</span>;
+      return <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-purple-700 shadow-sm border border-purple-200"><Search size={12}/> 혼합됨</span>;
     case 'unsupported':
-      return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-red-700 shadow-sm border border-red-200"><ShieldAlert size={12}/> Unsupported</span>;
+      return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-red-700 shadow-sm border border-red-200"><ShieldAlert size={12}/> 근거 없음</span>;
   }
 }
 
@@ -33,9 +33,9 @@ function ProvenanceStyle(type: ClaimProvenanceType) {
 
 function ProvenanceName(type: ClaimProvenanceType) {
   switch (type) {
-    case 'student_record': return 'Student Record (학생부)';
-    case 'external_research': return 'External Research (외부 문헌)';
-    case 'ai_interpretation': return 'AI Interpretation (AI 해석)';
+    case 'student_record': return '학생부 기록';
+    case 'external_research': return '외부 문헌 및 기준';
+    case 'ai_interpretation': return 'AI 심층 분석';
   }
 }
 
@@ -52,7 +52,7 @@ function ClaimCard({ claim }: { claim: ClaimGrounding }) {
               {ProvenanceName(claim.provenance_type)}
             </span>
             <span className="text-[10px] font-black text-slate-400">
-               CONFIDENCE: {Math.round(claim.confidence * 100)}%
+               분석 신뢰도: {Math.round(claim.confidence * 100)}%
             </span>
           </div>
           <StatusBadge status={claim.support_status} />
@@ -76,7 +76,7 @@ function ClaimCard({ claim }: { claim: ClaimGrounding }) {
               className="flex items-center gap-1.5 text-xs font-black text-slate-500 hover:text-slate-800 transition-colors"
             >
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              {expanded ? 'Hide Source Evidence' : `View ${claim.source_excerpts.length} Source Excerpt(s)`}
+              {expanded ? '근거 숨기기' : `${claim.source_excerpts.length}개의 원문 근거 확인하기`}
             </button>
             <AnimatePresence>
               {expanded && (
@@ -90,7 +90,7 @@ function ClaimCard({ claim }: { claim: ClaimGrounding }) {
                     <div key={i} className="rounded-lg bg-white p-3 border border-slate-200 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase tracking-wider border border-slate-200">{excerpt.source_label}</span>
-                        {excerpt.page_number && <span className="text-[9px] font-black text-slate-400">Page {excerpt.page_number}</span>}
+                        {excerpt.page_number && <span className="text-[9px] font-black text-slate-400">{excerpt.page_number}페이지</span>}
                         {excerpt.chunk_id && <span className="text-[9px] font-bold text-slate-300">ID: {excerpt.chunk_id}</span>}
                       </div>
                       <p className="text-xs font-medium text-slate-600 italic leading-relaxed border-l-2 border-slate-200 pl-3">
@@ -126,8 +126,8 @@ export function ClaimGroundingPanel({ claims }: ClaimGroundingPanelProps) {
             <FileSearch size={22} />
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tight">Claim Audit & Provenance</h3>
-            <p className="text-xs font-bold text-slate-400">AI-extracted claims and their evidence verification status.</p>
+            <h3 className="text-xl font-black text-slate-800 tracking-tight">AI 분석 근거지 공인</h3>
+            <p className="text-xs font-bold text-slate-400">AI가 추출한 주요 주장들과 생기부 내 원문 근거 일치 여부를 확인합니다.</p>
           </div>
         </div>
         
@@ -140,7 +140,7 @@ export function ClaimGroundingPanel({ claims }: ClaimGroundingPanelProps) {
           }`}
         >
           <Filter size={14} />
-          검증 필요 주장만 보기 {filterUnsupported ? '(Active)' : ''}
+          검증 필요 주장만 보기 {filterUnsupported ? '(활성화됨)' : ''}
         </button>
       </div>
 

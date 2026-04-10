@@ -104,10 +104,10 @@ export function DiagnosisGuidedChoicePanel({
       anchor.click();
       document.body.removeChild(anchor);
       window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 2000);
-      toast.success('Export downloaded.', { id: loadingId });
+      toast.success('다운로드 완료.', { id: loadingId });
     } catch (error) {
       console.error(error);
-      toast.error('The exported file could not be downloaded.', { id: loadingId });
+      toast.error('파일을 다운로드할 수 없습니다.', { id: loadingId });
     }
   };
 
@@ -232,10 +232,10 @@ export function DiagnosisGuidedChoicePanel({
         },
       );
       setOutline(response.outline);
-      toast.success('Guided outline is ready.');
+      toast.success('가이드 개요가 생성되었습니다.');
     } catch (error) {
       console.error(error);
-      toast.error('The guided outline could not be generated.');
+      toast.error('가이드 개요를 생성할 수 없습니다.');
     } finally {
       setIsGenerating(false);
     }
@@ -276,13 +276,13 @@ export function DiagnosisGuidedChoicePanel({
       if (resolved.download_url) {
         await downloadRenderedArtifact(resolved.download_url, resolved.render_format);
       } else if (resolved.status === 'failed') {
-        toast.error(resolved.result_message || 'The export job failed.');
+        toast.error(resolved.result_message || '파일 생성에 실패했습니다.');
       } else {
-        toast.success('Export job queued.');
+        toast.success('파일 생성이 예약되었습니다.');
       }
     } catch (error) {
       console.error(error);
-      toast.error('The export could not be started.');
+      toast.error('파일 생성을 시작할 수 없습니다.');
     } finally {
       setIsExporting(false);
     }
@@ -292,30 +292,30 @@ export function DiagnosisGuidedChoicePanel({
     <section data-testid="guided-choice-panel" className="space-y-8 rounded-[40px] border border-slate-200 bg-white p-8 shadow-xl">
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Diagnosis Summary</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">진단 결과 요약</p>
           <p className="mt-3 text-xl font-black text-slate-900">{diagnosis.diagnosis_summary?.overview ?? diagnosis.headline}</p>
           <p className="mt-4 text-sm font-semibold leading-relaxed text-slate-600">
             {diagnosis.diagnosis_summary?.reasoning ?? diagnosis.recommended_focus}
           </p>
         </div>
         <div className="rounded-[28px] border border-slate-200 bg-slate-900 p-6 text-white">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-300">Authenticity Rule</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-300">작성 포인트 및 위반 방지</p>
           <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-100">
             {diagnosis.diagnosis_summary?.authenticity_note ??
-              'Keep the next draft grounded in the student record and treat open text as optional.'}
+              '기록된 사실을 근거로 작성하며, 과도한 추측이나 없는 사실의 추가를 지양해야 합니다.'}
           </p>
         </div>
       </div>
 
       {defaultAction && recommendedDirection ? (
         <div data-testid="guided-default-action" className="rounded-[28px] border border-[#004aad]/10 bg-[#004aad]/5 p-6">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#004aad]">Recommended Start</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#004aad]">추천 작업 시작</p>
           <h3 className="mt-3 text-xl font-black text-slate-900">{recommendedDirection.label}</h3>
           <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{defaultAction.rationale}</p>
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-black text-[#004aad]">
             <span className="rounded-full bg-white px-3 py-2">{defaultAction.export_format.toUpperCase()}</span>
-            <span className="rounded-full bg-white px-3 py-2">{defaultAction.page_count} pages</span>
-            <span className="rounded-full bg-white px-3 py-2">{defaultAction.template_id}</span>
+            <span className="rounded-full bg-white px-3 py-2">{defaultAction.page_count} 페이지 분량</span>
+            <span className="rounded-full bg-white px-3 py-2">템플릿: {defaultAction.template_id}</span>
           </div>
         </div>
       ) : null}
@@ -323,7 +323,7 @@ export function DiagnosisGuidedChoicePanel({
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-slate-900">
           <Sparkles size={18} />
-          <h3 className="text-lg font-black">Weak Axes</h3>
+          <h3 className="text-lg font-black">집중 보완 필요 영역</h3>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {(diagnosis.gap_axes ?? []).map((axis) => (
@@ -339,7 +339,7 @@ export function DiagnosisGuidedChoicePanel({
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-slate-900">
           <Layers3 size={18} />
-          <h3 className="text-lg font-black">Recommended Directions</h3>
+          <h3 className="text-lg font-black">추천 활동 방향</h3>
         </div>
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {directions.map((direction) => (
@@ -368,7 +368,7 @@ export function DiagnosisGuidedChoicePanel({
         <div className="space-y-8">
           <div className="grid gap-8 xl:grid-cols-2">
             <div className="space-y-4">
-              <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Topic</h4>
+              <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">주제 선정</h4>
               <div className="space-y-3">
                 {topicCandidates.map((topic) => (
                   <button
@@ -387,7 +387,7 @@ export function DiagnosisGuidedChoicePanel({
 
             <div className="space-y-6">
               <div className="space-y-3">
-                <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Page Count</h4>
+                <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">권장 분량</h4>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {pageCountOptions.map((option: PageCountOption) => (
                     <button
@@ -405,7 +405,7 @@ export function DiagnosisGuidedChoicePanel({
               </div>
 
               <div className="space-y-3">
-                <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Export Format</h4>
+                <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">내보내기 형식</h4>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {formatRecommendations.map((item: FormatRecommendation) => (
                     <button
@@ -429,7 +429,7 @@ export function DiagnosisGuidedChoicePanel({
 
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-4">
-              <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Template Gallery</h4>
+              <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">디자인 템플릿 갤러리</h4>
               <div className="flex flex-wrap gap-3 text-xs font-bold text-slate-500">
                 <label className="flex items-center gap-2">
                   <input
@@ -437,7 +437,7 @@ export function DiagnosisGuidedChoicePanel({
                     checked={includeProvenanceAppendix}
                     onChange={(event) => setIncludeProvenanceAppendix(event.target.checked)}
                   />
-                  Include provenance appendix
+                  분석 근거 부록 포함
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -445,7 +445,7 @@ export function DiagnosisGuidedChoicePanel({
                     checked={hideInternalProvenance}
                     onChange={(event) => setHideInternalProvenance(event.target.checked)}
                   />
-                  Hide internal provenance IDs
+                  내부 참조 ID 숨기기
                 </label>
               </div>
             </div>
@@ -469,7 +469,7 @@ export function DiagnosisGuidedChoicePanel({
                     </div>
                     {recommendedTemplateIds.has(template.id) ? (
                       <span className="rounded-full border border-current/20 px-2 py-1 text-[10px] font-black uppercase">
-                        Recommended
+                        AI 추천
                       </span>
                     ) : null}
                   </div>
@@ -492,10 +492,10 @@ export function DiagnosisGuidedChoicePanel({
             >
               {isGenerating ? (
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 size={16} className="animate-spin" /> Building outline
+                  <Loader2 size={16} className="animate-spin" /> 개요 구성 중...
                 </span>
               ) : (
-                'Build guided outline'
+                '가이드 개요 생성하기'
               )}
             </button>
             {outline ? (
@@ -506,7 +506,7 @@ export function DiagnosisGuidedChoicePanel({
                 disabled={isExporting}
                 className="rounded-[24px] border border-slate-900 px-7 py-4 text-sm font-black text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isExporting ? 'Exporting...' : 'Export with selected template'}
+                {isExporting ? '파일 생성 중...' : '선택한 템플릿으로 내보내기'}
               </button>
             ) : null}
           </div>
@@ -515,7 +515,7 @@ export function DiagnosisGuidedChoicePanel({
             <div data-testid="guided-outline-preview" className="rounded-[32px] border border-slate-200 bg-slate-50 p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Outline Preview</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">개요 미리보기</p>
                   <h4 className="mt-2 text-2xl font-black text-slate-900">{outline.title}</h4>
                   <p className="mt-2 text-sm font-semibold text-slate-600">{outline.summary}</p>
                 </div>
@@ -546,7 +546,7 @@ export function DiagnosisGuidedChoicePanel({
                   }}
                   className="mt-6 inline-flex rounded-[20px] bg-slate-900 px-5 py-3 text-sm font-black text-white"
                 >
-                  Download latest export
+                  최근 생성된 파일 다운로드
                 </button>
               ) : null}
             </div>

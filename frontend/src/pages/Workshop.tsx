@@ -1403,8 +1403,8 @@ export function Workshop() {
                 onClick={handleGenerateDraft}
                 disabled={!workshopState || isRendering || !workshopState.render_requirements?.can_render}
               >
-                {isRendering ? <Loader2 size={16} className="animate-spin" /> : <WandSparkles size={16} />}
-                Render preview
+                {isRendering ? <Loader2 size={16} className="animate-spin" /> : <Presentation size={14} />}
+                미리보기 생성
               </SecondaryButton>
             </div>
           }
@@ -1767,8 +1767,8 @@ export function Workshop() {
                       </SurfaceCard>
                     </div>
                   ) : (
-                    <p className="text-xs font-semibold text-slate-500">
-                      Evidence and render diagnostics are hidden to keep drafting focused.
+                    <p className="text-sm font-bold text-slate-400">
+                      외부 시각화 요소가 선택되었으나, 현재 환경에서는 미리보기를 제공할 수 없습니다.
                     </p>
                   )}
                 </div>

@@ -117,7 +117,7 @@ export function AdvancedPreview({
         id: expr.id || `legacy-math-${index}`,
         type: 'equation',
         title: expr.label,
-        caption: expr.context || 'Legacy math block kept for preview compatibility.',
+        caption: expr.context || '미리보기 호환성을 위해 유지된 수식 블록입니다.',
         confidence: 0.7,
         rationale: expr.context || 'Kept as a formula block from the render artifact.',
         origin: 'generated',
@@ -437,8 +437,10 @@ function VisualBody({ spec }: { spec: VisualSpec }) {
             />
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-700/70 px-4 py-6 text-center text-sm font-medium text-slate-400">
-            External visual selected, but no preview URL is available in this environment.
+          <div className="rounded-2xl border border-dashed border-slate-700/70 px-4 py-6 text-center">
+            <p className="text-sm font-bold text-slate-400">
+              외부 시각화 요소가 선택되었으나, 현재 환경에서는 미리보기를 제공할 수 없습니다.
+            </p>
           </div>
         )}
       </div>
@@ -446,8 +448,10 @@ function VisualBody({ spec }: { spec: VisualSpec }) {
   }
 
   return (
-    <div className="rounded-2xl border border-dashed border-slate-700/70 px-4 py-6 text-center text-sm font-medium text-slate-400">
-      No renderable preview payload was stored for this visual block.
+    <div className="rounded-2xl border border-dashed border-slate-700/70 px-4 py-6 text-center">
+      <p className="text-sm font-bold text-slate-400">
+        이 시각화 블록에 대한 미리보기 데이터가 존재하지 않습니다.
+      </p>
     </div>
   );
 }

@@ -140,10 +140,21 @@ function createInitialTimingPhases(): RecordTimingPhaseMap {
 }
 
 function formatBytes(value: number | null): string {
+
+function formatBytes(value: number | null): string {
   if (!value) return '0 B';
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ProvenanceName(type: string) {
+  switch (type) {
+    case 'student_record': return '학생부 기록';
+    case 'external_research': return '외부 문헌 및 기준';
+    case 'ai_interpretation': return 'AI 심층 분석';
+    default: return type;
+  }
 }
 
 function formatStatusLabel(status: DocumentStatus): string {
@@ -151,17 +162,17 @@ function formatStatusLabel(status: DocumentStatus): string {
     case 'uploaded':
       return '업로드 완료';
     case 'masking':
-      return '개인정보 보안 처리 중';
+      return '보안 처리 중';
     case 'parsing':
-      return '문서 내용 분석 중';
+      return '분석 중';
     case 'retrying':
-      return '분석 다시 시도 중';
+      return '재시도 중';
     case 'parsed':
       return '분석 완료';
     case 'partial':
-      return '분석 일부 완료';
+      return '분석 완료(일부 경고)';
     case 'failed':
-      return '확인 필요';
+      return '오류 발생';
     default:
       return status;
   }
@@ -261,7 +272,6 @@ export function Record() {
   }, []);
 
   const isBusy = isUploading || isStartingParse;
-  const previewText = useMemo(() => (document?.content_text ? document.content_text.slice(0, 900) : ''), [document?.content_text]);
 
   const majorSuggestions = useMemo(
     () => (targetMajor.trim().length >= 1 ? searchMajors(targetMajor, null, 10) : []),
@@ -433,16 +443,6 @@ export function Record() {
 
   const canContinue = Boolean(document && SUCCESS_STATUSES.has(document.status));
   const maskingSummary = document?.parse_metadata?.masking;
-  const pdfAnalysis = document?.parse_metadata?.pdf_analysis;
-  const canonicalRecord = document?.parse_metadata?.student_record_canonical;
-  const pageFailures = document?.parse_metadata?.page_failures ?? [];
-  const warnings = document?.parse_metadata?.warnings ?? [];
-  const parseErrorMessage =
-    document?.status === 'retrying' || document?.status === 'failed'
-      ? document?.latest_async_job_error || document?.last_error || null
-      : document?.last_error || null;
-  const hasPdfFallback = pdfAnalysis?.engine === 'fallback';
-  const pdfFallbackReason = pdfAnalysis?.failure_reason;
   const stepItems = [
     { id: 'upload', label: '업로드', description: '파일 등록', state: getStepState(document, 'upload') },
     { id: 'masking', label: '보안 처리', description: '개인정보 안전 보호', state: getStepState(document, 'masking') },
@@ -630,163 +630,21 @@ export function Record() {
               </SurfaceCard>
             </div>
           </SectionCard>
-
-          <SectionCard title="문서 내용 미리보기" description="숨김 처리 후 텍스트 일부를 확인해요." eyebrow="미리보기" collapsible defaultCollapsed>
-            <SurfaceCard padding="sm" className="bg-slate-950 text-slate-100">
-              <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-7">
-                {previewText || '아직 표시할 분석 텍스트가 없어요.'}
-              </pre>
-            </SurfaceCard>
-          </SectionCard>
-
-          <SectionCard title="Gemma4 PDF 분석" description="페이지별 핵심과 문서 흐름 요약을 확인해요." eyebrow="AI 분석" collapsible defaultCollapsed>
-            {pdfAnalysis?.summary || canonicalRecord ? (
-              <div className="space-y-4">
-                {canonicalRecord ? (
-                  <SurfaceCard tone="muted" padding="sm" className="space-y-3 border border-[#004aad]/20 bg-[#004aad]/5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge status="active">학생부 구조 분석</StatusBadge>
-                      {typeof canonicalRecord.document_confidence === 'number' ? (
-                        <StatusBadge status={canonicalRecord.document_confidence >= 0.7 ? 'success' : canonicalRecord.document_confidence >= 0.45 ? 'warning' : 'danger'}>
-                          신뢰도 {canonicalRecord.document_confidence.toFixed(3)}
-                        </StatusBadge>
-                      ) : null}
-                    </div>
-                    {canonicalRecord.timeline_signals?.length ? (
-                      <p className="text-sm font-medium text-slate-700">
-                        학기/연도 신호: {canonicalRecord.timeline_signals.map(item => item.signal).filter(Boolean).slice(0, 3).join(', ')}
-                      </p>
-                    ) : null}
-                    {canonicalRecord.major_alignment_hints?.length ? (
-                      <p className="text-sm font-medium text-slate-700">
-                        전공 연계 힌트: {canonicalRecord.major_alignment_hints.map(item => item.hint).filter(Boolean).slice(0, 2).join(' / ')}
-                      </p>
-                    ) : null}
-                    {canonicalRecord.weak_or_missing_sections?.length ? (
-                      <p className="text-sm font-medium text-amber-800">
-                        보강 필요 섹션: {canonicalRecord.weak_or_missing_sections.map(item => item.section).filter(Boolean).slice(0, 4).join(', ')}
-                      </p>
-                    ) : null}
-                    {canonicalRecord.uncertainties?.length ? (
-                      <p className="text-xs font-semibold leading-5 text-slate-600">
-                        불확실성: {canonicalRecord.uncertainties.map(item => item.message).filter(Boolean).slice(0, 2).join(' / ')}
-                      </p>
-                    ) : null}
+          {document?.parse_metadata?.warnings?.length ? (
+            <SectionCard title="분석 관련 알림" description="분석 과정에서 발견된 특이사항입니다." eyebrow="알림" collapsible>
+              <div className="space-y-2">
+                {document.parse_metadata.warnings.map((warning, idx) => (
+                  <SurfaceCard key={idx} tone="muted" padding="sm" className="bg-amber-50 border-amber-100">
+                    <p className="text-sm font-medium text-amber-900">{warning}</p>
                   </SurfaceCard>
-                ) : null}
-
-                {pdfAnalysis?.summary ? (
-                  <SurfaceCard tone="muted" padding="sm" className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge status={pdfAnalysis.engine === 'llm' ? 'success' : 'warning'}>
-                        {pdfAnalysis.engine === 'llm' ? 'Gemma4 분석 완료' : '보수 모드 요약'}
-                      </StatusBadge>
-                      {pdfAnalysis.model ? <StatusBadge status="neutral">{pdfAnalysis.model}</StatusBadge> : null}
-                      {hasPdfFallback && pdfAnalysis.attempted_model ? (
-                        <StatusBadge status="neutral">Attempted: {pdfAnalysis.attempted_model}</StatusBadge>
-                      ) : null}
-                    </div>
-                    <p className="text-sm font-medium leading-6 text-slate-700">{pdfAnalysis.summary}</p>
-                  </SurfaceCard>
-                ) : (
-                  <WorkflowNotice
-                    tone="info"
-                    title="Gemma4 요약은 없지만 학생부 구조 분석은 완료되었습니다."
-                    description="문서 구조 신호를 기반으로 다음 단계 진단/코칭이 진행됩니다."
-                  />
-                )}
-
-                {hasPdfFallback ? (
-                  <WorkflowNotice
-                    tone="warning"
-                    title="Gemma4 분석이 실패해 휴리스틱 요약으로 대체되었습니다."
-                    description={
-                      pdfFallbackReason
-                        ? `${pdfFallbackReason}${pdfAnalysis?.attempted_provider ? ` (provider: ${pdfAnalysis.attempted_provider})` : ''}`
-                        : 'LLM 분석이 실패해 보수 모드 요약을 사용했습니다.'
-                    }
-                  />
-                ) : null}
-
-                {pdfAnalysis?.recovered_from_text_fallback ? (
-                  <WorkflowNotice
-                    tone="info"
-                    title="JSON 파싱 실패 후 텍스트 응답을 복구해 분석을 완료했습니다."
-                    description="모델 응답 형식이 완전하지 않았지만 텍스트 복구 경로를 통해 페이지 요약을 만들었습니다."
-                  />
-                ) : null}
-
-                {pdfAnalysis?.key_points?.length ? (
-                  <SurfaceCard tone="muted" padding="sm">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">핵심 포인트</p>
-                    <ul className="mt-2 space-y-2">
-                      {pdfAnalysis?.key_points?.map(point => (
-                        <li key={point} className="text-sm font-medium leading-6 text-slate-700">
-                          • {point}
-                        </li>
-                      ))}
-                    </ul>
-                  </SurfaceCard>
-                ) : null}
-
-                {pdfAnalysis?.page_insights?.length ? (
-                  <SurfaceCard tone="muted" padding="sm">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">페이지 요약</p>
-                    <div className="mt-2 space-y-2">
-                      {pdfAnalysis?.page_insights?.slice(0, 8).map((item, index) => (
-                        <div key={`${item.page_number ?? 'na'}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <p className="text-sm font-bold text-slate-800">{item.page_number ?? '?'} 페이지</p>
-                          <p className="mt-1 text-sm font-medium leading-6 text-slate-600">
-                            {item.summary || '요약 정보가 부족합니다.'}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </SurfaceCard>
-                ) : null}
-
-                {pdfAnalysis?.evidence_gaps?.length ? (
-                  <SurfaceCard tone="muted" padding="sm" className="border border-amber-200 bg-amber-50/70">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">근거 부족 안내</p>
-                    <ul className="mt-2 space-y-1.5">
-                      {pdfAnalysis?.evidence_gaps?.map(gap => (
-                        <li key={gap} className="text-sm font-medium leading-6 text-amber-900">
-                          • {gap}
-                        </li>
-                      ))}
-                    </ul>
-                  </SurfaceCard>
-                ) : null}
+                ))}
               </div>
-            ) : (
-              <WorkflowNotice
-                tone="info"
-                title="아직 Gemma4 PDF 분석 결과가 없어요."
-                description="PDF 파싱이 완료되면 페이지별 요약과 핵심 포인트가 자동으로 채워집니다."
-              />
-            )}
-          </SectionCard>
-
-          {warnings.length || pageFailures.length || parseErrorMessage ? (
-            <SectionCard title="경고와 오류" description="확인이 필요한 항목이 있으면 여기에서 알려드려요." eyebrow="확인 필요">
-              {parseErrorMessage ? <WorkflowNotice tone="danger" title="오류 메시지" description={parseErrorMessage} /> : null}
-              {warnings.map(warning => (
-                <WorkflowNotice key={warning} tone="warning" title="분석 경고" description={warning} />
-              ))}
-              {pageFailures.map((failure, index) => (
-                <WorkflowNotice
-                  key={`${failure.page_number ?? 'na'}-${index}`}
-                  tone="warning"
-                  title={`${failure.page_number ?? '?'} 페이지 경고`}
-                  description={failure.message || '상세 내용을 확인해 주세요.'}
-                />
-              ))}
             </SectionCard>
           ) : (
             <WorkflowNotice
               tone="success"
-              title="현재 경고/오류가 없어요."
-              description="분석이 끝나면 바로 작성 화면에서 다음 단계를 이어갈 수 있어요."
+              title="분석이 원활하게 완료되었습니다"
+              description="문서에 결함이 없으며, 진단 과정을 바로 시작할 수 있습니다."
             />
           )}
         </div>

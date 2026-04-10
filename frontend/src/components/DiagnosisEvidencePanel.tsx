@@ -85,7 +85,9 @@ export function DiagnosisEvidencePanel({
               <SurfaceCard key={flag.id} padding="sm">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <p className="text-sm font-bold text-slate-800">{flag.code}</p>
-                  <StatusBadge status={severityVariant(flag.severity)}>{flag.severity}</StatusBadge>
+                  <StatusBadge status={severityVariant(flag.severity)}>
+                    {flag.severity === 'critical' ? '심각' : flag.severity === 'high' ? '경고' : '일반'}
+                  </StatusBadge>
                 </div>
                 <p className="text-sm font-medium leading-6 text-slate-600">{flag.detail}</p>
               </SurfaceCard>

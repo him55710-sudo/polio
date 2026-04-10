@@ -91,9 +91,9 @@ const PARSE_TERMINAL_STATUSES = new Set<DocumentLifecycleStatus>(['parsed', 'par
 
 function createInitialTimingPhases(): TimingPhaseMap {
   return {
-    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '파일 전송' },
-    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '내용 분석 중' },
-    diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: 'AI 진단' },
+    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '내용 전송' },
+    parse: { status: 'idle', startedAt: null, finishedAt: null, note: '정보 추출 중' },
+    diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: 'AI 종합 진단' },
   };
 }
 
@@ -106,7 +106,7 @@ function hasDocumentContent(document: DiagnosisDocumentStatus): boolean {
 function getParseFailureMessage(document: DiagnosisDocumentStatus): string {
   if (document.latest_async_job_error) return document.latest_async_job_error;
   if (document.last_error) return document.last_error;
-  return 'PDF 분석에 실패했습니다. 다른 파일로 다시 시도해 주세요.';
+  return '생활기록부 분석에 실패했습니다. 다른 파일로 다시 시도해 주세요.';
 }
 
 async function waitForDocumentParseResult(
@@ -143,7 +143,7 @@ export function Diagnosis() {
   const [currentUniv, setCurrentUniv] = useState('');
   const [currentMajor, setCurrentMajor] = useState('');
 
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(preselectedProjectId);
   const [isUploading, setIsUploading] = useState(false);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResultPayload | null>(null);
   const [diagnosisRunId, setDiagnosisRunId] = useState<string | null>(null);
@@ -156,6 +156,8 @@ export function Diagnosis() {
   const useSynchronousApiJobs = shouldUseSynchronousApiJobs();
   const goalListRef = useRef(goalList);
   const currentMajorRef = useRef(currentMajor);
+
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
 
   const setTimingPhase = useCallback(
     (phase: TimingPhaseKey, updater: Partial<TimingPhaseState> | ((prev: TimingPhaseState) => TimingPhaseState)) => {
@@ -268,8 +270,60 @@ export function Diagnosis() {
     }));
     setGoalList(initial);
 
-    if (!autoSkipGoalStepRef.current && !preselectedProjectId && user.target_university) {
-      setStep((previous) => (previous === 'GOALS' ? 'UPLOAD' : previous));
+    // If we have a preselected project, try to load its state
+    if (preselectedProjectId && !autoLoadedProjectRef.current) {
+      autoLoadedProjectRef.current = preselectedProjectId;
+      setIsLoadingProject(true);
+      
+      void api.get<any>(`/api/v1/projects/${preselectedProjectId}`)
+        .then(async (project) => {
+          // If project has goals, update our local list and potentially skip goals step
+          if (project.target_university) {
+            const projectGoals = [{ 
+              id: 'main', 
+              university: project.target_university, 
+              major: project.target_major || '' 
+            }];
+            
+            if (project.interest_universities?.length) {
+              project.interest_universities.forEach((iu: string, idx: number) => {
+                const match = iu.match(/(.+)\s*\((.+)\)/);
+                if (match) {
+                  projectGoals.push({ id: `interest-${idx}`, university: match[1].trim(), major: match[2].trim() });
+                } else {
+                  projectGoals.push({ id: `interest-${idx}`, university: iu.trim(), major: '' });
+                }
+              });
+            }
+            setGoalList(projectGoals);
+            // Automatic skip to next step if project has goals and documents
+            if (project.documents?.length > 0) {
+              setStep('ANALYSING');
+              return;
+            }
+          }
+
+          // Check for existing diagnosis run
+          if (project.latest_diagnosis_run_id) {
+            setDiagnosisRunId(project.latest_diagnosis_run_id);
+            setStep('ANALYSING');
+          } else if (project.documents?.length) {
+            setStep('ANALYSING');
+            startDiagnosisForProject(preselectedProjectId);
+          } else {
+            setStep('UPLOAD');
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load project:", err);
+          setStep('GOALS');
+        })
+        .finally(() => {
+          setIsLoadingProject(false);
+        });
+    } else if (!autoSkipGoalStepRef.current && !preselectedProjectId && user.target_university) {
+      // If user already has a target university set in profile, skip the goals selection step
+      setStep('UPLOAD');
       autoSkipGoalStepRef.current = true;
     }
   }, [preselectedProjectId, user]);
@@ -824,18 +878,18 @@ export function Diagnosis() {
   ];
 
   const headerTitle =
-    step === 'GOALS' ? '진단 목표를 확인해 주세요' :
-    step === 'UPLOAD' ? '학생부 PDF를 업로드해 주세요' :
-    step === 'ANALYSING' ? '진단을 실행하고 있습니다' :
-    step === 'RESULT' ? '진단 결과를 검토해 주세요' :
-    '진단 실행 중 확인이 필요합니다';
+    step === 'GOALS' ? '진단 목표 확인' :
+    step === 'UPLOAD' ? '생활기록부 등록' :
+    step === 'ANALYSING' ? '기록 정밀 분석 중' :
+    step === 'RESULT' ? '종합 진단 보고서' :
+    '확인 필요';
 
   const headerDescription =
-    step === 'GOALS' ? '목표가 분명할수록 진단 결과와 워크숍 추천의 정확도가 높아집니다.' :
-    step === 'UPLOAD' ? 'PDF 1개를 업로드하면 개인정보 보안 처리와 문서 확인 후 진단이 순차적으로 진행됩니다.' :
-    step === 'ANALYSING' ? '근거 매핑과 위험 신호 분석을 진행 중입니다.' :
-    step === 'RESULT' ? '강점, 보완점, 액션 플랜을 확인한 후 워크숍으로 이동하세요.' :
-    '실패 원인과 작업 상태를 확인하고 안전하게 다시 시도해 주세요.';
+    step === 'GOALS' ? '목표 대학교와 학과를 확인하고 맞춤 정밀 진단을 시작합니다.' :
+    step === 'UPLOAD' ? '생기부 PDF를 등록하시면 개인정보 보호 처리 후 분석을 진행합니다.' :
+    step === 'ANALYSING' ? '나의 기록을 꼼꼼히 읽고 지원 전략에 필요한 근거들을 분석 중입니다.' :
+    step === 'RESULT' ? '강점, 보완점, 향후 발전 방향이 포함된 종합 리포트입니다.' :
+    '문제가 발생했습니다. 다시 시도해 주세요.';
 
   const timingPhaseItems = [
     { id: 'upload', label: '업로드', expectedSeconds: 20, ...timingPhases.upload },
@@ -851,8 +905,8 @@ export function Diagnosis() {
       {shouldShowProgressRail && shouldShowTimingDashboard ? (
         <ProcessTimingDashboard
           phases={timingPhaseItems}
-          title="진단 진행 타임라인"
-          description="예상 소요 시간 대비 현재 진단 진행률을 보여드려요"
+          title="실시간 진단 현황"
+          description="현재 진행 중인 분석 단계를 상세히 보여드립니다"
         />
       ) : null}
 
@@ -860,38 +914,39 @@ export function Diagnosis() {
         {step === 'GOALS' ? (
           <motion.div key="goals" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
             <SectionCard
-              title="지원 목표 목록"
-              description="첫 번째 목표가 진단 기준점으로 사용됩니다"
+              title="목표 대학 및 학과 선택"
+              description="온보딩에서 설정한 목표를 확인합니다. 수정이 필요한 경우 여기서 변경할 수 있습니다."
+              className="border-none bg-white/40 shadow-xl backdrop-blur-xl"
               actions={
                 !isEditingGoals ? (
                   <SecondaryButton data-testid="diagnosis-edit-goals" onClick={() => setIsEditingGoals(true)}>
-                    수정하기
+                    설정 수정하기
                   </SecondaryButton>
                 ) : null
               }
             >
               {isEditingGoals ? (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <SurfaceCard tone="muted" className="space-y-4">
+                <div className="grid gap-8 lg:grid-cols-2">
+                  <SurfaceCard tone="muted" className="border-none bg-slate-50 shadow-inner">
                     <div className="relative">
-                      <label className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">대학 검색</label>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">목표 대학교 검색</label>
                       <input
                         data-testid="diagnosis-university-search"
                         type="text"
                         value={univInput}
                         onChange={event => setUnivInput(event.target.value)}
-                        placeholder="대학명을 입력하세요"
-                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-12 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-[#004aad]/20"
+                        placeholder="예: 서울대학교"
+                        className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 pr-12 text-sm font-semibold shadow-sm transition-all outline-none focus:border-[#004aad] focus:ring-4 focus:ring-[#004aad]/10"
                       />
                       {univPreviewName.length >= 2 ? (
                         <UniversityLogo
                           universityName={univPreviewName}
-                          className="pointer-events-none absolute right-2 top-[31px] h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                          fallbackClassName="border border-slate-200"
+                          className="pointer-events-none absolute right-3 top-[34px] h-8 w-8 rounded-lg bg-white object-contain p-1 shadow-sm"
+                          fallbackClassName="border border-slate-100"
                         />
                       ) : null}
                       {univInput ? (
-                        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-44 overflow-auto rounded-xl border border-slate-200 bg-white shadow-md">
+                        <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-60 overflow-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl backdrop-blur-xl">
                           {searchUniversities(univInput, { excludeNames: goalList.map(goal => goal.university) }).map((suggestion, index) => (
                             <button
                               key={suggestion.label}
@@ -901,182 +956,209 @@ export function Diagnosis() {
                                 setCurrentUniv(suggestion.label);
                                 setUnivInput('');
                               }}
-                              className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm font-semibold text-slate-700 last:border-b-0 hover:bg-slate-50"
+                              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#004aad]/5"
                             >
-                              {suggestion.label}
+                              <UniversityLogo universityName={suggestion.label} className="h-6 w-6 rounded-md bg-white object-contain p-0.5" />
+                              <span className="text-sm font-bold text-slate-700">{suggestion.label}</span>
                             </button>
                           ))}
-                          {!searchUniversities(univInput, { excludeNames: goalList.map(goal => goal.university) }).length && univInput.trim().length >= 2 ? (
-                            <button
-                              type="button"
-                              data-testid="diagnosis-university-option-manual"
-                              onClick={() => {
-                                setCurrentUniv(univInput.trim());
-                                setUnivInput('');
-                              }}
-                              className="block w-full px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              "{univInput.trim()}" 직접 입력 사용
-                            </button>
-                          ) : null}
                         </div>
                       ) : null}
                     </div>
 
                     {currentUniv ? (
-                      <div className="space-y-3 rounded-xl border border-[#004aad]/10 bg-[#004aad]/5 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex min-w-0 items-center gap-2">
+                      <div className="mt-8 space-y-5 rounded-3xl border border-[#004aad]/10 bg-gradient-to-br from-[#004aad]/5 to-transparent p-6">
+                        <div className="flex items-center justify-between gap-2 border-b border-[#004aad]/10 pb-4">
+                          <div className="flex items-center gap-3">
                             <UniversityLogo
                               universityName={currentUniv}
-                              className="h-7 w-7 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                              fallbackClassName="border border-[#004aad]/10"
+                              className="h-10 w-10 rounded-xl bg-white object-contain p-1 shadow-md"
                             />
-                            <StatusBadge status="active" className="truncate">{currentUniv}</StatusBadge>
+                            <h4 className="text-lg font-black text-slate-900">{currentUniv}</h4>
                           </div>
-                          <button type="button" onClick={() => setCurrentUniv('')} className="text-slate-400 hover:text-slate-700">
-                            <Trash2 size={15} />
+                          <button type="button" onClick={() => setCurrentUniv('')} className="rounded-xl p-2 text-slate-400 hover:bg-white hover:text-red-500">
+                            <Trash2 size={18} />
                           </button>
                         </div>
                         <CatalogAutocompleteInput
-                          label="학과"
+                          label="희망 학과"
                           value={currentMajor}
                           onChange={setCurrentMajor}
-                          placeholder="학과를 입력하세요"
-                          suggestions={searchMajors(currentMajor, currentUniv, 20)}
+                          placeholder="학과명을 직접 입력하거나 검색하세요"
+                          suggestions={searchMajors(currentMajor, currentUniv, 15)}
                           onSelect={item => setCurrentMajor(item.label)}
-                          inputTestId="diagnosis-major-search"
-                          suggestionTestIdPrefix="diagnosis-major-option"
                         />
                         <PrimaryButton
                           data-testid="diagnosis-add-goal"
                           onClick={handleAddGoal}
                           disabled={!currentUniv || currentMajor.length < 2 || goalList.length >= 6}
                           fullWidth
+                          size="lg"
+                          className="shadow-lg shadow-blue-500/10"
                         >
-                          <Plus size={16} />
-                          목표 추가
+                          <Plus size={18} />
+                          목표 리스트에 추가
                         </PrimaryButton>
                       </div>
                     ) : null}
                   </SurfaceCard>
 
-                  <div className="space-y-2">
-                    {goalList.map((goal, index) => (
-                      <SurfaceCard key={goal.id} padding="sm" className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <UniversityLogo
-                            universityName={goal.university}
-                            className="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                            fallbackClassName="border border-slate-200"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-slate-800">{goal.university}</p>
-                            <p className="truncate text-xs font-medium text-slate-500">{goal.major}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {index === 0 ? <StatusBadge status="active">주 목표</StatusBadge> : null}
-                          <button type="button" onClick={() => removeGoal(goal.id)} className="text-slate-400 hover:text-red-600">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </SurfaceCard>
-                    ))}
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">나의 선택 리스트 ({goalList.length}/6)</p>
+                    <AnimatePresence initial={false}>
+                      {goalList.map((goal, index) => (
+                        <motion.div
+                          key={goal.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                        >
+                          <SurfaceCard padding="sm" className="flex items-center justify-between gap-4 border-slate-100 shadow-sm transition-all hover:border-[#004aad]/20">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <UniversityLogo
+                                universityName={goal.university}
+                                className="h-10 w-10 rounded-xl bg-slate-50 object-contain p-1.5"
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
+                                <p className="truncate text-xs font-bold text-slate-500">{goal.major}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {index === 0 ? (
+                                <div className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-black text-[#004aad]">MAIN</div>
+                              ) : null}
+                              <button type="button" onClick={() => removeGoal(goal.id)} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </SurfaceCard>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </div>
                 </div>
               ) : goalList.length ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {goalList.map((goal, index) => (
-                    <SurfaceCard key={goal.id} tone="muted" padding="sm">
-                      <div className="mb-2">
-                        <StatusBadge status={index === 0 ? 'active' : 'neutral'}>{index === 0 ? '주 목표' : `목표 ${index + 1}`}</StatusBadge>
-                      </div>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <UniversityLogo
-                          universityName={goal.university}
-                          className="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                          fallbackClassName="border border-slate-200"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-slate-800">{goal.university}</p>
-                          <p className="truncate text-xs font-medium text-slate-500">{goal.major}</p>
+                    <div key={goal.id} className="group relative overflow-hidden rounded-3xl border border-slate-100 bg-slate-50/50 p-5 transition-all hover:bg-white hover:shadow-xl hover:shadow-blue-500/5">
+                      <div className="mb-4 flex items-center justify-between">
+                        <div className={`h-10 w-10 rounded-2xl p-1.5 shadow-sm bg-white`}>
+                          <UniversityLogo universityName={goal.university} className="h-full w-full object-contain" />
                         </div>
+                        {index === 0 ? (
+                          <span className="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-black text-white shadow-lg shadow-blue-500/20">대표 목표</span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400">목표 {index + 1}</span>
+                        )}
                       </div>
-                    </SurfaceCard>
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-black text-slate-900 group-hover:text-[#004aad] transition-colors">{goal.university}</p>
+                        <p className="mt-0.5 truncate text-sm font-bold text-slate-500">{goal.major}</p>
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : (
-                <EmptyState title="설정한 목표가 없습니다" description="진단을 시작하려면 최소 1개의 목표를 설정해 주세요" />
+                <EmptyState title="설정한 목표가 없습니다" description="나의 입시 전략을 구축할 목표 대학을 선택해 주세요." />
               )}
             </SectionCard>
 
             {isEditingGoals ? (
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <SecondaryButton onClick={() => setIsEditingGoals(false)}>취소</SecondaryButton>
-                <PrimaryButton data-testid="diagnosis-save-goals" onClick={saveGoals}>
-                  목표 저장
+              <div className="flex items-center justify-end gap-3">
+                <SecondaryButton className="bg-white border-slate-200" onClick={() => {
+                  setIsEditingGoals(false);
+                  // Refresh goal list to state from onboarding store if canceled
+                  if (user) {
+                    const initial = buildRankedGoals(user, 6).map((goal, idx) => ({
+                      id: idx === 0 ? 'main' : `interest-${idx - 1}`,
+                      university: goal.university,
+                      major: goal.major,
+                    }));
+                    setGoalList(initial);
+                  }
+                }}>변경 취소</SecondaryButton>
+                <PrimaryButton data-testid="diagnosis-save-goals" size="lg" onClick={saveGoals}>
+                  설정 완료
                 </PrimaryButton>
               </div>
             ) : goalList.length > 0 ? (
-              <div className="flex flex-col items-center gap-4">
-                <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2 text-sm font-semibold text-[#004aad]">
-                  <CheckCircle2 size={16} />
-                  설정된 6개 대학교/학과를 기준으로 진단을 진행합니다.
+              <div className="flex flex-col items-center gap-6 pt-4">
+                <div className="inline-flex items-center gap-3 rounded-2xl bg-[#004aad]/5 px-6 py-3 text-sm font-bold text-[#004aad]">
+                  <CheckCircle2 size={20} className="text-[#004aad]" />
+                  <span>{goalList.length}개의 목표가 성공적으로 설정되었습니다.</span>
                 </div>
-                <PrimaryButton data-testid="diagnosis-goals-continue" onClick={() => setStep('UPLOAD')} size="lg">
-                  학생부 업로드 단계로 이동
-                  <ArrowRight size={18} />
+                <PrimaryButton data-testid="diagnosis-goals-continue" onClick={() => setStep('UPLOAD')} size="lg" className="h-14 px-10 text-lg shadow-2xl shadow-blue-500/20">
+                  다음: 생기부 등록하기
+                  <ArrowRight size={22} className="ml-2" />
                 </PrimaryButton>
               </div>
-            ) : (
-              <div className="flex justify-center">
-                <PrimaryButton data-testid="diagnosis-goals-continue" onClick={() => setStep('UPLOAD')} disabled={!goalList.length} size="lg">
-                  업로드 단계로 이동
-                  <ArrowRight size={18} />
-                </PrimaryButton>
-              </div>
-            )}
+            ) : null}
           </motion.div>
         ) : null}
 
         {step === 'UPLOAD' ? (
           <motion.div key="upload" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
             <SectionCard
-              title="PDF 업로드"
-              description="파일 1개(최대 50MB)를 올리면 업로드 이후 기록 분석 및 진단이 자동으로 이어집니다."
+              title="PDF 생기부 등록"
+              description="서류 1개(최대 50MB)를 등록하시면 자동으로 정밀 분석을 거쳐 진단 보고서를 생성합니다."
+              className="overflow-hidden border-none bg-white/40 shadow-xl backdrop-blur-xl"
             >
-              <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
-                <p className="text-sm font-semibold text-slate-700">1. PDF 선택</p>
-                <p className="text-sm font-semibold text-slate-700">2. 자동 분석 확인</p>
-                <p className="text-sm font-semibold text-slate-700">3. 진단 결과 확인</p>
+              <div className="grid gap-3 rounded-2xl bg-[#004aad]/5 p-5 sm:grid-cols-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#004aad] text-[12px] font-bold text-white">1</div>
+                  <p className="text-sm font-bold text-slate-700">생활기록부 등록</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#004aad] text-[12px] font-bold text-white">2</div>
+                  <p className="text-sm font-bold text-slate-700">내용 정밀 분석</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#004aad] text-[12px] font-bold text-white">3</div>
+                  <p className="text-sm font-bold text-slate-700">진단 결과 확인</p>
+                </div>
               </div>
+
               <div
                 {...getRootProps({
                   onClick: handleOpenFileDialog,
                   onKeyDown: handleDropzoneKeyDown,
                 })}
-                className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-colors sm:p-10 ${
-                  isDragActive ? 'border-[#004aad]/40 bg-[#004aad]/5' : 'border-slate-300 bg-slate-50 hover:border-[#004aad]/30 hover:bg-white'
+                className={`group relative mt-6 cursor-pointer overflow-hidden rounded-[2rem] border-2 border-dashed transition-all duration-300 ${
+                  isDragActive 
+                    ? 'border-[#004aad] bg-[#004aad]/5 scale-[0.99]' 
+                    : 'border-slate-200 bg-white hover:border-[#004aad]/40 hover:shadow-2xl hover:shadow-blue-500/10'
                 } ${isUploading ? 'pointer-events-none opacity-60' : ''}`}
               >
                 <input data-testid="diagnosis-upload-input" {...getInputProps()} />
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-[#004aad] shadow-sm">
-                  {isUploading ? (
-                    <div className="w-9">
-                      <div className="h-1.5 overflow-hidden rounded-full bg-[#004aad]/15">
-                        <motion.div
-                          className="h-full rounded-full bg-[#004aad]"
-                          animate={{ x: ['-100%', '100%'] }}
-                          transition={{ duration: 1.15, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                      </div>
+                
+                <div className="flex flex-col items-center px-6 py-12 text-center sm:py-20">
+                  <div className="relative mb-8">
+                    <div className="absolute inset-0 animate-ping rounded-full bg-blue-400 opacity-20"></div>
+                    <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-[#004aad] to-[#0070f3] text-white shadow-lg shadow-blue-500/20">
+                      {isUploading ? (
+                        <div className="w-12">
+                          <div className="h-2 overflow-hidden rounded-full bg-white/20">
+                            <motion.div
+                              className="h-full rounded-full bg-white"
+                              animate={{ x: ['-100%', '100%'] }}
+                              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <FileUp size={42} className="transition-transform duration-300 group-hover:-translate-y-1" />
+                      )}
                     </div>
-                  ) : <FileUp size={26} />}
-                </div>
-                <p className="text-xl font-black tracking-tight text-slate-900">학생부 PDF를 드래그하거나 클릭하여 업로드하세요</p>
-                <p className="mt-2 text-base font-medium text-slate-600">업로드 이후에 페이지를 유지하면 자동으로 상태가 갱신됩니다</p>
-                <div className="mt-4">
+                  </div>
+
+                  <h3 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+                    생기부 PDF 파일을 <span className="text-[#004aad]">마우스로 끌어서</span> 놓으세요
+                  </h3>
+                  <p className="mt-4 max-w-md text-lg font-medium text-slate-500">
+                    파일을 선택하거나 드래그하면 즉시 정밀 진단이 시작됩니다. (최대 50MB 가능)
+                  </p>
+
                   <button
                     type="button"
                     onClick={(event) => {
@@ -1085,14 +1167,19 @@ export function Diagnosis() {
                       handleOpenFileDialog();
                     }}
                     disabled={isUploading}
-                    className="inline-flex items-center gap-2 rounded-xl border border-[#004aad]/20 bg-white px-4 py-2 text-sm font-bold text-[#004aad] shadow-sm transition-colors hover:bg-[#004aad]/5 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-10 flex items-center gap-3 rounded-2xl bg-slate-900 px-8 py-4 text-base font-bold text-white shadow-xl shadow-slate-200 ring-offset-2 transition-all hover:bg-slate-800 hover:ring-2 hover:ring-slate-900 active:scale-95 disabled:opacity-50"
                   >
-                    <FileUp size={15} />
-                    파일 선택
+                    <Plus size={20} />
+                    컴퓨터에서 파일 찾기
                   </button>
                 </div>
               </div>
-              {flowError ? <WorkflowNotice tone="danger" title="업로드 및 진단 오류" description={flowError} /> : null}
+
+              {flowError ? (
+                <div className="mt-6">
+                  <WorkflowNotice tone="danger" title="작업 중 오류 발생" description={flowError} />
+                </div>
+              ) : null}
             </SectionCard>
           </motion.div>
         ) : null}
@@ -1143,43 +1230,67 @@ export function Diagnosis() {
           <motion.div key="result" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
             <SectionCard
               title={diagnosisResult.headline}
-              description="진단 근거를 확인하고 워크숍으로 이동해 주세요."
-              eyebrow="진단 결과"
+              description="AI가 분석한 나의 생기부 경쟁력 핵심 요약입니다."
+              eyebrow="정밀 진단 결과"
               data-testid="diagnosis-result-panel"
+              className="border-none bg-white shadow-2xl"
               actions={
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={diagnosisResult.risk_level === 'safe' ? 'success' : diagnosisResult.risk_level === 'warning' ? 'warning' : 'danger'}>
+                  <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-black shadow-lg ${
+                    diagnosisResult.risk_level === 'safe' 
+                      ? 'bg-emerald-500 text-white shadow-emerald-500/20' 
+                      : diagnosisResult.risk_level === 'warning' 
+                        ? 'bg-amber-500 text-white shadow-amber-500/20' 
+                        : 'bg-rose-500 text-white shadow-rose-500/20'
+                  }`}>
                     {formatRiskLevel(diagnosisResult.risk_level)}
-                  </StatusBadge>
+                  </div>
                 </div>
               }
             >
               {diagnosisResult.overview ? (
-                <WorkflowNotice tone="info" title="개요" description={diagnosisResult.overview} />
+                <div className="mb-8 rounded-3xl bg-slate-50 p-6 sm:p-8">
+                  <p className="text-lg font-bold leading-relaxed text-slate-700">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">종합 분석 의견</span>
+                    {diagnosisResult.overview}
+                  </p>
+                </div>
               ) : null}
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <SurfaceCard tone="muted" padding="sm">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">강점</p>
-                  <ul className="space-y-1.5">
+              <div className="grid gap-6 md:grid-cols-2">
+                <SurfaceCard className="border-none bg-emerald-50/50 p-6 ring-1 ring-emerald-100">
+                  <div className="mb-4 flex items-center gap-2 text-emerald-700">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
+                      <CheckCircle2 size={18} />
+                    </div>
+                    <span className="text-lg font-black italic">Strengths.</span>
+                    <span className="text-sm font-bold opacity-60">나의 생기부 강점</span>
+                  </div>
+                  <ul className="space-y-3">
                     {diagnosisResult.strengths.map((item, index) => (
-                      <li key={index} className="flex gap-2 text-base font-medium leading-7 text-slate-700">
-                        <CheckCircle2 size={14} className="mt-1 text-emerald-600" />
+                      <li key={index} className="flex gap-3 text-base font-bold leading-relaxed text-slate-700">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
                         {item}
                       </li>
                     ))}
                   </ul>
                 </SurfaceCard>
 
-                <SurfaceCard tone="muted" padding="sm">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">보완 포인트</p>
-                  <ul className="space-y-1.5">
+                <SurfaceCard className="border-none bg-rose-50/50 p-6 ring-1 ring-rose-100">
+                  <div className="mb-4 flex items-center gap-2 text-rose-700">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-500 text-white shadow-lg shadow-rose-500/20">
+                      <AlertTriangle size={18} />
+                    </div>
+                    <span className="text-lg font-black italic">Gap Points.</span>
+                    <span className="text-sm font-bold opacity-60">보완이 필요한 부분</span>
+                  </div>
+                  <ul className="space-y-3">
                     {(diagnosisResult.detailed_gaps?.length
                       ? diagnosisResult.detailed_gaps.map(gap => `${gap.title}: ${gap.description}`)
                       : diagnosisResult.gaps
                     ).map((item, index) => (
-                      <li key={index} className="flex gap-2 text-base font-medium leading-7 text-slate-700">
-                        <AlertTriangle size={14} className="mt-1 text-amber-600" />
+                      <li key={index} className="flex gap-3 text-base font-bold leading-relaxed text-slate-700">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" />
                         {item}
                       </li>
                     ))}
@@ -1187,33 +1298,51 @@ export function Diagnosis() {
                 </SurfaceCard>
               </div>
 
-              <WorkflowNotice
-                tone="info"
-                title="핵심 인사이트는 아래 섹션에서 확인할 수 있어요"
-                description="상단 요약은 첫 진입을 돕고, 보조 분석과 고급 메타데이터는 분리해서 제시합니다."
-              />
+              {diagnosisResult.next_actions?.length || diagnosisResult.recommended_focus ? (
+                <div className="mt-8 rounded-[2rem] bg-slate-900 p-8 text-white shadow-2xl">
+                  <div className="mb-6 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white">
+                      <Zap size={20} fill="currentColor" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-black">Next Action.</h4>
+                      <p className="text-sm font-bold text-slate-400">합격을 위한 향후 액션 플랜</p>
+                    </div>
+                  </div>
 
-              {diagnosisResult.next_actions?.length ? (
-                <SurfaceCard tone="muted" padding="sm">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">다음 액션</p>
-                  <ul className="space-y-1.5">
-                    {diagnosisResult.next_actions.map((action) => (
-                      <li key={action} className="text-base font-medium leading-7 text-slate-700">
-                        • {action}
-                      </li>
-                    ))}
-                  </ul>
-                </SurfaceCard>
+                  <div className="grid gap-8 lg:grid-cols-2">
+                    {diagnosisResult.next_actions?.length ? (
+                      <div className="space-y-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">주요 실천 과제</p>
+                        <ul className="space-y-3">
+                          {diagnosisResult.next_actions.map((action, i) => (
+                            <li key={i} className="flex gap-3 text-base font-bold text-slate-100">
+                              <span className="mt-2.5 flex h-1 w-1 shrink-0 rounded-full bg-blue-400" />
+                              {action}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {diagnosisResult.recommended_focus ? (
+                      <div className="space-y-4 border-l border-white/10 pl-8">
+                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">추천 집중 영역</p>
+                        <p className="text-lg font-bold leading-relaxed text-blue-100">
+                          {diagnosisResult.recommended_focus}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
-
-              <WorkflowNotice tone="info" title="추천 집중 영역" description={diagnosisResult.recommended_focus} />
             </SectionCard>
 
             {hasSecondaryInsights ? (
               <SectionCard
-                title="추가 인사이트"
-                description="보조 분석 항목은 기본 화면에서 분리되어 필요할 때만 펼쳐볼 수 있어요."
-                eyebrow="Secondary"
+                title="상세 진단 결과"
+                description="기본 요약 외에 AI가 분석한 추가 인사이트를 확인해 보세요."
+                eyebrow="상세 분석"
                 collapsible
                 defaultCollapsed
               >
@@ -1252,7 +1381,7 @@ export function Diagnosis() {
                           <div className="mb-2 flex items-center justify-between gap-2">
                             <p className="text-sm font-bold text-slate-800">{quest.title}</p>
                             <StatusBadge status={quest.priority === 'high' ? 'danger' : quest.priority === 'medium' ? 'warning' : 'neutral'}>
-                              {quest.priority}
+                              {quest.priority === 'high' ? '높음' : quest.priority === 'medium' ? '보통' : '낮음'}
                             </StatusBadge>
                           </div>
                           <p className="text-base font-medium leading-7 text-slate-600">{quest.description}</p>
@@ -1319,30 +1448,33 @@ export function Diagnosis() {
 
             {hasAdvancedDiagnostics ? (
               <SectionCard
-                title="고급 분석 데이터"
-                description="실행 메타데이터와 근거 검증 정보는 필요한 경우에만 확인할 수 있어요."
-                eyebrow="Advanced"
+                title="데이터 집계 및 정밀 분석 지표"
+                description="분석 과정의 기술적 정보 및 근거 데이터 매핑 현황입니다."
+                eyebrow="정밀 분석 리포트"
                 collapsible
                 defaultCollapsed
+                className="border-none bg-slate-50/50"
               >
                 {diagnosisResult.document_quality ? (
-                  <SurfaceCard tone="muted" padding="sm" className="space-y-3">
+                  <SurfaceCard tone="muted" padding="sm" className="space-y-3 bg-white border-slate-100">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">문서 품질</p>
+                      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">데이터 신뢰도 분석</p>
                       <StatusBadge status={diagnosisResult.document_quality.needs_review ? 'warning' : 'success'}>
-                        {diagnosisResult.document_quality.parse_reliability_band} ({diagnosisResult.document_quality.parse_reliability_score}점)
+                        {diagnosisResult.document_quality.parse_reliability_band === 'high' ? '높음' : 
+                         diagnosisResult.document_quality.parse_reliability_band === 'medium' ? '보통' : '낮음'} 
+                        ({diagnosisResult.document_quality.parse_reliability_score}점)
                       </StatusBadge>
                     </div>
-                    <p className="text-base font-medium leading-7 text-slate-700">{diagnosisResult.document_quality.summary}</p>
+                    <p className="text-base font-medium leading-relaxed text-slate-700">{diagnosisResult.document_quality.summary}</p>
                     <div className="grid gap-2 sm:grid-cols-3">
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        source: {diagnosisResult.document_quality.source_mode}
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-600">
+                        데이터 수집: {diagnosisResult.document_quality.source_mode === 'pdf_analysis' ? 'AI 엔진 분석' : '텍스트 추출'}
                       </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        records: {diagnosisResult.document_quality.total_records}
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-600">
+                        추출 기록: {diagnosisResult.document_quality.total_records}건
                       </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        words: {diagnosisResult.document_quality.total_word_count}
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-600">
+                        분석 단어수: {diagnosisResult.document_quality.total_word_count.toLocaleString()}단어
                       </div>
                     </div>
                   </SurfaceCard>
@@ -1351,42 +1483,32 @@ export function Diagnosis() {
                 {diagnosisResult.requested_llm_provider ||
                 diagnosisResult.actual_llm_provider ||
                 diagnosisResult.processing_duration_ms !== undefined ? (
-                  <SurfaceCard tone="muted" padding="sm" className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">LLM execution</p>
+                  <SurfaceCard tone="muted" padding="sm" className="space-y-2 bg-white border-slate-100">
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">엔진 가동 정보</p>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        requested: {diagnosisResult.requested_llm_provider || 'unknown'} / {diagnosisResult.requested_llm_model || 'unknown'}
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-600">
+                        분석 모드: {diagnosisResult.llm_profile_used === 'premium' ? '하이엔드 정밀 모델' : '표준 분석'}
                       </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        actual: {diagnosisResult.actual_llm_provider || 'unknown'} / {diagnosisResult.actual_llm_model || 'unknown'}
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        profile: {diagnosisResult.llm_profile_used || 'standard'}
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                        fallback: {String(diagnosisResult.fallback_used ?? false)}
-                        {diagnosisResult.fallback_reason ? ` (${diagnosisResult.fallback_reason})` : ''}
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-600">
+                        처리 안정성: {diagnosisResult.fallback_used ? '최적화 모드' : '안정적'}
                       </div>
                     </div>
-                    <p className="text-xs font-semibold text-slate-500">
-                      duration: {diagnosisResult.processing_duration_ms ?? 'n/a'}ms
-                    </p>
                   </SurfaceCard>
                 ) : null}
 
                 {diagnosisResult.section_analysis?.length ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">섹션 분석</p>
+                  <div className="space-y-3 pt-2">
+                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">항목별 수집 현황</p>
                     <div className="grid gap-2 md:grid-cols-2">
                       {diagnosisResult.section_analysis.map((item) => (
-                        <SurfaceCard key={item.key} tone="muted" padding="sm" className="space-y-1.5">
+                        <SurfaceCard key={item.key} tone="muted" padding="sm" className="space-y-1.5 bg-white border-slate-100">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-bold text-slate-800">{item.label}</p>
+                            <p className="text-sm font-black text-slate-800">{item.label}</p>
                             <StatusBadge status={item.present ? 'success' : 'warning'}>
-                              {item.present ? `records ${item.record_count}` : 'missing'}
+                              {item.present ? `${item.record_count}개 감지` : '기록 없음'}
                             </StatusBadge>
                           </div>
-                          <p className="text-base font-medium leading-7 text-slate-600">{item.note}</p>
+                          <p className="text-sm font-medium leading-relaxed text-slate-500">{item.note}</p>
                         </SurfaceCard>
                       ))}
                     </div>
@@ -1403,7 +1525,7 @@ export function Diagnosis() {
                             <p className="text-sm font-bold text-slate-800">{axis.label}</p>
                             <div className="flex items-center gap-1.5">
                               <StatusBadge status={axis.severity === 'low' ? 'success' : axis.severity === 'medium' ? 'warning' : 'danger'}>
-                                {axis.band}
+                                {axis.band === 'safe' ? '안정' : axis.band === 'warning' ? '주의' : '부족'}
                               </StatusBadge>
                               <StatusBadge status="neutral">{axis.score}점</StatusBadge>
                             </div>
@@ -1453,7 +1575,7 @@ export function Diagnosis() {
                 목표 다시 설정
               </SecondaryButton>
               <PrimaryButton onClick={() => navigate(`/app/workshop/${projectId}`)}>
-                워크숍 시작
+                생기부 워크숍 시작하기
                 <ArrowRight size={16} />
               </PrimaryButton>
             </div>
