@@ -253,10 +253,22 @@ def ingest_upload_asset(
                     # Replace the existing analysis_artifact with our highly structured one
                     document.parse_metadata["analysis_artifact"] = advanced_artifact
                     
-                    # Update confidence and review flags if provided by quality service
+                    # Keep parse_confidence as parser-native score; store pipeline quality separately.
                     quality_report = advanced_artifact.get("quality_report", {})
                     if quality_report:
-                        document.parse_metadata["parse_confidence"] = quality_report.get("overall_score", document.parse_metadata.get("parse_confidence"))
+                        quality_score = quality_report.get("overall_score")
+                        if isinstance(quality_score, (int, float)):
+                            document.parse_metadata["pipeline_quality_score"] = max(
+                                0.0,
+                                min(1.0, float(quality_score)),
+                            )
+                        missing_critical = quality_report.get("missing_critical_sections")
+                        if isinstance(missing_critical, list):
+                            document.parse_metadata["pipeline_quality_missing_sections"] = [
+                                str(item).strip()
+                                for item in missing_critical
+                                if str(item).strip()
+                            ]
                         if quality_report.get("missing_critical_sections"):
                             document.parse_metadata["needs_review"] = True
                             

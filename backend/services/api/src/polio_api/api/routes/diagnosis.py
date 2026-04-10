@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, Response
@@ -63,6 +64,19 @@ logger = logging.getLogger("unifoli.api.diagnosis")
 
 def _normalize_report_mode(value: str | None) -> str:
     return value if value in {"compact", "premium_10p"} else "premium_10p"
+
+
+def _build_diagnosis_download_filename(user: User) -> str:
+    raw_name = str(getattr(user, "name", "") or "").strip()
+    safe_name = "".join(ch for ch in raw_name if ch not in '<>:"/\\|?*').strip()
+    if not safe_name:
+        safe_name = "사용자"
+    return f"{safe_name}님의 생기부 진단 보고서.pdf"
+
+
+def _content_disposition_header(filename: str) -> str:
+    encoded = quote(filename)
+    return f"attachment; filename=\"diagnosis-report.pdf\"; filename*=UTF-8''{encoded}"
 
 
 def _get_run_for_user(db: Session, diagnosis_id: str, user_id: str) -> DiagnosisRun | None:
@@ -525,12 +539,12 @@ async def download_consultant_report_pdf_route(
                 output_path = report_artifact_file_path(artifact)
                 storage_bytes = load_report_artifact_pdf_bytes(artifact)
     if storage_bytes is not None:
-        filename = f"consultant-diagnosis-{run.id}-v{artifact.version}.pdf"
+        filename = _build_diagnosis_download_filename(current_user)
         return Response(
             content=storage_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Disposition": _content_disposition_header(filename),
             },
         )
 
@@ -541,8 +555,13 @@ async def download_consultant_report_pdf_route(
         )
 
     resolved = _resolve_report_output_path(str(output_path))
-    filename = f"consultant-diagnosis-{run.id}-v{artifact.version}.pdf"
-    return FileResponse(path=resolved, filename=filename, media_type="application/pdf")
+    filename = _build_diagnosis_download_filename(current_user)
+    return FileResponse(
+        path=resolved,
+        filename=filename,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition_header(filename)},
+    )
 
 
 @router.get("/{diagnosis_id}", response_model=DiagnosisRunResponse)

@@ -295,3 +295,178 @@ def test_student_record_structure_bridge_uses_canonical_schema() -> None:
     assert structure["section_density"]["교과학습발달상황"] > 0
     assert structure["timeline_signals"]
     assert "subject_major_alignment_signals" in structure
+
+
+def _build_full_section_payload() -> ParsedDocumentPayload:
+    pages = [
+        {"page_number": 1, "text": "인적사항 성명 홍길동 학교명 테스트고등학교"},
+        {"page_number": 2, "text": "출결상황 결석 지각 조퇴 없음"},
+        {"page_number": 3, "text": "수상경력 수상명 과학탐구발표대회 수여기관 교내"},
+        {"page_number": 4, "text": "창의적 체험활동 동아리활동 진로활동 지속가능 건축 탐구"},
+        {"page_number": 5, "text": "봉사활동 지역사회 환경정화 봉사시간 20시간"},
+        {"page_number": 6, "text": "교과학습발달상황 과목 수학 물리 성취도 우수"},
+        {"page_number": 7, "text": "세부능력 및 특기사항 건축 재료 구조 분석 프로젝트 수행"},
+        {"page_number": 8, "text": "독서활동상황 행동특성 및 종합의견 사용자 경험 공간 인문 보완"},
+        {"page_number": 9, "text": "교과학습발달상황 과목 영어 과학 성취도 우수"},
+        {"page_number": 10, "text": "세부능력 및 특기사항 기후 대응 건축 설계 확장 활동"},
+    ]
+    return ParsedDocumentPayload(
+        parser_name="neis",
+        source_extension=".pdf",
+        page_count=len(pages),
+        word_count=1500,
+        content_text=" ".join(page["text"] for page in pages),
+        content_markdown="",
+        metadata={},
+        chunks=[
+            ParsedChunkPayload(
+                chunk_index=0,
+                page_number=1,
+                char_start=0,
+                char_end=120,
+                token_estimate=40,
+                content_text=pages[0]["text"],
+            )
+        ],
+        raw_artifact={"pages": pages},
+        masked_artifact={"pages": [{"page_number": page["page_number"], "masked_text": page["text"]} for page in pages]},
+        parse_confidence=0.88,
+        needs_review=False,
+    )
+
+
+def _build_normalized_artifact_only_payload() -> ParsedDocumentPayload:
+    page_texts = [
+        "1. 인적·학적사항 학생정보 성명 홍길동",
+        "2. 출 결 상 황 결석 지각 조퇴 없음",
+        "3. 수 상 경 력 교과우수상 수여기관 교내",
+        "5. 창의적 체험활동상황 자율활동 동아리활동 진로활동",
+        "봉사활동 지역사회 환경정화 20시간",
+        "교과학습발달상황 수학 물리 성취도 우수",
+        "세부능력 및 특기사항 건축 재료 구조 분석 프로젝트",
+        "독서활동상황 행동특성 및 종합의견 사용자 경험 보완",
+    ]
+
+    pages: list[dict[str, object]] = []
+    elements: list[dict[str, object]] = []
+    for idx, text in enumerate(page_texts, start=1):
+        element_id = f"page-{idx}-table-0"
+        pages.append({"page_number": idx, "width": 595.0, "height": 842.0, "element_ids": [element_id]})
+        elements.append(
+            {
+                "element_id": element_id,
+                "page_number": idx,
+                "element_type": "table",
+                "raw_text": text,
+                "table_rows": [
+                    {
+                        "row_index": 0,
+                        "cells": [
+                            {
+                                "cell_id": f"row-{idx}-0",
+                                "row_index": 0,
+                                "column_index": 0,
+                                "text": text,
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    return ParsedDocumentPayload(
+        parser_name="neis",
+        source_extension=".pdf",
+        page_count=len(page_texts),
+        word_count=1500,
+        content_text=" ".join(page_texts),
+        content_markdown="",
+        metadata={
+            "normalized_artifact": {
+                "schema_version": "test",
+                "source_file": "sample.pdf",
+                "parser_name": "neis",
+                "page_count": len(page_texts),
+                "pages": pages,
+                "elements": elements,
+            }
+        },
+        chunks=[
+            ParsedChunkPayload(
+                chunk_index=0,
+                page_number=1,
+                char_start=0,
+                char_end=120,
+                token_estimate=40,
+                content_text=page_texts[0],
+            )
+        ],
+        raw_artifact={"pages": [{"page_number": idx + 1, "text": ""} for idx in range(len(page_texts))]},
+        masked_artifact={"pages": [{"page_number": idx + 1, "masked_text": ""} for idx in range(len(page_texts))]},
+        parse_confidence=0.88,
+        needs_review=False,
+    )
+
+
+def test_normalized_sections_and_evidence_bank_cover_required_sections() -> None:
+    parsed = _build_full_section_payload()
+    canonical = build_student_record_canonical_metadata(
+        parsed=parsed,
+        pdf_analysis={"engine": "llm", "summary": "요약"},
+        analysis_artifact=None,
+    )
+
+    assert canonical is not None
+    coverage = canonical.get("section_coverage") or {}
+    assert coverage.get("missing_sections") == []
+    assert canonical.get("quality_gates", {}).get("reanalysis_required") is False
+
+    evidence_bank = canonical.get("evidence_bank") or []
+    assert len(evidence_bank) >= 10
+    unique_pages = {int(item.get("page") or 0) for item in evidence_bank}
+    assert len({page for page in unique_pages if page > 0}) >= 6
+    sample = evidence_bank[0]
+    for key in ("page", "section", "normalized_section", "quote", "major_relevance", "process_elements", "confidence"):
+        assert key in sample
+
+
+def test_normalized_artifact_fallback_extracts_pages_when_raw_masked_empty() -> None:
+    parsed = _build_normalized_artifact_only_payload()
+    canonical = build_student_record_canonical_metadata(
+        parsed=parsed,
+        pdf_analysis={"engine": "fallback", "summary": "요약"},
+        analysis_artifact=None,
+    )
+
+    assert canonical is not None
+    coverage = canonical.get("section_coverage") or {}
+    missing = coverage.get("missing_sections") or []
+    assert "student_info" not in missing
+    assert "grades_subjects" not in missing
+    assert "subject_special_notes" not in missing
+    assert "behavior_general_comments" not in missing
+    assert canonical.get("evidence_bank")
+
+
+def test_structure_contradiction_guard_removes_conflicting_weak_sections() -> None:
+    parsed = _build_full_section_payload()
+    canonical = build_student_record_canonical_metadata(
+        parsed=parsed,
+        pdf_analysis={"engine": "llm", "summary": "요약"},
+        analysis_artifact=None,
+    )
+    assert canonical is not None
+    canonical["weak_or_missing_sections"] = [
+        {"section": "교과학습발달상황", "status": "missing", "evidence": []},
+    ]
+    canonical["section_classification"]["grades_subjects"]["density"] = 1.0
+
+    structure = build_student_record_structure_metadata(
+        parsed=parsed,
+        pdf_analysis={"engine": "llm", "summary": "요약"},
+        canonical_schema=canonical,
+    )
+
+    assert structure is not None
+    assert "교과학습발달상황" not in structure["weak_sections"]
+    assert structure["contradiction_check"]["passed"] is False

@@ -325,6 +325,14 @@ export interface ConsultantDiagnosisScoreBlock {
   uncertainty_note?: string | null;
 }
 
+export interface ConsultantDiagnosisScoreGroup {
+  group: 'student_evaluation' | 'system_quality';
+  title: string;
+  blocks: ConsultantDiagnosisScoreBlock[];
+  gating_status?: 'ok' | 'reanalysis_required' | 'blocked' | null;
+  note?: string | null;
+}
+
 export interface ConsultantDiagnosisRoadmapItem {
   horizon: '1_month' | '3_months' | '6_months';
   title: string;
@@ -353,6 +361,7 @@ export interface ConsultantDiagnosisReport {
   student_target_context: string;
   generated_at: string;
   score_blocks: ConsultantDiagnosisScoreBlock[];
+  score_groups: ConsultantDiagnosisScoreGroup[];
   sections: ConsultantDiagnosisSection[];
   roadmap: ConsultantDiagnosisRoadmapItem[];
   citations: ConsultantDiagnosisEvidenceItem[];

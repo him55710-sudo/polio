@@ -93,6 +93,14 @@ class ConsultantDiagnosisScoreBlock(BaseModel):
     uncertainty_note: str | None = None
 
 
+class ConsultantDiagnosisScoreGroup(BaseModel):
+    group: Literal["student_evaluation", "system_quality"]
+    title: str
+    blocks: list[ConsultantDiagnosisScoreBlock] = Field(default_factory=list)
+    gating_status: Literal["ok", "reanalysis_required", "blocked"] | None = None
+    note: str | None = None
+
+
 class ConsultantDiagnosisRoadmapItem(BaseModel):
     horizon: Literal["1_month", "3_months", "6_months"]
     title: str
@@ -121,6 +129,7 @@ class ConsultantDiagnosisReport(BaseModel):
     student_target_context: str
     generated_at: datetime
     score_blocks: list[ConsultantDiagnosisScoreBlock] = Field(default_factory=list)
+    score_groups: list[ConsultantDiagnosisScoreGroup] = Field(default_factory=list)
     sections: list[ConsultantDiagnosisSection] = Field(default_factory=list)
     roadmap: list[ConsultantDiagnosisRoadmapItem] = Field(default_factory=list)
     citations: list[ConsultantDiagnosisEvidenceItem] = Field(default_factory=list)

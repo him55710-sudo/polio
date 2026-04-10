@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 import threading
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -59,6 +59,44 @@ _SUBJECT_KEYWORDS: tuple[str, ...] = (
     "음악",
     "체육",
 )
+
+_NORMALIZED_SECTION_ORDER: tuple[str, ...] = (
+    "student_info",
+    "attendance",
+    "awards",
+    "creative_activities",
+    "volunteer",
+    "grades_subjects",
+    "subject_special_notes",
+    "reading",
+    "behavior_general_comments",
+)
+
+_NORMALIZED_SECTION_LABELS: dict[str, str] = {
+    "student_info": "인적사항",
+    "attendance": "출결상황",
+    "awards": "수상경력",
+    "creative_activities": "창의적 체험활동",
+    "volunteer": "봉사활동",
+    "grades_subjects": "교과학습발달상황",
+    "subject_special_notes": "세부능력 및 특기사항",
+    "reading": "독서활동상황",
+    "behavior_general_comments": "행동특성 및 종합의견",
+}
+
+_NORMALIZED_SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "student_info": ("인적사항", "학적사항", "성명", "주민등록번호", "학교명", "학년"),
+    "attendance": ("출결상황", "결석", "지각", "조퇴", "결과", "무단"),
+    "awards": ("수상경력", "수상명", "수여기관", "수상일자", "수상"),
+    "creative_activities": ("창의적 체험활동", "자율활동", "동아리활동", "진로활동", "창체"),
+    "volunteer": ("봉사활동", "봉사", "봉사시간", "봉사활동 실적"),
+    "grades_subjects": ("교과학습발달상황", "성취도", "석차", "과목", "원점수", "평균"),
+    "subject_special_notes": ("세부능력", "특기사항", "세특", "과목별 세부능력"),
+    "reading": ("독서활동상황", "독서", "도서명", "저자"),
+    "behavior_general_comments": ("행동특성 및 종합의견", "행동특성", "종합의견"),
+}
+
+_REQUIRED_NORMALIZED_SECTIONS: tuple[str, ...] = _NORMALIZED_SECTION_ORDER
 
 
 class PdfPageInsight(BaseModel):
@@ -550,7 +588,19 @@ def _build_heuristic_analysis(*, parsed: ParsedDocumentPayload, page_items: list
 
 
 def _extract_page_items(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
-    pages = []
+    pages = _extract_page_items_from_masked_or_raw_artifact(parsed)
+    if pages:
+        return pages
+
+    pages = _extract_page_items_from_normalized_artifact(parsed)
+    if pages:
+        return pages
+
+    return _extract_page_items_from_content_text(parsed)
+
+
+def _extract_page_items_from_masked_or_raw_artifact(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
+    pages: list[dict[str, Any]] = []
     candidates: list[dict[str, Any]] = []
 
     masked_pages = parsed.masked_artifact.get("pages") if isinstance(parsed.masked_artifact, dict) else None
@@ -565,9 +615,7 @@ def _extract_page_items(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
         if not isinstance(page_number, int) or page_number <= 0:
             continue
         text = str(item.get("masked_text") or item.get("text") or "").strip()
-        if not text:
-            continue
-        normalized_text = re.sub(r"\s+", " ", text)[:_MAX_PAGE_TEXT_CHARS].strip()
+        normalized_text = _normalize_page_text(text)
         if not normalized_text:
             continue
         pages.append(
@@ -578,6 +626,133 @@ def _extract_page_items(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
             }
         )
     return pages
+
+
+def _extract_page_items_from_normalized_artifact(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
+    metadata = parsed.metadata if isinstance(parsed.metadata, dict) else {}
+    normalized = metadata.get("normalized_artifact")
+    if not isinstance(normalized, dict):
+        return []
+
+    page_descriptors = normalized.get("pages")
+    elements = normalized.get("elements")
+    if not isinstance(page_descriptors, list) or not isinstance(elements, list):
+        return []
+
+    element_text_by_id: dict[str, str] = {}
+    element_texts_by_page: dict[int, list[str]] = {}
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        page_number = element.get("page_number")
+        if not isinstance(page_number, int) or page_number <= 0:
+            continue
+        text = _text_from_normalized_element(element)
+        normalized_text = _normalize_page_text(text)
+        if not normalized_text:
+            continue
+        element_id = str(element.get("element_id") or "").strip()
+        if element_id:
+            element_text_by_id[element_id] = normalized_text
+        element_texts_by_page.setdefault(page_number, []).append(normalized_text)
+
+    pages: list[dict[str, Any]] = []
+    for descriptor in page_descriptors:
+        if not isinstance(descriptor, dict):
+            continue
+        page_number = descriptor.get("page_number")
+        if not isinstance(page_number, int) or page_number <= 0:
+            continue
+
+        fragments: list[str] = []
+        element_ids = descriptor.get("element_ids")
+        if isinstance(element_ids, list):
+            for raw_id in element_ids:
+                element_id = str(raw_id or "").strip()
+                if not element_id:
+                    continue
+                text = element_text_by_id.get(element_id)
+                if text:
+                    fragments.append(text)
+        if not fragments:
+            fragments.extend(element_texts_by_page.get(page_number, []))
+
+        merged = _normalize_page_text(" ".join(fragments))
+        if not merged:
+            continue
+        pages.append(
+            {
+                "page_number": page_number,
+                "text": merged,
+                "snippet": merged[:180],
+            }
+        )
+
+    return pages
+
+
+def _extract_page_items_from_content_text(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
+    content_text = str(parsed.content_text or "").strip()
+    if not content_text:
+        return []
+
+    segments = [segment.strip() for segment in re.split(r"(?=\[[^\]\n]{1,40}\])", content_text) if segment.strip()]
+    if not segments:
+        segments = [content_text]
+
+    max_pages = max(int(parsed.page_count or 0), 1)
+    normalized_segments: list[str] = []
+    for segment in segments:
+        normalized = _normalize_page_text(segment)
+        if normalized:
+            normalized_segments.append(normalized)
+    if not normalized_segments:
+        return []
+
+    if len(normalized_segments) > max_pages:
+        normalized_segments = normalized_segments[:max_pages]
+
+    return [
+        {
+            "page_number": index + 1,
+            "text": text,
+            "snippet": text[:180],
+        }
+        for index, text in enumerate(normalized_segments)
+    ]
+
+
+def _text_from_normalized_element(element: dict[str, Any]) -> str:
+    for key in ("masked_text", "raw_text", "text", "content"):
+        value = element.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+
+    rows = element.get("table_rows")
+    if isinstance(rows, list):
+        cell_texts: list[str] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            cells = row.get("cells")
+            if not isinstance(cells, list):
+                continue
+            for cell in cells:
+                if not isinstance(cell, dict):
+                    continue
+                text = str(cell.get("text") or "").strip()
+                if text:
+                    cell_texts.append(text)
+        if cell_texts:
+            return " | ".join(cell_texts)
+    return ""
+
+
+def _normalize_page_text(value: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not normalized:
+        return ""
+    return normalized[:_MAX_PAGE_TEXT_CHARS].strip()
 
 
 def _extract_key_points(content_text: str) -> list[str]:
@@ -673,6 +848,20 @@ def build_student_record_canonical_metadata(
                     "evidence": [],
                 }
             ],
+            "normalized_sections": [],
+            "section_coverage": {
+                "section_counts": {section: 0 for section in _NORMALIZED_SECTION_ORDER},
+                "found_sections": [],
+                "missing_sections": list(_NORMALIZED_SECTION_ORDER),
+                "coverage_score": 0.0,
+                "reanalysis_required": True,
+            },
+            "evidence_bank": [],
+            "quality_gates": {
+                "required_sections_found": False,
+                "missing_required_sections": list(_NORMALIZED_SECTION_ORDER),
+                "reanalysis_required": True,
+            },
             "pipeline_stages": pipeline_stages,
         }
 
@@ -714,6 +903,26 @@ def build_student_record_canonical_metadata(
             details={
                 "normalized_pages": len(normalized_pages),
                 "normalized_characters": sum(int(item.get("char_count") or 0) for item in normalized_pages),
+            },
+        )
+    )
+
+    normalized_sections = _extract_normalized_sections(
+        normalized_pages=normalized_pages,
+        analysis_artifact=analysis_artifact,
+        pdf_analysis=pdf_analysis,
+    )
+    section_coverage = _section_coverage_from_normalized(normalized_sections)
+    evidence_bank = _build_evidence_bank(normalized_sections)
+    pipeline_stages.append(
+        _build_stage_result(
+            "normalized_section_extraction",
+            mode="deterministic_extraction",
+            status="ok" if normalized_sections else "degraded",
+            details={
+                "normalized_section_entries": len(normalized_sections),
+                "evidence_bank_entries": len(evidence_bank),
+                "coverage_score": section_coverage.get("coverage_score", 0.0),
             },
         )
     )
@@ -813,11 +1022,40 @@ def build_student_record_canonical_metadata(
             uncertainties=uncertainties,
         )
 
+    missing_required_sections = [
+        _NORMALIZED_SECTION_LABELS.get(section, section)
+        for section in section_coverage.get("missing_sections", [])
+    ]
+    if missing_required_sections:
+        uncertainties.append(
+            {
+                "message": (
+                    "필수 섹션 추출이 완전하지 않아 재분석이 필요합니다: "
+                    + ", ".join(missing_required_sections)
+                ),
+                "related_field": "section_coverage",
+                "confidence_impact": 0.24,
+                "evidence": _scope_evidence(normalized_pages),
+            }
+        )
+    pipeline_stages.append(
+        _build_stage_result(
+            "section_coverage_check",
+            mode="deterministic_extraction",
+            status="failed" if missing_required_sections else "ok",
+            details={
+                "required_sections": list(_REQUIRED_NORMALIZED_SECTIONS),
+                "missing_required_sections": section_coverage.get("missing_sections", []),
+                "reanalysis_required": bool(section_coverage.get("reanalysis_required")),
+            },
+        )
+    )
+
     pipeline_stages.append(
         _build_stage_result(
             "canonical_student_record_schema_generation",
             mode="deterministic_extraction",
-            status="ok",
+            status="ok" if not missing_required_sections else "degraded",
             details={
                 "schema_version": _CANONICAL_SCHEMA_VERSION,
                 "required_field_count": 12,
@@ -837,6 +1075,7 @@ def build_student_record_canonical_metadata(
         weak_or_missing_sections=weak_or_missing_sections,
         uncertainties=uncertainties,
     )
+    evidence_link_count += len(evidence_bank)
     pipeline_stages.append(
         _build_stage_result(
             "evidence_span_linking",
@@ -856,6 +1095,8 @@ def build_student_record_canonical_metadata(
         uncertainties=uncertainties,
         normalized_pages=normalized_pages,
     )
+    if section_coverage.get("reanalysis_required"):
+        document_confidence = round(min(document_confidence, 0.49), 3)
     pipeline_stages.append(
         _build_stage_result(
             "uncertainty_confidence_scoring",
@@ -882,6 +1123,14 @@ def build_student_record_canonical_metadata(
         "major_alignment_hints": major_alignment_hints,
         "weak_or_missing_sections": weak_or_missing_sections,
         "uncertainties": uncertainties,
+        "normalized_sections": normalized_sections,
+        "section_coverage": section_coverage,
+        "evidence_bank": evidence_bank,
+        "quality_gates": {
+            "required_sections_found": not bool(section_coverage.get("missing_sections")),
+            "missing_required_sections": section_coverage.get("missing_sections", []),
+            "reanalysis_required": bool(section_coverage.get("reanalysis_required")),
+        },
         "section_classification": section_classification,
         "pipeline_stages": pipeline_stages,
         "evidence_linked": evidence_link_count > 0,
@@ -907,6 +1156,304 @@ def _normalize_page_items(page_items: list[dict[str, Any]]) -> list[dict[str, An
             }
         )
     return normalized
+
+
+def _extract_normalized_sections(
+    *,
+    normalized_pages: list[dict[str, Any]],
+    analysis_artifact: dict[str, Any] | None,
+    pdf_analysis: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    seen: set[tuple[int, str, str]] = set()
+
+    for page in normalized_pages:
+        page_number = int(page.get("page_number") or 0)
+        text = str(page.get("text") or "")
+        if page_number <= 0 or not text:
+            continue
+        lowered = text.lower()
+        for section_id in _NORMALIZED_SECTION_ORDER:
+            keywords = _NORMALIZED_SECTION_KEYWORDS.get(section_id, ())
+            hit_keywords = [keyword for keyword in keywords if keyword.lower() in lowered][:2]
+            if not hit_keywords:
+                continue
+            for hit_keyword in hit_keywords:
+                match_index = lowered.find(hit_keyword.lower())
+                start = max(0, match_index - 40)
+                end = min(len(text), match_index + len(hit_keyword) + 130)
+                quote = _clean_line(text[start:end], max_len=220)
+                if not quote:
+                    quote = _clean_line(text[:180], max_len=180)
+                key = (page_number, section_id, quote)
+                if key in seen:
+                    continue
+                seen.add(key)
+                entries.append(
+                    {
+                        "page": page_number,
+                        "section": section_id,
+                        "section_name": _NORMALIZED_SECTION_LABELS.get(section_id, section_id),
+                        "subsection": _infer_subsection_name(section_id=section_id, quote=quote, fallback=hit_keyword),
+                        "raw_quote": quote,
+                        "normalized_topic": _infer_activity_topic(quote=quote, section_id=section_id),
+                        "confidence": 0.92,
+                        "repair_source": "rule_based",
+                    }
+                )
+
+    missing = _missing_required_sections(entries)
+    if missing:
+        entries.extend(
+            _repair_missing_sections(
+                missing_sections=missing,
+                normalized_pages=normalized_pages,
+                analysis_artifact=analysis_artifact,
+                pdf_analysis=pdf_analysis,
+            )
+        )
+
+    deduped: list[dict[str, Any]] = []
+    seen_anchor: set[tuple[int, str]] = set()
+    for item in sorted(entries, key=lambda x: (int(x.get("page") or 0), str(x.get("section") or ""))):
+        page = int(item.get("page") or 0)
+        section = str(item.get("section") or "").strip()
+        if page <= 0 or not section:
+            continue
+        anchor = (page, section)
+        if anchor in seen_anchor and str(item.get("repair_source") or "") == "llm_repair":
+            continue
+        seen_anchor.add(anchor)
+        deduped.append(item)
+    return deduped
+
+
+def _repair_missing_sections(
+    *,
+    missing_sections: list[str],
+    normalized_pages: list[dict[str, Any]],
+    analysis_artifact: dict[str, Any] | None,
+    pdf_analysis: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not missing_sections:
+        return []
+
+    repaired: list[dict[str, Any]] = []
+    canonical_data = (
+        analysis_artifact.get("canonical_data")
+        if isinstance(analysis_artifact, dict) and isinstance(analysis_artifact.get("canonical_data"), dict)
+        else {}
+    )
+    key_points = pdf_analysis.get("key_points") if isinstance(pdf_analysis, dict) and isinstance(pdf_analysis.get("key_points"), list) else []
+    first_page = normalized_pages[0] if normalized_pages else {"page_number": 1, "text": ""}
+    fallback_quote = _clean_line(str(first_page.get("text") or ""), max_len=180) or "원문 재분석이 필요합니다."
+
+    section_to_canonical_key: dict[str, str] = {
+        "student_info": "student_name",
+        "attendance": "attendance",
+        "awards": "awards",
+        "creative_activities": "extracurricular_narratives",
+        "volunteer": "extracurricular_narratives",
+        "grades_subjects": "grades",
+        "subject_special_notes": "subject_special_notes",
+        "reading": "reading_activities",
+        "behavior_general_comments": "behavior_opinion",
+    }
+
+    for section_id in missing_sections:
+        canonical_key = section_to_canonical_key.get(section_id, "")
+        canonical_value = canonical_data.get(canonical_key) if isinstance(canonical_data, dict) and canonical_key else None
+        llm_hint = next(
+            (
+                _clean_line(str(item), max_len=200)
+                for item in key_points
+                if isinstance(item, str)
+                and any(keyword in item for keyword in _NORMALIZED_SECTION_KEYWORDS.get(section_id, ()))
+            ),
+            "",
+        )
+        if canonical_value in (None, "", [], {}) and not llm_hint:
+            continue
+
+        if llm_hint:
+            quote = llm_hint
+        elif isinstance(canonical_value, dict):
+            quote = _clean_line(" ".join(str(value) for value in canonical_value.values()), max_len=200)
+        elif isinstance(canonical_value, list):
+            quote = _clean_line(" ".join(str(value) for value in canonical_value[:3]), max_len=200)
+        else:
+            quote = _clean_line(str(canonical_value), max_len=200)
+        quote = quote or fallback_quote
+
+        repaired.append(
+            {
+                "page": int(first_page.get("page_number") or 1),
+                "section": section_id,
+                "section_name": _NORMALIZED_SECTION_LABELS.get(section_id, section_id),
+                "subsection": "LLM-repair",
+                "raw_quote": quote,
+                "normalized_topic": _infer_activity_topic(quote=quote, section_id=section_id),
+                "confidence": 0.62,
+                "repair_source": "llm_repair",
+            }
+        )
+    return repaired
+
+
+def _build_evidence_bank(normalized_sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    evidence_bank: list[dict[str, Any]] = []
+    for index, item in enumerate(normalized_sections, start=1):
+        page = int(item.get("page") or 0)
+        section_id = str(item.get("section") or "").strip()
+        if page <= 0 or not section_id:
+            continue
+        quote = _clean_line(str(item.get("raw_quote") or ""), max_len=220)
+        if not quote:
+            continue
+        confidence = float(item.get("confidence") or 0.0)
+        major_relevance = _infer_major_relevance(quote)
+        process_elements = _infer_process_elements(quote)
+        evidence_bank.append(
+            {
+                "anchor_id": f"ev-{page:02d}-{section_id}-{index}",
+                "page": page,
+                "section": str(item.get("section_name") or section_id),
+                "normalized_section": section_id,
+                "theme": _infer_theme(quote),
+                "subtheme": _infer_subtheme(quote),
+                "quote": quote,
+                "evidence_type": "direct" if str(item.get("repair_source") or "") == "rule_based" else "indirect",
+                "major_relevance": major_relevance,
+                "process_elements": process_elements,
+                "confidence": round(max(0.0, min(1.0, confidence)), 3),
+            }
+        )
+    return evidence_bank
+
+
+def _section_coverage_from_normalized(normalized_sections: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = defaultdict(int)
+    for item in normalized_sections:
+        section = str(item.get("section") or "").strip()
+        if section:
+            counts[section] += 1
+    found_sections = [section for section in _NORMALIZED_SECTION_ORDER if counts.get(section, 0) > 0]
+    missing_sections = [section for section in _NORMALIZED_SECTION_ORDER if counts.get(section, 0) <= 0]
+    coverage_score = round(len(found_sections) / max(len(_NORMALIZED_SECTION_ORDER), 1), 3)
+    return {
+        "section_counts": {section: int(counts.get(section, 0)) for section in _NORMALIZED_SECTION_ORDER},
+        "found_sections": found_sections,
+        "missing_sections": missing_sections,
+        "coverage_score": coverage_score,
+        "reanalysis_required": bool(missing_sections),
+    }
+
+
+def _missing_required_sections(normalized_sections: list[dict[str, Any]]) -> list[str]:
+    present = {str(item.get("section") or "").strip() for item in normalized_sections}
+    return [section for section in _REQUIRED_NORMALIZED_SECTIONS if section not in present]
+
+
+def _infer_subsection_name(*, section_id: str, quote: str, fallback: str) -> str:
+    if section_id == "creative_activities":
+        for candidate in ("자율활동", "동아리활동", "진로활동", "봉사활동"):
+            if candidate in quote:
+                return candidate
+    if section_id == "subject_special_notes":
+        subject_match = re.search(r"(국어|수학|영어|과학|물리|화학|생명과학|지구과학|사회|역사|정보)", quote)
+        if subject_match:
+            return f"{subject_match.group(1)} 세특"
+    if section_id == "grades_subjects":
+        subject_match = re.search(r"(국어|수학|영어|과학|물리|화학|생명과학|지구과학|사회|역사|정보)", quote)
+        if subject_match:
+            return f"{subject_match.group(1)} 성취"
+    return fallback
+
+
+def _infer_activity_topic(*, quote: str, section_id: str) -> str:
+    if section_id in {"creative_activities", "volunteer"}:
+        for keyword, topic in (
+            ("지속가능", "지속가능 설계"),
+            ("친환경", "친환경 건축"),
+            ("재난", "재난 대응"),
+            ("기후", "기후 대응"),
+            ("목재", "건축 재료"),
+            ("구조", "구조 설계"),
+            ("공간", "공간 기획"),
+        ):
+            if keyword in quote:
+                return topic
+        return "창체 활동"
+    if section_id == "subject_special_notes":
+        return "교과 세부 탐구"
+    if section_id == "grades_subjects":
+        return "교과 성취"
+    if section_id == "reading":
+        return "독서 기반 확장"
+    if section_id == "behavior_general_comments":
+        return "행동특성"
+    return _NORMALIZED_SECTION_LABELS.get(section_id, section_id)
+
+
+def _infer_major_relevance(quote: str) -> list[str]:
+    mapping: tuple[tuple[str, str], ...] = (
+        ("건축", "건축"),
+        ("공간", "공간"),
+        ("설계", "설계"),
+        ("재료", "재료"),
+        ("목재", "재료"),
+        ("구조", "구조"),
+        ("기후", "환경"),
+        ("환경", "환경"),
+        ("지속가능", "환경"),
+        ("재난", "재난 대응"),
+        ("도시", "도시"),
+        ("사용자", "사용자 경험"),
+    )
+    relevance: list[str] = []
+    for keyword, label in mapping:
+        if keyword in quote and label not in relevance:
+            relevance.append(label)
+    return relevance[:4] or ["건축"]
+
+
+def _infer_process_elements(quote: str) -> dict[str, bool]:
+    return {
+        "motivation": any(keyword in quote for keyword in ("관심", "동기", "문제의식", "목표", "계기")),
+        "method": any(keyword in quote for keyword in ("실험", "분석", "조사", "설계", "모형", "측정")),
+        "finding": any(keyword in quote for keyword in ("결과", "확인", "도출", "비교", "변화", "성과")),
+        "limitation": any(keyword in quote for keyword in ("한계", "아쉬움", "제약", "부족")),
+        "extension": any(keyword in quote for keyword in ("심화", "확장", "후속", "개선", "적용")),
+    }
+
+
+def _infer_theme(quote: str) -> str:
+    for keyword, theme in (
+        ("지속가능", "지속가능 건축"),
+        ("재난", "재난 대응 건축"),
+        ("기후", "기후 대응 건축"),
+        ("친환경", "친환경 건축"),
+        ("목재", "건축 재료"),
+        ("구조", "구조 공학"),
+        ("공간", "공간 기획"),
+    ):
+        if keyword in quote:
+            return theme
+    return "건축 탐구"
+
+
+def _infer_subtheme(quote: str) -> str:
+    for keyword, label in (
+        ("교차 적층 목재", "교차 적층 목재"),
+        ("CLT", "교차 적층 목재"),
+        ("내진", "내진 구조"),
+        ("탄소", "탄소 저감"),
+        ("환기", "패시브 환기"),
+        ("채광", "채광 설계"),
+    ):
+        if keyword in quote:
+            return label
+    return "핵심 활동"
 
 
 def _build_stage_result(
@@ -1478,6 +2025,16 @@ def build_student_record_structure_metadata(
         )
     )
     canonical_section_density = _legacy_section_density_from_canonical(resolved_canonical)
+    normalized_sections = (
+        resolved_canonical.get("normalized_sections")
+        if isinstance(resolved_canonical, dict) and isinstance(resolved_canonical.get("normalized_sections"), list)
+        else []
+    )
+    section_coverage = (
+        resolved_canonical.get("section_coverage")
+        if isinstance(resolved_canonical, dict) and isinstance(resolved_canonical.get("section_coverage"), dict)
+        else _section_coverage_from_normalized(normalized_sections)
+    )
 
     section_keywords: dict[str, tuple[str, ...]] = {
         "세특": ("세부능력", "특기사항", "교과학습발달상황", "subject_special_notes"),
@@ -1506,6 +2063,25 @@ def build_student_record_structure_metadata(
         key: round(min(1.0, (value / max_hits) if max_hits else 0.0), 3)
         for key, value in section_hits.items()
     }
+    normalized_to_legacy = {
+        "student_info": "인적사항",
+        "attendance": "출결상황",
+        "awards": "수상경력",
+        "creative_activities": "창체",
+        "volunteer": "창체",
+        "grades_subjects": "교과학습발달상황",
+        "subject_special_notes": "세특",
+        "reading": "독서",
+        "behavior_general_comments": "행동특성",
+    }
+    coverage_counts = section_coverage.get("section_counts", {}) if isinstance(section_coverage, dict) else {}
+    if isinstance(coverage_counts, dict):
+        for section_id, count in coverage_counts.items():
+            legacy = normalized_to_legacy.get(str(section_id))
+            if not legacy:
+                continue
+            normalized_score = max(0.0, min(1.0, float(count) / max(page_count, 1)))
+            section_density[legacy] = max(section_density.get(legacy, 0.0), round(normalized_score, 3))
     for section, density in canonical_section_density.items():
         section_density[section] = max(section_density.get(section, 0.0), density)
 
@@ -1554,6 +2130,14 @@ def build_student_record_structure_metadata(
     if isinstance(resolved_canonical, dict):
         weak_sections.extend(_extract_canonical_string_values(resolved_canonical, "weak_or_missing_sections", "section"))
         uncertain_items.extend(_extract_canonical_string_values(resolved_canonical, "uncertainties", "message"))
+        gates = resolved_canonical.get("quality_gates")
+        if isinstance(gates, dict):
+            for section_id in gates.get("missing_required_sections", []) if isinstance(gates.get("missing_required_sections"), list) else []:
+                label = _NORMALIZED_SECTION_LABELS.get(str(section_id), str(section_id))
+                if label:
+                    weak_sections.append(label)
+            if gates.get("reanalysis_required"):
+                uncertain_items.append("필수 섹션 추출 누락으로 재분석이 필요합니다.")
 
     if isinstance(analysis_artifact, dict):
         canonical_data = analysis_artifact.get("canonical_data")
@@ -1572,12 +2156,32 @@ def build_student_record_structure_metadata(
             missing_sections = quality_report.get("missing_critical_sections")
             if isinstance(missing_sections, list):
                 for item in missing_sections:
-                    text = str(item).strip()
+                    text = _normalize_weak_section_label(str(item))
                     if text:
                         weak_sections.append(text)
             score = quality_report.get("overall_score")
             if isinstance(score, (int, float)) and float(score) < 0.6:
                 uncertain_items.append("고급 파이프라인 품질 점수가 낮아 수동 검토가 권장됩니다.")
+
+    contradiction_items: list[dict[str, Any]] = []
+    normalized_weak_sections = _dedupe_list([_normalize_weak_section_label(item) for item in weak_sections], limit=20)
+    final_weak_sections: list[str] = []
+    for section in normalized_weak_sections:
+        density = float(section_density.get(section, 0.0))
+        if density >= 0.95:
+            contradiction_items.append(
+                {
+                    "section": section,
+                    "density": round(density, 3),
+                    "reason": "weak_or_missing_conflicts_with_density",
+                }
+            )
+            continue
+        final_weak_sections.append(section)
+    if contradiction_items:
+        uncertain_items.append("섹션 밀도와 누락 상태 간 모순을 감지해 자동 조정했습니다.")
+
+    contradiction_check_passed = len(contradiction_items) == 0
 
     return {
         "major_sections": [
@@ -1592,10 +2196,20 @@ def build_student_record_structure_metadata(
         "timeline_signals": timeline_signals,
         "activity_clusters": activity_clusters,
         "subject_major_alignment_signals": alignment_signals,
-        "weak_sections": _dedupe_list(weak_sections, limit=10),
+        "weak_sections": _dedupe_list(final_weak_sections, limit=10),
         "continuity_signals": continuity_signals,
         "process_reflection_signals": process_reflection_signals,
         "uncertain_items": _dedupe_list(uncertain_items, limit=8),
+        "coverage_check": {
+            "required_sections": list(_REQUIRED_NORMALIZED_SECTIONS),
+            "missing_required_sections": section_coverage.get("missing_sections", []) if isinstance(section_coverage, dict) else [],
+            "coverage_score": section_coverage.get("coverage_score", 0.0) if isinstance(section_coverage, dict) else 0.0,
+            "reanalysis_required": bool(section_coverage.get("reanalysis_required")) if isinstance(section_coverage, dict) else False,
+        },
+        "contradiction_check": {
+            "passed": contradiction_check_passed,
+            "items": contradiction_items,
+        },
     }
 
 
@@ -1706,3 +2320,26 @@ def _dedupe_list(items: list[str], *, limit: int) -> list[str]:
         if len(output) >= limit:
             break
     return output
+
+
+def _normalize_weak_section_label(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    alias_map = {
+        "grades_subjects": "교과학습발달상황",
+        "subject_special_notes": "세특",
+        "creative_activities": "창체",
+        "extracurricular": "창체",
+        "volunteer": "창체",
+        "career_signals": "진로",
+        "reading": "독서",
+        "reading_activity": "독서",
+        "behavior_general_comments": "행동특성",
+        "behavior_opinion": "행동특성",
+        "awards": "수상경력",
+        "attendance": "출결상황",
+        "student_info": "인적사항",
+        "grades_and_notes": "교과학습발달상황",
+    }
+    return alias_map.get(text, text)

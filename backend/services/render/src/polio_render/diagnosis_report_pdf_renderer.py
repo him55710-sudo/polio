@@ -46,10 +46,13 @@ def render_consultant_diagnosis_pdf(
     sections = [item for item in report_payload.get("sections", []) if isinstance(item, dict)]
     sections = _order_sections(sections, design_contract=design_contract)
     score_blocks = [item for item in report_payload.get("score_blocks", []) if isinstance(item, dict)]
+    score_groups = [item for item in report_payload.get("score_groups", []) if isinstance(item, dict)]
     roadmap = [item for item in report_payload.get("roadmap", []) if isinstance(item, dict)]
     citations = [item for item in report_payload.get("citations", []) if isinstance(item, dict)]
     uncertainty_notes = [str(item).strip() for item in report_payload.get("uncertainty_notes", []) if str(item).strip()]
     appendix_notes = [str(item).strip() for item in report_payload.get("appendix_notes", []) if str(item).strip()]
+    public_appendix_enabled = bool(render_hints.get("public_appendix_enabled", include_appendix))
+    public_citations_enabled = bool(render_hints.get("public_citations_enabled", include_citations))
 
     doc = SimpleDocTemplate(
         str(output_path),
@@ -86,6 +89,14 @@ def render_consultant_diagnosis_pdf(
         ["대상 프로젝트", _escape(str(report_payload.get("student_target_context") or "-"))],
         ["리포트 모드", "Premium 10p" if report_mode == "premium_10p" else "Compact"],
         ["템플릿", _escape(template_id)],
+        [
+            "한 줄 판정",
+            _escape(str(render_hints.get("one_line_verdict") or "근거 중심 진단 결과를 요약했습니다.")),
+        ],
+        [
+            "분석 신뢰도",
+            f"{int(round(float(render_hints.get('analysis_confidence_score', 0.0)) * 100))}%",
+        ],
         ["생성 시각", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
     ]
     cover_meta_table = Table(
@@ -142,12 +153,50 @@ def render_consultant_diagnosis_pdf(
             if subtitle:
                 story.append(Paragraph(_escape(subtitle), style_tokens["subtitle"]))
 
-            story.extend(_render_section_body(section, style_tokens["body"], style_tokens["bullet"]))
+            story.extend(
+                _render_section_body(
+                    section,
+                    style_tokens["body"],
+                    style_tokens["bullet"],
+                    section_id=section_id,
+                )
+            )
 
-            if section_id == "evaluation_axis" and score_blocks:
+            if section_id == "record_baseline_dashboard":
                 story.append(Spacer(1, style_tokens["spacing"]["paragraph_gap"]))
-                story.append(Paragraph("평가축 점수표", style_tokens["h3"]))
-                story.append(_build_score_table(score_blocks=score_blocks, doc=doc, style_tokens=style_tokens, font_name=font_name, font_bold=font_bold, color_tokens=color_tokens))
+                if score_groups:
+                    for group in score_groups:
+                        group_title = str(group.get("title") or "점수 그룹")
+                        story.append(Paragraph(_escape(group_title), style_tokens["h3"]))
+                        group_blocks = [item for item in group.get("blocks", []) if isinstance(item, dict)]
+                        if group_blocks:
+                            story.append(
+                                _build_score_table(
+                                    score_blocks=group_blocks,
+                                    doc=doc,
+                                    style_tokens=style_tokens,
+                                    font_name=font_name,
+                                    font_bold=font_bold,
+                                    color_tokens=color_tokens,
+                                    compact=True,
+                                )
+                            )
+                        note = str(group.get("note") or "").strip()
+                        if note:
+                            story.append(Paragraph(_escape(note), style_tokens["meta"]))
+                        story.append(Spacer(1, style_tokens["spacing"]["list_item_gap"]))
+                elif score_blocks:
+                    story.append(Paragraph("평가축 점수표", style_tokens["h3"]))
+                    story.append(
+                        _build_score_table(
+                            score_blocks=score_blocks,
+                            doc=doc,
+                            style_tokens=style_tokens,
+                            font_name=font_name,
+                            font_bold=font_bold,
+                            color_tokens=color_tokens,
+                        )
+                    )
 
             if section_id == "roadmap" and roadmap:
                 story.append(Spacer(1, style_tokens["spacing"]["paragraph_gap"]))
@@ -158,10 +207,12 @@ def render_consultant_diagnosis_pdf(
                         story.append(Paragraph(f"&#8226; {_escape(str(action))}", style_tokens["bullet"]))
 
             evidence_items = [item for item in section.get("evidence_items", []) if isinstance(item, dict)]
-            if evidence_items:
+            should_render_evidence = section_id in {"evidence_cards", "major_fit", "risk_analysis"}
+            if evidence_items and should_render_evidence:
                 story.append(Spacer(1, style_tokens["spacing"]["paragraph_gap"]))
                 story.append(Paragraph("근거 앵커", style_tokens["h3"]))
-                for evidence in evidence_items[:4]:
+                max_evidence_cards = 3 if section_id == "evidence_cards" else 2
+                for evidence in evidence_items[:max_evidence_cards]:
                     source_label = str(evidence.get("source_label") or "근거")
                     page = evidence.get("page_number")
                     excerpt = str(evidence.get("excerpt") or "").strip()
@@ -197,7 +248,7 @@ def render_consultant_diagnosis_pdf(
             if verification_needed:
                 story.append(Spacer(1, style_tokens["spacing"]["list_item_gap"]))
                 story.append(Paragraph("추가 확인 필요", style_tokens["meta_strong"]))
-                for item in verification_needed[:3]:
+                for item in verification_needed[:2]:
                     story.append(Paragraph(f"&#8226; {_escape(item)}", style_tokens["bullet"]))
 
             story.append(Spacer(1, style_tokens["spacing"]["section_gap"]))
@@ -206,7 +257,7 @@ def render_consultant_diagnosis_pdf(
     max_uncertainty_items = int(appendix_layout.get("max_uncertainty_items", 12))
     max_citation_items = int(appendix_layout.get("max_citation_items", 60))
 
-    if uncertainty_notes or appendix_notes:
+    if public_appendix_enabled and (uncertainty_notes or appendix_notes):
         story.append(PageBreak())
         story.append(Paragraph("Appendix / Uncertainty Notes", style_tokens["h2"]))
         if uncertainty_notes:
@@ -219,7 +270,7 @@ def render_consultant_diagnosis_pdf(
             for note in appendix_notes[:max_uncertainty_items]:
                 story.append(Paragraph(f"&#8226; {_escape(note)}", style_tokens["bullet"]))
 
-    if include_citations and citations:
+    if public_citations_enabled and citations:
         story.append(PageBreak())
         story.append(Paragraph("Appendix / Citations", style_tokens["h2"]))
         for citation in citations[:max_citation_items]:
@@ -235,8 +286,8 @@ def render_consultant_diagnosis_pdf(
 
     estimated_pages = _estimate_pages(
         section_groups=section_groups,
-        has_uncertainty=bool(uncertainty_notes or appendix_notes),
-        has_citations=bool(include_citations and citations),
+        has_uncertainty=bool(public_appendix_enabled and (uncertainty_notes or appendix_notes)),
+        has_citations=bool(public_citations_enabled and citations),
     )
     filler_pages = max(0, minimum_pages - estimated_pages)
     for idx in range(filler_pages):
@@ -392,23 +443,47 @@ def _build_score_table(
     font_name: str,
     font_bold: str,
     color_tokens: dict[str, Any],
+    compact: bool = False,
 ) -> Table:
-    rows = [["축", "점수", "해석", "불확실성"]]
-    for block in score_blocks:
-        rows.append(
-            [
-                _escape(str(block.get("label") or block.get("key") or "-")),
-                str(block.get("score") or "-"),
-                _escape(str(block.get("interpretation") or "-")),
-                _escape(str(block.get("uncertainty_note") or "-")),
-            ]
+    if compact:
+        rows = [["축", "점수", "핵심 코멘트"]]
+        for block in score_blocks:
+            interpretation = str(block.get("interpretation") or "").strip()
+            uncertainty = str(block.get("uncertainty_note") or "").strip()
+            summary = interpretation or uncertainty or "-"
+            summary = _truncate_plain(summary, 52)
+            rows.append(
+                [
+                    _escape(str(block.get("label") or block.get("key") or "-")),
+                    str(block.get("score") or "-"),
+                    _escape(summary),
+                ]
+            )
+        table = Table(
+            rows,
+            colWidths=[doc.width * 0.26, doc.width * 0.12, doc.width * 0.62],
+            repeatRows=1,
+            hAlign="LEFT",
         )
-    table = Table(
-        rows,
-        colWidths=[doc.width * 0.16, doc.width * 0.1, doc.width * 0.44, doc.width * 0.3],
-        repeatRows=1,
-        hAlign="LEFT",
-    )
+    else:
+        rows = [["축", "점수", "해석", "불확실성"]]
+        for block in score_blocks:
+            rows.append(
+                [
+                    _escape(str(block.get("label") or block.get("key") or "-")),
+                    str(block.get("score") or "-"),
+                    _escape(str(block.get("interpretation") or "-")),
+                    _escape(str(block.get("uncertainty_note") or "-")),
+                ]
+            )
+        table = Table(
+            rows,
+            colWidths=[doc.width * 0.16, doc.width * 0.1, doc.width * 0.44, doc.width * 0.3],
+            repeatRows=1,
+            hAlign="LEFT",
+        )
+    table_font_size = style_tokens["typography"]["meta_size"] - (0.5 if compact else 0.0)
+    table_top_bottom_padding = style_tokens["spacing"]["list_item_gap"] if compact else style_tokens["spacing"]["list_item_gap"] + 1
     table.setStyle(
         TableStyle(
             [
@@ -417,12 +492,12 @@ def _build_score_table(
                 ("GRID", (0, 0), (-1, -1), 0.35, _hex(color_tokens.get("line_soft"), "#D7DEE8")),
                 ("FONTNAME", (0, 0), (-1, 0), font_bold),
                 ("FONTNAME", (0, 1), (-1, -1), font_name),
-                ("FONTSIZE", (0, 0), (-1, -1), style_tokens["typography"]["meta_size"]),
+                ("FONTSIZE", (0, 0), (-1, -1), table_font_size),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), style_tokens["spacing"]["table_cell_padding"]),
                 ("RIGHTPADDING", (0, 0), (-1, -1), style_tokens["spacing"]["table_cell_padding"]),
-                ("TOPPADDING", (0, 0), (-1, -1), style_tokens["spacing"]["list_item_gap"] + 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), style_tokens["spacing"]["list_item_gap"] + 1),
+                ("TOPPADDING", (0, 0), (-1, -1), table_top_bottom_padding),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), table_top_bottom_padding),
             ]
         )
     )
@@ -505,10 +580,24 @@ def _build_callout(
     return table
 
 
-def _render_section_body(section: dict[str, Any], body_style: ParagraphStyle, bullet_style: ParagraphStyle) -> list[Any]:
+def _render_section_body(
+    section: dict[str, Any],
+    body_style: ParagraphStyle,
+    bullet_style: ParagraphStyle,
+    *,
+    section_id: str | None = None,
+) -> list[Any]:
     lines = _markdown_to_lines(str(section.get("body_markdown") or ""))
     if not lines:
         return [Paragraph("내용이 준비되지 않았습니다.", body_style)]
+    line_caps = {
+        "record_baseline_dashboard": 5,
+        "evidence_cards": 7,
+        "major_fit": 7,
+    }
+    max_lines = line_caps.get(str(section_id or "").strip(), 8)
+    if len(lines) > max_lines:
+        lines = [*lines[:max_lines], "- 본문 분량을 페이지 구조에 맞게 요약했습니다."]
     rendered: list[Any] = []
     for line in lines:
         stripped = line.strip()
@@ -519,6 +608,13 @@ def _render_section_body(section: dict[str, Any], body_style: ParagraphStyle, bu
             continue
         rendered.append(Paragraph(_escape(stripped), body_style))
     return rendered
+
+
+def _truncate_plain(text: str, limit: int) -> str:
+    stripped = " ".join(str(text or "").replace("\n", " ").split())
+    if len(stripped) <= limit:
+        return stripped
+    return f"{stripped[: max(1, limit - 1)].rstrip()}…"
 
 
 def _markdown_to_lines(markdown: str) -> list[str]:

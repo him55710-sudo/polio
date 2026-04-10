@@ -45,18 +45,15 @@ const REPORT_IN_PROGRESS_STATUS = new Set(['AUTO_STARTING', 'QUEUED', 'RUNNING',
 const REPORT_SYNC_RECOVERY_TRIGGER = 3;
 const REPORT_SYNC_MAX_RETRIES = 24;
 const PREMIUM_SECTION_ARCHITECTURE: Array<{ id: string; label: string }> = [
-  { id: 'cover_context', label: 'Cover / Target Context' },
   { id: 'executive_summary', label: 'Executive Summary' },
-  { id: 'current_record_status', label: 'Current Record Status' },
-  { id: 'evaluation_axis', label: 'Axis-based Evaluation' },
+  { id: 'record_baseline_dashboard', label: 'Baseline Dashboard' },
+  { id: 'narrative_timeline', label: 'Narrative Timeline' },
+  { id: 'evidence_cards', label: 'Evidence Cards' },
   { id: 'strength_analysis', label: 'Strengths' },
-  { id: 'weakness_risk', label: 'Weaknesses / Risks' },
+  { id: 'risk_analysis', label: 'Risks' },
   { id: 'major_fit', label: 'Major-fit Analysis' },
-  { id: 'section_level_diagnosis', label: 'Section-level Diagnosis' },
+  { id: 'interview_questions', label: 'Interview Questions' },
   { id: 'roadmap', label: 'Roadmap (1m / 3m / 6m)' },
-  { id: 'topic_strategy', label: 'Topic / Strategy Recommendations' },
-  { id: 'final_memo', label: 'Final Consultant Memo' },
-  { id: 'appendix', label: 'Appendix / Citations / Uncertainty' },
 ];
 const SECTION_LABEL_BY_ID = PREMIUM_SECTION_ARCHITECTURE.reduce<Record<string, string>>(
   (acc, item) => ({ ...acc, [item.id]: item.label }),
@@ -360,7 +357,7 @@ export function DiagnosisReportPanel({
       });
       const filename = parseFilename(
         response.contentDisposition,
-        `consultant-diagnosis-${diagnosisRunId}.pdf`,
+        '사용자님의 생기부 진단 보고서.pdf',
       );
 
       const url = URL.createObjectURL(response.blob);

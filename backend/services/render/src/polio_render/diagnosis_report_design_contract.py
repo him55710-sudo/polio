@@ -3,28 +3,23 @@ from __future__ import annotations
 from typing import Any
 
 _DIAGNOSIS_SECTION_ORDER_PREMIUM: tuple[str, ...] = (
-    "cover_context",
     "executive_summary",
-    "current_record_status",
-    "evaluation_axis",
+    "record_baseline_dashboard",
+    "narrative_timeline",
+    "evidence_cards",
     "strength_analysis",
-    "weakness_risk",
+    "risk_analysis",
     "major_fit",
-    "section_level_diagnosis",
+    "interview_questions",
     "roadmap",
-    "topic_strategy",
-    "final_memo",
-    "appendix",
 )
 
 _DIAGNOSIS_SECTION_ORDER_COMPACT: tuple[str, ...] = (
-    "cover_context",
     "executive_summary",
-    "current_record_status",
+    "record_baseline_dashboard",
     "strength_analysis",
-    "weakness_risk",
+    "risk_analysis",
     "roadmap",
-    "final_memo",
 )
 
 
@@ -100,19 +95,23 @@ def get_diagnosis_report_design_contract(
         "section_hierarchy": {
             "required_order": list(section_order),
             "section_groups": [
-                ["cover_context", "executive_summary", "current_record_status"],
-                ["evaluation_axis", "strength_analysis"],
-                ["weakness_risk", "major_fit"],
-                ["section_level_diagnosis", "roadmap"],
-                ["topic_strategy", "final_memo"],
-                ["appendix"],
+                ["executive_summary"],
+                ["record_baseline_dashboard"],
+                ["narrative_timeline"],
+                ["evidence_cards"],
+                ["strength_analysis"],
+                ["risk_analysis"],
+                ["major_fit"],
+                ["interview_questions"],
+                ["roadmap"],
             ]
             if is_premium
             else [
-                ["cover_context", "executive_summary"],
-                ["current_record_status", "strength_analysis"],
-                ["weakness_risk", "roadmap"],
-                ["final_memo"],
+                ["executive_summary"],
+                ["record_baseline_dashboard"],
+                ["strength_analysis"],
+                ["risk_analysis"],
+                ["roadmap"],
             ],
             "template_registry_section_schema": list(template_section_schema or ()),
         },
@@ -121,6 +120,18 @@ def get_diagnosis_report_design_contract(
             "evidence_card": {"tone": "evidence", "border": "line_evidence"},
             "uncertainty_card": {"tone": "warning", "border": "line_warning"},
             "score_table": {"header_tone": "surface_panel", "grid": "line_soft"},
+        },
+        "components": {
+            "ReportCover": {"variant": "premium_editorial"},
+            "SummaryCard": {"variant": "executive"},
+            "MetricCard": {"variant": "dashboard"},
+            "EvidenceCard": {"variant": "four-line"},
+            "StorylineTimeline": {"variant": "grade_progression"},
+            "RiskCard": {"variant": "caution"},
+            "ActionRoadmap": {"variant": "1m_3m_6m"},
+            "InterviewQuestionCard": {"variant": "prompt_list"},
+            "ConfidenceBadge": {"variant": "coverage_score"},
+            "CitationChip": {"variant": "page_anchor"},
         },
         "appendix_layout": {
             "citations_visible": True,

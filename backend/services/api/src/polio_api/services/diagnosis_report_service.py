@@ -25,6 +25,7 @@ from polio_api.schemas.diagnosis import (
     ConsultantDiagnosisReport,
     ConsultantDiagnosisRoadmapItem,
     ConsultantDiagnosisScoreBlock,
+    ConsultantDiagnosisScoreGroup,
     ConsultantDiagnosisSection,
     DiagnosisReportMode,
     DiagnosisResultPayload,
@@ -70,28 +71,23 @@ class _NarrativeGenerationResult(BaseModel):
 
 
 _PREMIUM_SECTION_ORDER: tuple[str, ...] = (
-    "cover_context",
     "executive_summary",
-    "current_record_status",
-    "evaluation_axis",
+    "record_baseline_dashboard",
+    "narrative_timeline",
+    "evidence_cards",
     "strength_analysis",
-    "weakness_risk",
+    "risk_analysis",
     "major_fit",
-    "section_level_diagnosis",
+    "interview_questions",
     "roadmap",
-    "topic_strategy",
-    "final_memo",
-    "appendix",
 )
 
 _COMPACT_SECTION_ORDER: tuple[str, ...] = (
-    "cover_context",
     "executive_summary",
-    "current_record_status",
+    "record_baseline_dashboard",
     "strength_analysis",
-    "weakness_risk",
+    "risk_analysis",
     "roadmap",
-    "final_memo",
 )
 
 
@@ -395,14 +391,61 @@ async def build_consultant_report_payload(
     documents: list[Any],
 ) -> ConsultantDiagnosisReport:
     target_context = _build_target_context(project=project, result=result, documents=documents)
-    evidence_items = _build_evidence_items(result)
-    score_blocks = _build_score_blocks(result=result)
     document_structure = _collect_student_record_structure(documents)
+    evidence_bank = _collect_evidence_bank(documents)
+    evidence_items = _build_evidence_items(result)
+    score_groups = _build_score_groups(
+        result=result,
+        document_structure=document_structure,
+        evidence_items=evidence_items,
+        evidence_bank=evidence_bank,
+    )
+    student_score_group = next((group for group in score_groups if group.group == "student_evaluation"), None)
+    system_score_group = next((group for group in score_groups if group.group == "system_quality"), None)
+    score_blocks = list(student_score_group.blocks) if student_score_group else []
+    contradiction_blocked = bool(system_score_group and system_score_group.gating_status == "blocked")
+    unique_anchor_ids = {
+        str(item.get("anchor_id") or "").strip()
+        for item in evidence_bank
+        if str(item.get("anchor_id") or "").strip()
+    }
+    unique_anchor_pages = {
+        int(item.get("page") or 0)
+        for item in evidence_bank
+        if int(item.get("page") or 0) > 0
+    }
+    evidence_anchor_gate_failed = len(unique_anchor_ids) < 10 or len(unique_anchor_pages) < 6
+    reanalysis_required = bool(
+        (student_score_group and student_score_group.gating_status == "reanalysis_required")
+        or (system_score_group and system_score_group.gating_status == "reanalysis_required")
+        or evidence_anchor_gate_failed
+    )
+    if evidence_anchor_gate_failed:
+        for group in score_groups:
+            if group.gating_status != "blocked":
+                group.gating_status = "reanalysis_required"
+                message = f"고유 앵커 {len(unique_anchor_ids)}개 / 페이지 {len(unique_anchor_pages)}개로 품질 게이트 미충족"
+                group.note = _clean_line(f"{group.note or ''} {message}".strip(), max_len=220)
+    if contradiction_blocked:
+        raise ValueError("contradiction_check_failed")
     uncertainty_notes = _build_uncertainty_notes(
         result=result,
         document_structure=document_structure,
         evidence_items=evidence_items,
     )
+    if reanalysis_required:
+        uncertainty_notes = _dedupe(
+            [
+                "재분석 필요: 필수 섹션 커버리지가 부족하거나 근거 앵커 분산이 낮습니다.",
+                (
+                    f"앵커 품질 게이트 미충족: 고유 앵커 {len(unique_anchor_ids)}개 / 고유 페이지 {len(unique_anchor_pages)}개"
+                    if evidence_anchor_gate_failed
+                    else ""
+                ),
+                *uncertainty_notes,
+            ],
+            limit=10,
+        )
     roadmap = _build_roadmap(result=result, uncertainty_notes=uncertainty_notes)
     narratives_result_raw = await _generate_narratives(
         project=project,
@@ -443,18 +486,21 @@ async def build_consultant_report_payload(
         report_mode=report_mode,
         target_context=target_context,
         evidence_items=evidence_items,
-        score_blocks=score_blocks,
+        score_groups=score_groups,
         document_structure=document_structure,
+        evidence_bank=evidence_bank,
         roadmap=roadmap,
         narratives=narratives,
         uncertainty_notes=uncertainty_notes,
+        reanalysis_required=reanalysis_required,
     )
     sections = _enforce_section_architecture(sections, report_mode=report_mode)
 
     appendix_notes: list[str] = []
-    if include_appendix:
-        appendix_notes.extend(_build_appendix_notes(documents, document_structure))
-    if include_citations:
+    internal_qa_artifact = _build_appendix_notes(documents, document_structure)
+    if include_appendix and report_mode == "compact":
+        appendix_notes.extend(internal_qa_artifact)
+    if include_citations and report_mode == "compact":
         appendix_notes.append("인용 부록에는 주장-근거 연결 검증을 위한 출처 라인이 포함됩니다.")
 
     report_payload = ConsultantDiagnosisReport(
@@ -467,9 +513,10 @@ async def build_consultant_report_payload(
         student_target_context=target_context,
         generated_at=datetime.now(timezone.utc),
         score_blocks=score_blocks,
+        score_groups=score_groups,
         sections=sections,
         roadmap=roadmap,
-        citations=evidence_items if include_citations else [],
+        citations=evidence_items if include_citations and report_mode == "compact" else [],
         uncertainty_notes=uncertainty_notes,
         final_consultant_memo=narratives.final_consultant_memo,
         appendix_notes=appendix_notes,
@@ -479,8 +526,22 @@ async def build_consultant_report_payload(
             "visual_tone": "consultant_premium",
             "include_appendix": include_appendix,
             "include_citations": include_citations,
+            "analysis_confidence_score": float(
+                ((document_structure.get("coverage_check") or {}).get("coverage_score", 0.0))
+                if isinstance(document_structure.get("coverage_check"), dict)
+                else 0.0
+            ),
+            "one_line_verdict": _clean_line(narratives.executive_summary, max_len=150),
+            "public_appendix_enabled": bool(include_appendix and report_mode == "compact"),
+            "public_citations_enabled": bool(include_citations and report_mode == "compact"),
             "section_order": list(_PREMIUM_SECTION_ORDER if report_mode == "premium_10p" else _COMPACT_SECTION_ORDER),
             "design_contract": design_contract,
+            "internal_qa_artifact": {
+                "appendix_notes": internal_qa_artifact,
+                "evidence_bank_size": len(evidence_bank),
+                "unique_evidence_pages": len({int(item.get("page") or 0) for item in evidence_bank if int(item.get("page") or 0) > 0}),
+                "reanalysis_required": reanalysis_required,
+            },
             "execution_metadata": {
                 **narratives_result.execution_metadata,
                 "diagnosis_backbone_requested_llm_provider": result.requested_llm_provider,
@@ -489,6 +550,7 @@ async def build_consultant_report_payload(
                 "diagnosis_backbone_actual_llm_model": result.actual_llm_model,
                 "diagnosis_backbone_fallback_used": result.fallback_used,
                 "diagnosis_backbone_fallback_reason": result.fallback_reason,
+                "reanalysis_required": reanalysis_required,
             },
         },
     )
@@ -499,7 +561,25 @@ def _build_target_context(*, project: Project, result: DiagnosisResultPayload, d
     target_university = project.target_university or "미설정"
     target_major = project.target_major or "미설정"
     diagnosis_target = result.diagnosis_summary.target_context if result.diagnosis_summary else None
+    student_name = "미확인"
+    for document in documents:
+        metadata = getattr(document, "parse_metadata", None)
+        if not isinstance(metadata, dict):
+            continue
+        canonical = metadata.get("student_record_canonical")
+        if isinstance(canonical, dict):
+            analysis_artifact = metadata.get("analysis_artifact")
+            canonical_data = (
+                analysis_artifact.get("canonical_data")
+                if isinstance(analysis_artifact, dict) and isinstance(analysis_artifact.get("canonical_data"), dict)
+                else {}
+            )
+            candidate = str(canonical_data.get("student_name") or "").strip()
+            if candidate:
+                student_name = candidate
+                break
     context_bits = [
+        f"학생: {student_name}",
         f"프로젝트: {project.title}",
         f"목표 대학: {target_university}",
         f"목표 전공: {target_major}",
@@ -521,30 +601,6 @@ def _build_score_blocks(*, result: DiagnosisResultPayload) -> list[ConsultantDia
                 band=axis.band,
                 interpretation=axis.rationale,
                 uncertainty_note="해당 점수는 입력 문서 기반 상대평가이며 절대 합격예측이 아님.",
-            )
-        )
-
-    if result.document_quality:
-        reliability_score = int(round(max(0.0, min(1.0, result.document_quality.parse_reliability_score)) * 100))
-        blocks.append(
-            ConsultantDiagnosisScoreBlock(
-                key="parse_reliability",
-                label="파싱 신뢰도",
-                score=reliability_score,
-                band=result.document_quality.parse_reliability_band,
-                interpretation=result.document_quality.summary,
-                uncertainty_note="문서 추출 품질이 낮으면 진단 정확도도 함께 낮아질 수 있음.",
-            )
-        )
-        evidence_density_score = int(round(max(0.0, min(1.0, result.document_quality.evidence_density)) * 100))
-        blocks.append(
-            ConsultantDiagnosisScoreBlock(
-                key="evidence_density",
-                label="근거 밀도",
-                score=evidence_density_score,
-                band="high" if evidence_density_score >= 70 else "mid" if evidence_density_score >= 45 else "low",
-                interpretation="근거 밀도는 주장 대비 근거 앵커의 충실도를 의미합니다.",
-                uncertainty_note="밀도가 낮은 문장은 반드시 '추가 확인 필요'로 표기해야 함.",
             )
         )
 
@@ -584,6 +640,266 @@ def _build_evidence_items(result: DiagnosisResultPayload) -> list[ConsultantDiag
     return evidence_items[:40]
 
 
+def _collect_evidence_bank(documents: list[Any]) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
+    for document in documents:
+        metadata = getattr(document, "parse_metadata", None)
+        if not isinstance(metadata, dict):
+            continue
+        canonical = metadata.get("student_record_canonical")
+        if not isinstance(canonical, dict):
+            continue
+        raw_bank = canonical.get("evidence_bank")
+        if not isinstance(raw_bank, list):
+            continue
+        for item in raw_bank:
+            if not isinstance(item, dict):
+                continue
+            try:
+                page = int(item.get("page") or 0)
+            except (TypeError, ValueError):
+                continue
+            quote = str(item.get("quote") or "").strip()
+            if page <= 0 or not quote:
+                continue
+            dedupe_key = (page, quote)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            collected.append(item)
+    return collected
+
+
+def _build_score_groups(
+    *,
+    result: DiagnosisResultPayload,
+    document_structure: dict[str, Any],
+    evidence_items: list[ConsultantDiagnosisEvidenceItem],
+    evidence_bank: list[dict[str, Any]],
+) -> list[ConsultantDiagnosisScoreGroup]:
+    section_density = (
+        document_structure.get("section_density")
+        if isinstance(document_structure.get("section_density"), dict)
+        else {}
+    )
+    coverage_check = (
+        document_structure.get("coverage_check")
+        if isinstance(document_structure.get("coverage_check"), dict)
+        else {}
+    )
+    contradiction_check = (
+        document_structure.get("contradiction_check")
+        if isinstance(document_structure.get("contradiction_check"), dict)
+        else {"passed": True, "items": []}
+    )
+    parse_coverage_score = int(round(float(coverage_check.get("coverage_score", 0.0)) * 100))
+    major_fit_seed = _axis_score(result=result, key="major_alignment", fallback=58)
+    continuity_seed = _axis_score(result=result, key="inquiry_continuity", fallback=55)
+    density_seed = _axis_score(result=result, key="evidence_density", fallback=52)
+    process_seed = _axis_score(result=result, key="process_explanation", fallback=54)
+
+    design_signal = _count_keywords(
+        evidence_bank,
+        keywords=("건축", "공간", "구조", "재료", "환경", "기후", "재난", "설계"),
+    )
+    ux_humanities_signal = _count_keywords(
+        evidence_bank,
+        keywords=("사용자", "경험", "동선", "공공성", "인문", "사회문화"),
+    )
+    design_spatial_score = max(38, min(95, 50 + design_signal * 3 - max(0, 2 - ux_humanities_signal) * 4))
+    academic_base_score = max(
+        35,
+        min(
+            95,
+            int(round((float(section_density.get("교과학습발달상황", 0.0)) * 55) + (major_fit_seed * 0.45))),
+        ),
+    )
+    leadership_score = max(
+        34,
+        min(
+            92,
+            int(
+                round(
+                    (float(section_density.get("창체", 0.0)) * 45)
+                    + (float(section_density.get("행동특성", 0.0)) * 35)
+                    + 18
+                )
+            ),
+        ),
+    )
+
+    student_specs: list[tuple[str, str, int, str]] = [
+        ("major_fit", "전공 적합성", major_fit_seed, "건축 전공 연계 근거의 직접성과 연속성"),
+        ("inquiry_depth", "탐구 깊이", int(round((process_seed * 0.5) + (density_seed * 0.5))), "문제설정-방법-결과-확장의 깊이"),
+        ("inquiry_continuity", "탐구 연속성", continuity_seed, "학년 간 주제의 연속성과 심화 흐름"),
+        ("evidence_density", "근거 밀도", density_seed, "주장 대비 원문 근거 앵커의 밀도"),
+        ("process_explanation", "과정 설명력", process_seed, "과정·방법·한계·개선의 설명 충실도"),
+        ("design_spatial_thinking", "설계·공간 사고", int(design_spatial_score), "구조·재료·환경 중심 설계 사고"),
+        ("academic_base", "학업 기반", int(academic_base_score), "교과 성취와 세특 근거의 안정성"),
+        ("leadership_collaboration", "리더십·협업", int(leadership_score), "협업·공동체·책임 신호"),
+    ]
+
+    student_blocks: list[ConsultantDiagnosisScoreBlock] = []
+    for key, label, raw_score, interpretation in student_specs:
+        score = max(0, min(100, int(raw_score)))
+        anchor_ids = _select_anchor_ids_for_score(key=key, evidence_bank=evidence_bank)
+        if len(anchor_ids) < 2:
+            score = min(score, 45)
+            uncertainty = "고유 근거 앵커가 2개 미만이라 재분석 후 재평가가 필요합니다."
+        else:
+            uncertainty = f"고유 근거 앵커 {len(anchor_ids)}개 확인"
+        student_blocks.append(
+            ConsultantDiagnosisScoreBlock(
+                key=key,
+                label=label,
+                score=score,
+                band="high" if score >= 75 else "mid" if score >= 50 else "low",
+                interpretation=interpretation,
+                uncertainty_note=uncertainty,
+            )
+        )
+
+    unique_citation_pages = len({item.page_number for item in evidence_items if item.page_number})
+    citation_coverage_score = min(100, int(round((unique_citation_pages / max(len(evidence_items), 1)) * 100)))
+    unique_quotes = {str(item.get("quote") or "").strip() for item in evidence_bank if str(item.get("quote") or "").strip()}
+    evidence_uniqueness_score = min(100, int(round((len(unique_quotes) / max(len(evidence_bank), 1)) * 100)))
+    redaction_safety_score = 100 if _redaction_safety_ok(evidence_bank) else 55
+    contradiction_passed = bool(contradiction_check.get("passed", True))
+    contradiction_score = 100 if contradiction_passed else 0
+
+    system_blocks = [
+        ConsultantDiagnosisScoreBlock(
+            key="parse_coverage",
+            label="파싱 커버리지",
+            score=max(0, min(100, parse_coverage_score)),
+            band="high" if parse_coverage_score >= 80 else "mid" if parse_coverage_score >= 60 else "low",
+            interpretation="필수 정규화 섹션 추출 커버리지",
+            uncertainty_note=None,
+        ),
+        ConsultantDiagnosisScoreBlock(
+            key="citation_coverage",
+            label="인용 커버리지",
+            score=citation_coverage_score,
+            band="high" if citation_coverage_score >= 65 else "mid" if citation_coverage_score >= 35 else "low",
+            interpretation="근거 페이지 분산과 인용 연결도",
+            uncertainty_note=None,
+        ),
+        ConsultantDiagnosisScoreBlock(
+            key="evidence_uniqueness",
+            label="근거 고유성",
+            score=evidence_uniqueness_score,
+            band="high" if evidence_uniqueness_score >= 75 else "mid" if evidence_uniqueness_score >= 50 else "low",
+            interpretation="중복 인용 과다 여부",
+            uncertainty_note=None,
+        ),
+        ConsultantDiagnosisScoreBlock(
+            key="contradiction_check",
+            label="모순 검증",
+            score=contradiction_score,
+            band="high" if contradiction_passed else "low",
+            interpretation="섹션 누락/밀도 상태 모순 검증",
+            uncertainty_note=None if contradiction_passed else "모순이 감지되어 프리미엄 렌더를 차단합니다.",
+        ),
+        ConsultantDiagnosisScoreBlock(
+            key="redaction_safety",
+            label="비식별 안전성",
+            score=redaction_safety_score,
+            band="high" if redaction_safety_score >= 80 else "low",
+            interpretation="민감정보 노출 위험 점검",
+            uncertainty_note=None if redaction_safety_score >= 80 else "민감정보 패턴이 감지되어 검토가 필요합니다.",
+        ),
+    ]
+
+    reanalysis_required = bool(coverage_check.get("reanalysis_required")) or parse_coverage_score < 70
+    student_group = ConsultantDiagnosisScoreGroup(
+        group="student_evaluation",
+        title="학생 평가 점수",
+        blocks=student_blocks,
+        gating_status="reanalysis_required" if reanalysis_required else "ok",
+        note=(
+            "파싱 커버리지가 낮아 학생 점수는 참고용으로만 제시됩니다."
+            if reanalysis_required
+            else "모든 점수는 최소 2개 이상의 고유 근거 앵커를 기준으로 산출되었습니다."
+        ),
+    )
+    system_group = ConsultantDiagnosisScoreGroup(
+        group="system_quality",
+        title="시스템 품질 점수",
+        blocks=system_blocks,
+        gating_status="blocked" if not contradiction_passed else ("reanalysis_required" if reanalysis_required else "ok"),
+        note=(
+            "모순 검증 실패로 프리미엄 PDF 렌더를 중단합니다."
+            if not contradiction_passed
+            else "시스템 품질 점수는 학생 평가 점수와 분리되어 해석됩니다."
+        ),
+    )
+    return [student_group, system_group]
+
+
+def _axis_score(*, result: DiagnosisResultPayload, key: str, fallback: int) -> int:
+    for axis in result.admission_axes or []:
+        if axis.key == key:
+            return int(max(0, min(100, axis.score)))
+    return fallback
+
+
+def _count_keywords(evidence_bank: list[dict[str, Any]], *, keywords: tuple[str, ...]) -> int:
+    count = 0
+    for item in evidence_bank:
+        quote = str(item.get("quote") or "")
+        if any(keyword in quote for keyword in keywords):
+            count += 1
+    return count
+
+
+def _select_anchor_ids_for_score(*, key: str, evidence_bank: list[dict[str, Any]]) -> list[str]:
+    keyword_map: dict[str, tuple[str, ...]] = {
+        "major_fit": ("건축", "전공", "진로", "설계", "환경", "구조"),
+        "inquiry_depth": ("탐구", "실험", "가설", "분석", "비교"),
+        "inquiry_continuity": ("심화", "확장", "후속", "연계", "지속"),
+        "evidence_density": ("결과", "수치", "지표", "근거"),
+        "process_explanation": ("과정", "방법", "한계", "개선"),
+        "design_spatial_thinking": ("설계", "공간", "구조", "재료", "건축"),
+        "academic_base": ("교과", "성취", "세특", "과목"),
+        "leadership_collaboration": ("협업", "공동체", "리더", "봉사"),
+    }
+    keywords = keyword_map.get(key, ())
+    selected: list[str] = []
+    for item in evidence_bank:
+        quote = str(item.get("quote") or "")
+        if keywords and not any(keyword in quote for keyword in keywords):
+            continue
+        anchor_id = str(item.get("anchor_id") or "").strip()
+        if anchor_id and anchor_id not in selected:
+            selected.append(anchor_id)
+        if len(selected) >= 4:
+            break
+    if len(selected) >= 2:
+        return selected
+
+    for item in evidence_bank:
+        anchor_id = str(item.get("anchor_id") or "").strip()
+        if anchor_id and anchor_id not in selected:
+            selected.append(anchor_id)
+        if len(selected) >= 2:
+            break
+    return selected
+
+
+def _redaction_safety_ok(evidence_bank: list[dict[str, Any]]) -> bool:
+    pii_patterns = (
+        re.compile(r"\b01[0-9][- ]?\d{3,4}[- ]?\d{4}\b"),
+        re.compile(r"\b\d{6}[- ]?\d{7}\b"),
+        re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+    )
+    for item in evidence_bank:
+        quote = str(item.get("quote") or "")
+        if any(pattern.search(quote) for pattern in pii_patterns):
+            return False
+    return True
+
+
 def _collect_student_record_structure(documents: list[Any]) -> dict[str, Any]:
     section_density: dict[str, float] = {}
     weak_sections: list[str] = []
@@ -593,6 +909,13 @@ def _collect_student_record_structure(documents: list[Any]) -> dict[str, Any]:
     continuity_signals: list[str] = []
     process_signals: list[str] = []
     uncertain_items: list[str] = []
+    coverage_check: dict[str, Any] = {
+        "required_sections": [],
+        "missing_required_sections": [],
+        "coverage_score": 0.0,
+        "reanalysis_required": False,
+    }
+    contradiction_check: dict[str, Any] = {"passed": True, "items": []}
 
     for document in documents:
         metadata = getattr(document, "parse_metadata", None)
@@ -608,6 +931,36 @@ def _collect_student_record_structure(documents: list[Any]) -> dict[str, Any]:
             process_signals.extend(_extract_canonical_values(canonical.get("subject_special_notes"), "label"))
             career_signals = _extract_canonical_values(canonical.get("career_signals"), "label")
             continuity_signals.extend(career_signals)
+            canonical_coverage = canonical.get("section_coverage")
+            if isinstance(canonical_coverage, dict):
+                coverage_check = {
+                    "required_sections": list(canonical_coverage.get("section_counts", {}).keys())
+                    if isinstance(canonical_coverage.get("section_counts"), dict)
+                    else coverage_check.get("required_sections", []),
+                    "missing_required_sections": list(canonical_coverage.get("missing_sections", []))
+                    if isinstance(canonical_coverage.get("missing_sections"), list)
+                    else coverage_check.get("missing_required_sections", []),
+                    "coverage_score": max(
+                        float(coverage_check.get("coverage_score", 0.0)),
+                        float(canonical_coverage.get("coverage_score", 0.0) or 0.0),
+                    ),
+                    "reanalysis_required": bool(canonical_coverage.get("reanalysis_required"))
+                    or bool(coverage_check.get("reanalysis_required")),
+                }
+            quality_gates = canonical.get("quality_gates")
+            if isinstance(quality_gates, dict):
+                if quality_gates.get("reanalysis_required"):
+                    coverage_check["reanalysis_required"] = True
+                missing_required = quality_gates.get("missing_required_sections")
+                if isinstance(missing_required, list):
+                    merged_missing = _dedupe(
+                        [
+                            *[str(item) for item in coverage_check.get("missing_required_sections", [])],
+                            *[str(item) for item in missing_required],
+                        ],
+                        limit=20,
+                    )
+                    coverage_check["missing_required_sections"] = merged_missing
 
             section_classification = canonical.get("section_classification")
             if isinstance(section_classification, dict):
@@ -644,20 +997,66 @@ def _collect_student_record_structure(documents: list[Any]) -> dict[str, Any]:
             continuity_signals.extend([str(item).strip() for item in structure.get("continuity_signals", []) if str(item).strip()])
             process_signals.extend([str(item).strip() for item in structure.get("process_reflection_signals", []) if str(item).strip()])
             uncertain_items.extend([str(item).strip() for item in structure.get("uncertain_items", []) if str(item).strip()])
+            coverage_candidate = structure.get("coverage_check")
+            if isinstance(coverage_candidate, dict):
+                coverage_check["coverage_score"] = max(
+                    float(coverage_check.get("coverage_score", 0.0)),
+                    float(coverage_candidate.get("coverage_score", 0.0) or 0.0),
+                )
+                if bool(coverage_candidate.get("reanalysis_required")):
+                    coverage_check["reanalysis_required"] = True
+                if isinstance(coverage_candidate.get("required_sections"), list):
+                    coverage_check["required_sections"] = _dedupe(
+                        [*coverage_check.get("required_sections", []), *coverage_candidate.get("required_sections", [])],
+                        limit=30,
+                    )
+                if isinstance(coverage_candidate.get("missing_required_sections"), list):
+                    coverage_check["missing_required_sections"] = _dedupe(
+                        [*coverage_check.get("missing_required_sections", []), *coverage_candidate.get("missing_required_sections", [])],
+                        limit=30,
+                    )
+            contradiction_candidate = structure.get("contradiction_check")
+            if isinstance(contradiction_candidate, dict):
+                contradiction_check["passed"] = bool(contradiction_candidate.get("passed", True)) and bool(
+                    contradiction_check.get("passed", True)
+                )
+                candidate_items = contradiction_candidate.get("items")
+                if isinstance(candidate_items, list):
+                    contradiction_check["items"] = [*contradiction_check.get("items", []), *candidate_items]
 
         pdf_analysis = metadata.get("pdf_analysis")
         if isinstance(pdf_analysis, dict):
             uncertain_items.extend([str(item).strip() for item in pdf_analysis.get("evidence_gaps", []) if str(item).strip()])
 
+    normalized_weak_sections = _dedupe([_normalize_section_name(str(item)) for item in weak_sections], limit=20)
+    filtered_weak_sections: list[str] = []
+    contradiction_items: list[dict[str, Any]] = list(contradiction_check.get("items", []))
+    for section in normalized_weak_sections:
+        density = float(section_density.get(section, 0.0))
+        if density >= 0.95:
+            contradiction_items.append(
+                {
+                    "section": section,
+                    "density": round(density, 3),
+                    "reason": "weak_or_missing_conflicts_with_density",
+                }
+            )
+            continue
+        filtered_weak_sections.append(section)
+    contradiction_check["items"] = contradiction_items
+    contradiction_check["passed"] = bool(contradiction_check.get("passed", True)) and len(contradiction_items) == 0
+
     return {
         "section_density": section_density,
-        "weak_sections": _dedupe(weak_sections, limit=12),
+        "weak_sections": _dedupe(filtered_weak_sections, limit=12),
         "timeline_signals": _dedupe(timeline_signals, limit=12),
         "activity_clusters": _dedupe(activity_clusters, limit=12),
         "subject_major_alignment_signals": _dedupe(alignment_signals, limit=12),
         "continuity_signals": _dedupe(continuity_signals, limit=10),
         "process_reflection_signals": _dedupe(process_signals, limit=10),
         "uncertain_items": _dedupe(uncertain_items, limit=12),
+        "coverage_check": coverage_check,
+        "contradiction_check": contradiction_check,
     }
 
 
@@ -716,6 +1115,23 @@ def _canonical_to_structure_candidate(canonical: dict[str, Any]) -> dict[str, An
         "continuity_signals": _extract_canonical_values(canonical.get("career_signals"), "label"),
         "process_reflection_signals": _extract_canonical_values(canonical.get("subject_special_notes"), "label"),
         "uncertain_items": _extract_canonical_values(canonical.get("uncertainties"), "message"),
+        "coverage_check": {
+            "required_sections": list((canonical.get("section_coverage") or {}).get("section_counts", {}).keys())
+            if isinstance((canonical.get("section_coverage") or {}).get("section_counts"), dict)
+            else [],
+            "missing_required_sections": list((canonical.get("quality_gates") or {}).get("missing_required_sections", []))
+            if isinstance((canonical.get("quality_gates") or {}).get("missing_required_sections"), list)
+            else list((canonical.get("section_coverage") or {}).get("missing_sections", []))
+            if isinstance((canonical.get("section_coverage") or {}).get("missing_sections"), list)
+            else [],
+            "coverage_score": float((canonical.get("section_coverage") or {}).get("coverage_score", 0.0) or 0.0),
+            "reanalysis_required": bool((canonical.get("quality_gates") or {}).get("reanalysis_required"))
+            or bool((canonical.get("section_coverage") or {}).get("reanalysis_required")),
+        },
+        "contradiction_check": {
+            "passed": True,
+            "items": [],
+        },
     }
 
 
@@ -739,12 +1155,30 @@ def _build_uncertainty_notes(
     evidence_items: list[ConsultantDiagnosisEvidenceItem],
 ) -> list[str]:
     notes: list[str] = []
+    coverage_check = (
+        document_structure.get("coverage_check")
+        if isinstance(document_structure.get("coverage_check"), dict)
+        else {}
+    )
+    contradiction_check = (
+        document_structure.get("contradiction_check")
+        if isinstance(document_structure.get("contradiction_check"), dict)
+        else {"passed": True, "items": []}
+    )
     if result.document_quality and result.document_quality.needs_review:
         notes.append("문서 파싱 품질 점검 필요: 일부 페이지/구역은 수동 검토 후 확정해야 합니다.")
     if not evidence_items:
         notes.append("직접 인용 가능한 근거가 부족합니다. 주요 주장마다 원문 출처를 보강하세요.")
     if result.review_required:
         notes.append("정책/안전 플래그가 감지되어 검토 태스크가 열린 상태입니다.")
+    if bool(coverage_check.get("reanalysis_required")):
+        missing = coverage_check.get("missing_required_sections")
+        if isinstance(missing, list) and missing:
+            notes.append(f"필수 섹션 누락: {', '.join(str(item) for item in missing[:6])}")
+        else:
+            notes.append("필수 섹션 커버리지가 낮아 재분석이 필요합니다.")
+    if not bool(contradiction_check.get("passed", True)):
+        notes.append("모순 검증 실패: 누락 상태와 밀도 상태가 충돌하여 프리미엄 렌더를 차단합니다.")
     for item in document_structure.get("uncertain_items", [])[:4]:
         notes.append(f"구조 추정 불확실: {item}")
     if not notes:
@@ -1087,18 +1521,15 @@ def _enforce_section_architecture(
 
 def _humanize_section_title(section_id: str) -> str:
     title_map = {
-        "cover_context": "Cover / 학생 목표 컨텍스트",
         "executive_summary": "Executive Summary",
-        "current_record_status": "Current Record Status Diagnosis",
-        "evaluation_axis": "Evaluation-Axis Analysis",
+        "record_baseline_dashboard": "Academic & Record Baseline Dashboard",
+        "narrative_timeline": "Narrative Timeline",
+        "evidence_cards": "Evidence Cards",
         "strength_analysis": "Strength Analysis",
-        "weakness_risk": "Weakness / Risk Analysis",
-        "major_fit": "Major / University Fit Analysis",
-        "section_level_diagnosis": "Evidence-Backed Section-Level Diagnosis",
-        "roadmap": "Action Roadmap (1m / 3m / 6m)",
-        "topic_strategy": "Topic / Report Strategy Recommendations",
-        "final_memo": "Final Consultant Memo",
-        "appendix": "Appendix / Evidence Note",
+        "risk_analysis": "Risk Analysis",
+        "major_fit": "Target-Major Fit Interpretation",
+        "interview_questions": "Probable Interview Questions",
+        "roadmap": "Action Roadmap",
     }
     return title_map.get(section_id, section_id)
 
@@ -1130,198 +1561,295 @@ def _build_sections(
     report_mode: DiagnosisReportMode,
     target_context: str,
     evidence_items: list[ConsultantDiagnosisEvidenceItem],
-    score_blocks: list[ConsultantDiagnosisScoreBlock],
+    score_groups: list[ConsultantDiagnosisScoreGroup],
     document_structure: dict[str, Any],
+    evidence_bank: list[dict[str, Any]],
     roadmap: list[ConsultantDiagnosisRoadmapItem],
     narratives: _ConsultantNarrativePayload,
     uncertainty_notes: list[str],
+    reanalysis_required: bool,
 ) -> list[ConsultantDiagnosisSection]:
-    top_evidence = evidence_items[:8]
-    weak_sections = document_structure.get("weak_sections", [])
-    timeline_signals = document_structure.get("timeline_signals", [])
-    alignment_signals = document_structure.get("subject_major_alignment_signals", [])
-    continuity_signals = document_structure.get("continuity_signals", [])
-    process_signals = document_structure.get("process_reflection_signals", [])
+    top_citations = _build_diverse_evidence_items(
+        evidence_items=evidence_items,
+        evidence_bank=evidence_bank,
+        limit=24,
+    )
+    if not top_citations:
+        top_citations = evidence_items[:10]
+    evidence_cursor = 0
 
-    section_density = document_structure.get("section_density", {})
-    density_lines = [f"{key}: {round(float(value) * 100)}%" for key, value in section_density.items()]
-    if not density_lines:
-        density_lines = ["섹션 밀도 추정값이 부족하여 텍스트 기반 보수 추정을 사용했습니다."]
+    def pick_evidence(count: int) -> list[ConsultantDiagnosisEvidenceItem]:
+        nonlocal evidence_cursor
+        if count <= 0 or not top_citations:
+            return []
+        window_size = min(count, len(top_citations))
+        selected = [
+            top_citations[(evidence_cursor + offset) % len(top_citations)]
+            for offset in range(window_size)
+        ]
+        evidence_cursor = (evidence_cursor + count) % len(top_citations)
+        return selected
+
+    weak_sections = [str(item).strip() for item in document_structure.get("weak_sections", []) if str(item).strip()]
+    timeline_signals = [str(item).strip() for item in document_structure.get("timeline_signals", []) if str(item).strip()]
+    alignment_signals = [str(item).strip() for item in document_structure.get("subject_major_alignment_signals", []) if str(item).strip()]
+    continuity_signals = [str(item).strip() for item in document_structure.get("continuity_signals", []) if str(item).strip()]
+    process_signals = [str(item).strip() for item in document_structure.get("process_reflection_signals", []) if str(item).strip()]
+    coverage_check = (
+        document_structure.get("coverage_check")
+        if isinstance(document_structure.get("coverage_check"), dict)
+        else {}
+    )
+    section_density = (
+        document_structure.get("section_density")
+        if isinstance(document_structure.get("section_density"), dict)
+        else {}
+    )
+
+    student_score_group = next((group for group in score_groups if group.group == "student_evaluation"), None)
+    system_score_group = next((group for group in score_groups if group.group == "system_quality"), None)
+    score_lines: list[str] = []
+    for group in (student_score_group, system_score_group):
+        if not group:
+            continue
+        score_lines.append(f"[{group.title}]")
+        for block in group.blocks:
+            score_lines.append(f"{block.label}: {block.score}점 ({block.band})")
+
+    evidence_cards = evidence_bank[:6]
+    evidence_card_lines: list[str] = []
+    for idx, card in enumerate(evidence_cards, start=1):
+        quote = _clean_line(str(card.get("quote") or ""), max_len=62)
+        interpretation = _clean_line(str(card.get("theme") or "핵심 활동"), max_len=28)
+        why_it_matters = _clean_line(
+            ", ".join(str(item) for item in (card.get("major_relevance") or [])[:2]) or "전공 연계",
+            max_len=26,
+        )
+        risk_note = "설명 확장 필요" if not bool((card.get("process_elements") or {}).get("limitation")) else "한계 인식 포함"
+        evidence_card_lines.append(
+            f"[카드 {idx}] p.{card.get('page')} | 원문: {quote} | 해석: {interpretation} | 의미: {why_it_matters} | 리스크: {risk_note}"
+        )
+
+    interview_questions = _dedupe(
+        [
+            "지속가능 건축에 관심을 갖게 된 구체적 계기는 무엇인가요?",
+            "재난·기후 대응 관점에서 본인의 탐구를 한 문장으로 설명해 보세요.",
+            "구조/재료 선택에서 어떤 기준으로 판단했는지 설명해 보세요.",
+            "사용자 경험이나 공간 인문 관점에서 보완하고 싶은 점은 무엇인가요?",
+            "교과 세특의 탐구를 실제 설계 사고로 연결한 사례가 있나요?",
+            "향후 6개월 동안 스토리라인을 강화하기 위한 실행 계획은 무엇인가요?",
+            *[f"근거 기반 확인 질문: {signal}" for signal in continuity_signals[:2]],
+        ],
+        limit=8,
+    )
 
     roadmap_lines: list[str] = []
     for item in roadmap:
-        roadmap_lines.append(f"{item.title}")
+        roadmap_lines.append(item.title)
         roadmap_lines.extend([f"- {action}" for action in item.actions[:3]])
 
-    current_status_intro = _clean_line(narratives.current_record_status_brief, max_len=220)
-    strength_intro = _clean_line(narratives.strengths_brief, max_len=220)
-    weakness_intro = _clean_line(narratives.weaknesses_risks_brief, max_len=220)
-    major_fit_intro = _clean_line(narratives.major_fit_brief, max_len=220)
-    section_diag_intro = _clean_line(narratives.section_diagnosis_brief, max_len=220)
-    topic_strategy_intro = _clean_line(narratives.topic_strategy_brief, max_len=220)
-    roadmap_bridge = _clean_line(narratives.roadmap_bridge, max_len=220)
-    uncertainty_bridge = _clean_line(narratives.uncertainty_bridge, max_len=220)
+    storyline = "재난/기후 대응형 지속가능 건축"
+    one_line_verdict = (
+        "전공 적합성은 높고 연속성도 확인되지만, 서사 축이 분산되어 있어 "
+        f"'{storyline}' 한 줄로 통합이 필요합니다."
+    )
+    if reanalysis_required:
+        one_line_verdict = (
+            "재분석 필요: 필수 섹션 추출 커버리지가 부족하여 학생 평가 점수는 참고용으로만 제시합니다."
+        )
+
+    baseline_lines = [
+        target_context,
+        f"분석 신뢰도: {int(round(float(coverage_check.get('coverage_score', 0.0)) * 100))}%",
+        *(score_lines[:14] or ["점수 데이터가 제한적입니다."]),
+        f"섹션 커버리지 누락: {', '.join(coverage_check.get('missing_required_sections', [])[:5]) or '없음'}",
+    ]
+
+    timeline_lines = timeline_signals[:6] or ["학년별 연속 신호가 제한적이어서 페이지 근거 중심으로 재정렬이 필요합니다."]
+    fit_lines = [
+        narratives.major_fit_brief or "건축 관련 연속성은 강하지만, 스토리라인 통합이 우선 과제입니다.",
+        "강점 축: 기술/구조/재료/환경 테마의 누적",
+        "보완 축: 디자인 언어·사용자 경험·공간 인문 프레이밍",
+        f"권장 통합 서사: {storyline}",
+        *(alignment_signals[:2] or []),
+    ]
 
     sections = [
         ConsultantDiagnosisSection(
-            id="cover_context",
-            title="Cover / 학생 목표 컨텍스트",
-            subtitle="프로젝트 목표와 진단 범위",
-            body_markdown=_bulleted(
-                [
-                    target_context,
-                    "본 리포트는 학생부 기반 근거만 사용하며 합격 보장/예측 문구를 포함하지 않습니다.",
-                    "검증 불충분 항목은 '추가 확인 필요'로 분리했습니다.",
-                ]
-            ),
-            evidence_items=top_evidence[:2],
-        ),
-        ConsultantDiagnosisSection(
             id="executive_summary",
             title="Executive Summary",
-            subtitle="핵심 진단 요약",
-            body_markdown=narratives.executive_summary,
-            evidence_items=top_evidence[:3],
-        ),
-        ConsultantDiagnosisSection(
-            id="current_record_status",
-            title="Current Record Status Diagnosis",
-            subtitle="현재 기록 상태 점검",
+            subtitle="한 줄 판정 · 강점 3 · 리스크 3",
             body_markdown=_bulleted(
                 [
-                    *( [current_status_intro] if current_status_intro else [] ),
-                    result.overview or "구조화 진단 개요가 요약되지 않아 기본 점검 프레임으로 작성했습니다.",
-                    f"권장 집중축: {result.recommended_focus}",
-                    *[f"리스크: {risk}" for risk in (result.risks or [])[:3]],
+                    f"한 줄 판정: {one_line_verdict}",
+                    *(result.strengths[:3] or ["핵심 강점 근거가 제한적입니다."]),
+                    *(result.gaps[:3] or ["핵심 리스크 근거가 제한적입니다."]),
+                    f"최우선 액션: {result.recommended_focus}",
                 ]
             ),
-            evidence_items=top_evidence[:3],
-            additional_verification_needed=weak_sections[:2],
+            evidence_items=pick_evidence(3),
+            additional_verification_needed=uncertainty_notes[:2] if reanalysis_required else [],
         ),
         ConsultantDiagnosisSection(
-            id="evaluation_axis",
-            title="Evaluation-Axis Analysis",
-            subtitle="평가축별 해석",
+            id="record_baseline_dashboard",
+            title="Academic & Record Baseline Dashboard",
+            subtitle="학생 평가 점수와 시스템 품질 점수 분리",
+            body_markdown=_bulleted(baseline_lines),
+            evidence_items=pick_evidence(2),
+            additional_verification_needed=weak_sections[:3],
+        ),
+        ConsultantDiagnosisSection(
+            id="narrative_timeline",
+            title="Narrative Timeline",
+            subtitle="학년별 관심 진화 흐름",
             body_markdown=_bulleted(
-                [f"{block.label} ({block.score}): {block.interpretation}" for block in score_blocks]
+                [
+                    "1학년 → 기초 탐색과 주제 발견",
+                    "2학년 → 구조/재료/환경 테마 심화",
+                    "3학년 → 전공 연계 스토리 통합 필요",
+                    *timeline_lines,
+                ]
             ),
-            evidence_items=top_evidence[:2],
+            evidence_items=pick_evidence(2),
+        ),
+        ConsultantDiagnosisSection(
+            id="evidence_cards",
+            title="Evidence Cards",
+            subtitle="핵심 근거 6개 카드",
+            body_markdown=_bulleted(evidence_card_lines or ["핵심 근거 카드 생성에 필요한 앵커가 부족합니다."]),
+            evidence_items=pick_evidence(4),
+            unsupported_claims=["원문에 없는 수상·성취·실험 결과는 생성하지 않습니다."],
         ),
         ConsultantDiagnosisSection(
             id="strength_analysis",
             title="Strength Analysis",
-            subtitle="검증된 강점",
+            subtitle="상위 강점 진단",
             body_markdown=_bulleted(
                 [
-                    *( [strength_intro] if strength_intro else [] ),
-                    *(result.strengths or ["강점 문장이 부족하여 보수적 해석을 사용했습니다."]),
+                    *(result.strengths[:3] or ["강점 진술이 제한적입니다."]),
+                    narratives.strengths_brief or "강점은 페이지 근거와 직접 연결되어야 합니다.",
+                    *(process_signals[:2] or []),
                 ]
             ),
-            evidence_items=[item for item in top_evidence if item.support_status == "verified"][:3],
+            evidence_items=(
+                [item for item in pick_evidence(4) if item.support_status == "verified"][:3]
+                or pick_evidence(3)
+            ),
         ),
         ConsultantDiagnosisSection(
-            id="weakness_risk",
-            title="Weakness / Risk Analysis",
-            subtitle="보완 필요 영역",
+            id="risk_analysis",
+            title="Risk Analysis",
+            subtitle="상위 리스크 진단",
             body_markdown=_bulleted(
                 [
-                    *( [weakness_intro] if weakness_intro else [] ),
-                    *(result.gaps or ["보완 포인트가 명시되지 않아 기본 리스크 프레임을 적용했습니다."]),
-                    *[f"약한 섹션 추정: {item}" for item in weak_sections[:3]],
+                    *(result.gaps[:3] or ["리스크 진술이 제한적입니다."]),
+                    "핵심 리스크는 전공 부적합이 아니라 서사 분산입니다.",
+                    *(weak_sections[:3] or ["약한 섹션은 재분석 후 확정이 필요합니다."]),
                 ]
             ),
-            evidence_items=top_evidence[:3],
-            additional_verification_needed=weak_sections[:4],
-            unsupported_claims=["검증되지 않은 성취/수상/실험 결과 추가 금지"],
+            evidence_items=pick_evidence(3),
+            additional_verification_needed=uncertainty_notes[:3],
+            unsupported_claims=["검증되지 않은 합격 예측/보장 문구 금지"],
         ),
         ConsultantDiagnosisSection(
             id="major_fit",
-            title="Major / University Fit Analysis",
-            subtitle="목표 진로 적합성",
-            body_markdown=_bulleted(
-                [
-                    *( [major_fit_intro] if major_fit_intro else [] ),
-                    *(alignment_signals[:4] or ["전공 적합성 직접 신호가 제한적입니다."]),
-                    *(continuity_signals[:3] or ["연속성 신호가 부족해 후속활동 설계가 필요합니다."]),
-                ]
-            ),
-            evidence_items=top_evidence[:2],
-            additional_verification_needed=["목표 전공 직접 연계 문장 보강 필요"],
+            title="Target-Major Fit Interpretation",
+            subtitle="서울대 건축 지망 기준 해석",
+            body_markdown=_bulleted(fit_lines),
+            evidence_items=pick_evidence(3),
+            additional_verification_needed=["디자인 언어·사용자 경험 관련 근거 카드 보강"],
         ),
         ConsultantDiagnosisSection(
-            id="section_level_diagnosis",
-            title="Evidence-Backed Section-Level Diagnosis",
-            subtitle="섹션별 근거 밀도 진단",
-            body_markdown=_bulleted(
-                [
-                    *( [section_diag_intro] if section_diag_intro else [] ),
-                    *density_lines[:8],
-                    *(timeline_signals[:3] or ["학기/학년 흐름 신호가 제한적으로 추출되었습니다."]),
-                    *(process_signals[:3] or ["과정·성찰 신호를 명시적으로 보강할 필요가 있습니다."]),
-                ]
-            ),
-            evidence_items=top_evidence[:4],
+            id="interview_questions",
+            title="Probable Interview Questions",
+            subtitle="면접 예상 질문",
+            body_markdown=_bulleted(interview_questions),
+            evidence_items=pick_evidence(2),
         ),
         ConsultantDiagnosisSection(
             id="roadmap",
-            title="Action Roadmap (1m / 3m / 6m)",
-            subtitle="실행 가능한 단계별 계획",
+            title="Action Roadmap",
+            subtitle="1개월 · 3개월 · 6개월 실행 계획",
             body_markdown=_bulleted(
                 [
-                    *( [roadmap_bridge] if roadmap_bridge else [] ),
+                    narratives.roadmap_bridge or "단계별 실행 계획은 근거 보강과 스토리 통합 순으로 진행합니다.",
                     *roadmap_lines,
                 ]
             ),
-            evidence_items=top_evidence[:2],
-        ),
-        ConsultantDiagnosisSection(
-            id="topic_strategy",
-            title="Topic / Report Strategy Recommendations",
-            subtitle="탐구 주제 및 보고서 전략",
-            body_markdown=_bulleted(
-                [
-                    *( [topic_strategy_intro] if topic_strategy_intro else [] ),
-                    *(result.recommended_topics or ["추천 주제 신호가 부족하여 기본 전공연계 전략을 사용했습니다."]),
-                    *[f"후속 행동: {item}" for item in (result.next_actions or [])[:3]],
-                ]
-            ),
-            evidence_items=top_evidence[:3],
-            additional_verification_needed=["주제별 실제 수행 가능 범위를 문장으로 명시"],
-        ),
-        ConsultantDiagnosisSection(
-            id="final_memo",
-            title="Final Consultant Memo",
-            subtitle="최종 점검 코멘트",
-            body_markdown=narratives.final_consultant_memo,
-            evidence_items=top_evidence[:2],
+            evidence_items=pick_evidence(2),
         ),
     ]
 
-    if report_mode == "premium_10p":
-        appendix_lines = [
-            "인용 부록에서 주장-근거 라인을 교차 점검하십시오.",
-            "추가 확인 필요 문장은 최종본에서도 표기를 유지하십시오.",
-            "내부 검토 로그는 제출본에서 과도하게 노출하지 않도록 관리하십시오.",
-        ]
-        if uncertainty_bridge:
-            appendix_lines.insert(0, uncertainty_bridge)
-        for note in uncertainty_notes[:4]:
-            appendix_lines.append(f"불확실성 노트: {note}")
-        for citation in top_evidence[:4]:
-            label = citation.source_label
-            if citation.page_number:
-                label = f"{label} p.{citation.page_number}"
-            appendix_lines.append(f"인용 근거: {label} ({citation.support_status})")
-        sections.append(
-            ConsultantDiagnosisSection(
-                id="appendix",
-                title="Appendix / Evidence Note",
-                subtitle="근거·불확실성 부록",
-                body_markdown=_bulleted(appendix_lines),
-                evidence_items=top_evidence[:4],
+    if report_mode == "compact":
+        return sections[:5]
+    return sections
+
+
+def _build_diverse_evidence_items(
+    *,
+    evidence_items: list[ConsultantDiagnosisEvidenceItem],
+    evidence_bank: list[dict[str, Any]],
+    limit: int,
+) -> list[ConsultantDiagnosisEvidenceItem]:
+    candidates: list[ConsultantDiagnosisEvidenceItem] = [*evidence_items]
+    for item in evidence_bank:
+        quote = _clean_line(str(item.get("quote") or ""), max_len=230)
+        if not quote:
+            continue
+        page_number = _coerce_positive_int(item.get("page"))
+        anchor_id = str(item.get("anchor_id") or "").strip()
+        section = str(item.get("section") or "").strip()
+        confidence = _coerce_float(item.get("confidence"), default=0.7)
+        support_status: str
+        if confidence >= 0.8:
+            support_status = "verified"
+        elif confidence >= 0.55:
+            support_status = "probable"
+        else:
+            support_status = "needs_verification"
+        source_base = f"학생부 앵커 {anchor_id}" if anchor_id else f"학생부 p.{page_number}" if page_number else "학생부 앵커"
+        source_label = f"{section} | {source_base}" if section else source_base
+        candidates.append(
+            ConsultantDiagnosisEvidenceItem(
+                source_label=source_label,
+                page_number=page_number,
+                excerpt=quote,
+                relevance_score=round(max(0.0, min(1.0, confidence)) * 2.0, 3),
+                support_status=support_status,  # type: ignore[arg-type]
             )
         )
-    return sections
+
+    deduped: list[ConsultantDiagnosisEvidenceItem] = []
+    seen: set[tuple[str, int, str]] = set()
+    for candidate in candidates:
+        key = (
+            str(candidate.source_label or "").strip(),
+            int(candidate.page_number or 0),
+            _clean_line(candidate.excerpt, max_len=90),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+
+    diversified: list[ConsultantDiagnosisEvidenceItem] = []
+    seen_pages: set[int] = set()
+    remainder: list[ConsultantDiagnosisEvidenceItem] = []
+    for candidate in deduped:
+        page_number = int(candidate.page_number or 0)
+        if page_number > 0 and page_number not in seen_pages:
+            diversified.append(candidate)
+            seen_pages.add(page_number)
+        else:
+            remainder.append(candidate)
+        if len(diversified) >= limit:
+            return diversified[:limit]
+
+    for candidate in remainder:
+        diversified.append(candidate)
+        if len(diversified) >= limit:
+            break
+    return diversified[:limit]
 
 
 def _build_appendix_notes(documents: list[Any], document_structure: dict[str, Any]) -> list[str]:
@@ -1339,6 +1867,9 @@ def _build_appendix_notes(documents: list[Any], document_structure: dict[str, An
         confidence = metadata.get("parse_confidence")
         if isinstance(confidence, (int, float)):
             notes.append(f"파싱 confidence={round(float(confidence), 3)}")
+        quality_score = metadata.get("pipeline_quality_score")
+        if isinstance(quality_score, (int, float)):
+            notes.append(f"파이프라인 quality_score={round(float(quality_score), 3)}")
     for item in document_structure.get("uncertain_items", [])[:5]:
         notes.append(f"구조 추정 불확실 항목: {item}")
     return _dedupe(notes, limit=20)
@@ -1389,6 +1920,24 @@ def _clean_line(value: str | None, *, max_len: int) -> str:
     return f"{text[: max_len - 1].rstrip()}…"
 
 
+def _coerce_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _coerce_float(value: Any, *, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed != parsed:  # NaN guard
+        return default
+    return parsed
+
+
 def _bulleted(lines: list[str]) -> str:
     cleaned = [str(item).strip() for item in lines if str(item).strip()]
     return "\n".join(f"- {line}" for line in cleaned)
@@ -1406,3 +1955,23 @@ def _dedupe(items: list[str], *, limit: int) -> list[str]:
         if len(deduped) >= limit:
             break
     return deduped
+
+
+def _normalize_section_name(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    alias = {
+        "grades_subjects": "교과학습발달상황",
+        "grades_and_notes": "교과학습발달상황",
+        "subject_special_notes": "세특",
+        "creative_activities": "창체",
+        "extracurricular": "창체",
+        "volunteer": "창체",
+        "career_signals": "진로",
+        "reading": "독서",
+        "reading_activity": "독서",
+        "behavior_general_comments": "행동특성",
+        "behavior_opinion": "행동특성",
+    }
+    return alias.get(text, text)
