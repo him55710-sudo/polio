@@ -13,8 +13,8 @@ from reportlab.platypus import PageBreak, Paragraph, Preformatted, SimpleDocTemp
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_MD = PROJECT_ROOT / "docs" / "reports" / "polio_backend_cto_assessment_20260321.md"
-OUTPUT_PDF = PROJECT_ROOT / "output" / "pdf" / "polio_backend_cto_assessment_20260321.pdf"
+SOURCE_MD = PROJECT_ROOT / "docs" / "reports" / "unifoli_backend_cto_assessment_20260321.md"
+OUTPUT_PDF = PROJECT_ROOT / "output" / "pdf" / "unifoli_backend_cto_assessment_20260321.pdf"
 DOWNLOAD_PDF = Path.home() / "Downloads" / "polio-backend-cto-assessment-20260321.pdf"
 
 
@@ -120,7 +120,7 @@ def draw_page(canvas, doc) -> None:
     canvas.line(18 * mm, height - 14 * mm, width - 18 * mm, height - 14 * mm)
     canvas.setFont(BODY_FONT, 8)
     canvas.setFillColor(colors.HexColor("#475569"))
-    canvas.drawString(18 * mm, height - 11 * mm, "Polio CTO Backend Assessment")
+    canvas.drawString(18 * mm, height - 11 * mm, "UniFoli CTO Backend Assessment")
     canvas.drawString(18 * mm, 10 * mm, "Source: current repository state")
     canvas.drawRightString(width - 18 * mm, 10 * mm, f"Page {doc.page}")
     canvas.restoreState()
@@ -244,7 +244,7 @@ def main() -> None:
         rightMargin=18 * mm,
         topMargin=20 * mm,
         bottomMargin=16 * mm,
-        title="Polio CTO Backend Assessment",
+        title="UniFoli CTO Backend Assessment",
         author="Codex",
     )
     story = render_markdown(markdown_text)

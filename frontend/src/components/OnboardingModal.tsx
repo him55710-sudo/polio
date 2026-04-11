@@ -10,18 +10,11 @@ import {
   searchUniversities,
 } from '../lib/educationCatalog';
 
+import { useOnboardingStore } from '../store/onboardingStore';
+
 interface OnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialUniversity?: string | null;
-  initialMajor?: string | null;
-  initialInterests?: string[];
-  isSubmitting: boolean;
-  onSubmit: (payload: {
-    targetUniversity: string;
-    targetMajor: string;
-    interestUniversities: string[];
-  }) => Promise<void>;
 }
 
 const TEXT = {
@@ -39,25 +32,14 @@ const TEXT = {
   emptyGoals: '아직 추가된 대학이 없습니다.',
 };
 
-interface GoalItem {
-  id: string;
-  university: string;
-  major: string;
-}
-
 export function OnboardingModal({
   isOpen,
   onClose,
-  initialUniversity,
-  initialMajor,
-  initialInterests,
-  isSubmitting,
-  onSubmit,
 }: OnboardingModalProps) {
+  const { goalList, setGoalList, addGoal, removeGoal, isLoading, submitGoals } = useOnboardingStore();
   const [step, setStep] = useState<1 | 2>(1);
   const [currentUniv, setCurrentUniv] = useState('');
   const [currentMajor, setCurrentMajor] = useState('');
-  const [goals, setGoals] = useState<GoalItem[]>([]);
   const [univInput, setUnivInput] = useState('');
   const [draggingGoalId, setDraggingGoalId] = useState<string | null>(null);
   const [dragOverGoalId, setDragOverGoalId] = useState<string | null>(null);
@@ -68,45 +50,18 @@ export function OnboardingModal({
     setCurrentUniv('');
     setCurrentMajor('');
     setUnivInput('');
-    
-    const generateId = () => {
-      try {
-        return crypto.randomUUID();
-      } catch {
-        return Math.random().toString(36).substring(2) + Date.now().toString(36);
-      }
-    };
-
-    const initialList: GoalItem[] = [];
-    if (initialUniversity && initialMajor) {
-      initialList.push({ id: generateId(), university: initialUniversity, major: initialMajor });
-    }
-    
-    if (initialInterests && initialInterests.length > 0) {
-      initialInterests.forEach(interest => {
-        const match = interest.match(/^(.+)\s\((.+)\)$/);
-        if (match) {
-          initialList.push({ id: generateId(), university: match[1], major: match[2] });
-        } else {
-          initialList.push({ id: generateId(), university: interest, major: '전공 미지정' });
-        }
-      });
-    }
-    
-    // Limit to 6
-    setGoals(initialList.slice(0, 6));
-  }, [initialInterests, initialMajor, initialUniversity, isOpen]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const universitySuggestions = searchUniversities(univInput, {
-    excludeNames: [currentUniv, ...goals.map(g => g.university)],
+    excludeNames: [currentUniv, ...goalList.map(g => g.university)],
     limit: 100
   });
 
   const majorSuggestions = searchMajors(currentMajor, currentUniv, 20);
   
-  const canAddMore = goals.length < 6;
+  const canAddMore = goalList.length < 6;
   const canAddThis = (currentUniv.trim().length >= 2 || univInput.trim().length >= 2) && currentMajor.trim().length >= 2;
   const logoPreviewName = (currentUniv || univInput).trim();
 
@@ -122,35 +77,31 @@ export function OnboardingModal({
       }
     };
     
-    setGoals(prev => [...prev, { id: generateId(), university: univ, major: currentMajor.trim() }]);
+    addGoal({ id: generateId(), university: univ, major: currentMajor.trim() });
     setCurrentUniv('');
     setCurrentMajor('');
     setUnivInput('');
     setStep(1);
   };
 
-  const removeGoal = (id: string) => setGoals(prev => prev.filter(g => g.id !== id));
-  
   const moveGoal = (index: number, direction: 'up' | 'down') => {
-    const newGoals = [...goals];
+    const newGoals = [...goalList];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= goals.length) return;
+    if (targetIndex < 0 || targetIndex >= goalList.length) return;
     [newGoals[index], newGoals[targetIndex]] = [newGoals[targetIndex], newGoals[index]];
-    setGoals(newGoals);
+    setGoalList(newGoals);
   };
 
   const moveGoalByDrag = (sourceId: string, targetId: string) => {
     if (!sourceId || !targetId || sourceId === targetId) return;
-    setGoals(previous => {
-      const sourceIndex = previous.findIndex(item => item.id === sourceId);
-      const targetIndex = previous.findIndex(item => item.id === targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return previous;
+    const sourceIndex = goalList.findIndex(item => item.id === sourceId);
+    const targetIndex = goalList.findIndex(item => item.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
 
-      const next = [...previous];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
-      return next;
-    });
+    const next = [...goalList];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    setGoalList(next);
   };
 
   const onGoalDragEnd = () => {
@@ -246,14 +197,17 @@ export function OnboardingModal({
           {/* Right: Goals List & Reorder */}
           <div className="space-y-4">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">{TEXT.goalListTitle}</h3>
-            {goals.length > 1 ? <p className="text-xs font-semibold text-slate-500">카드를 드래그해서 순서를 자유롭게 조정할 수 있습니다.</p> : null}
-            {goals.length === 0 ? (
+            {goalList.length > 1 ? <p className="text-xs font-semibold text-slate-500">카드를 드래그해서 순서를 자유롭게 조정할 수 있습니다.</p> : null}
+            {goalList.length === 0 ? (
               <div className="h-40 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-300 text-sm font-medium">
-                <School size={32} className="mb-2 opacity-20"/> {TEXT.emptyGoals}
+                <div className="mb-2 opacity-20">
+                  <School size={32} />
+                </div>
+                {TEXT.emptyGoals}
               </div>
             ) : (
               <div className="space-y-2">
-                {goals.map((g, idx) => (
+                {goalList.map((g, idx) => (
                   <motion.div
                     key={g.id}
                     layout
@@ -299,15 +253,14 @@ export function OnboardingModal({
 
         <div className="mt-10 pt-6 border-t">
           <button 
-            disabled={goals.length === 0 || isSubmitting}
-            onClick={() => {
-              const main = goals[0];
-              const others = goals.slice(1).map(g => `${g.university} (${g.major})`);
-              void onSubmit({ targetUniversity: main.university, targetMajor: main.major, interestUniversities: others });
+            disabled={goalList.length === 0 || isLoading}
+            onClick={async () => {
+              const success = await submitGoals();
+              if (success) onClose();
             }}
             className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-lg flex items-center justify-center gap-2 hover:bg-black transition-all disabled:opacity-40"
           >
-            {isSubmitting ? TEXT.saving : TEXT.submit} <ArrowRight size={20}/>
+            {isLoading ? TEXT.saving : TEXT.submit} <ArrowRight size={20}/>
           </button>
         </div>
       </motion.div>

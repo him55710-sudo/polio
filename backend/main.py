@@ -21,6 +21,7 @@ for source_path in reversed(SOURCE_PATHS):
     if resolved not in sys.path:
         sys.path.insert(0, resolved)
 
-from polio_api.main import app
+from unifoli_api.main import app
 
 __all__ = ["app"]
+

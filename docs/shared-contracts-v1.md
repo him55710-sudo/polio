@@ -96,7 +96,7 @@ Mapped endpoints:
 When frontend and backend need the same request or response shape:
 
 1. Start in `packages/shared-contracts/src/`.
-2. Mirror the backend response model in `backend/services/api/src/polio_api/schemas/`.
+2. Mirror the backend response model in `backend/services/api/src/unifoli_api/schemas/`.
 3. Update frontend consumers to import from the shared contract package instead of redefining local interfaces.
 
 Do not create new DTO copies inside feature pages unless the type is purely view-local and never crosses the API boundary.
@@ -107,10 +107,10 @@ Python cannot import the TypeScript contract files directly in the current repo 
 
 For v1, the key backend mirrors are:
 
-- `backend/services/api/src/polio_api/schemas/user.py`
-- `backend/services/api/src/polio_api/schemas/blueprint.py`
-- `backend/services/api/src/polio_api/schemas/inquiry.py`
-- `backend/services/api/src/polio_api/schemas/diagnosis.py`
+- `backend/services/api/src/unifoli_api/schemas/user.py`
+- `backend/services/api/src/unifoli_api/schemas/blueprint.py`
+- `backend/services/api/src/unifoli_api/schemas/inquiry.py`
+- `backend/services/api/src/unifoli_api/schemas/diagnosis.py`
 
 ## Guardrail Note
 

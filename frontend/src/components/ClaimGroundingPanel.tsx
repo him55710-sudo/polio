@@ -7,7 +7,21 @@ interface ClaimGroundingPanelProps {
   claims: ClaimGrounding[];
 }
 
+const NEEDS_SUPPORT_PATTERN = /\bneeds?\s+support\b/gi;
+const ENGLISH_CHAR_PATTERN = /[A-Za-z]/g;
+
+function sanitizeKoreanText(value: unknown, fallback = '내용을 정리 중입니다.'): string {
+  const source = String(value ?? '').trim();
+  if (!source) return fallback;
+  const replaced = source.replace(NEEDS_SUPPORT_PATTERN, '보완 필요');
+  const withoutEnglish = replaced.replace(ENGLISH_CHAR_PATTERN, '').replace(/\s{2,}/g, ' ').trim();
+  return withoutEnglish || fallback;
+}
+
 function StatusBadge({ status }: { status: ClaimSupportStatus }) {
+  if ((status as string) === 'needs_support') {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700 shadow-sm border border-amber-200"><Shield size={12}/> 보완 필요</span>;
+  }
   switch (status) {
     case 'supported':
       return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 shadow-sm border border-emerald-200"><ShieldCheck size={12}/> 근거 확인됨</span>;
@@ -18,6 +32,7 @@ function StatusBadge({ status }: { status: ClaimSupportStatus }) {
     case 'unsupported':
       return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-red-700 shadow-sm border border-red-200"><ShieldAlert size={12}/> 근거 없음</span>;
   }
+  return <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-600 shadow-sm border border-slate-200"><Shield size={12}/> 확인 필요</span>;
 }
 
 function ProvenanceStyle(type: ClaimProvenanceType) {
@@ -35,7 +50,7 @@ function ProvenanceName(type: ClaimProvenanceType) {
   switch (type) {
     case 'student_record': return '학생부 기록';
     case 'external_research': return '외부 문헌 및 기준';
-    case 'ai_interpretation': return 'AI 심층 분석';
+    case 'ai_interpretation': return '인공지능 심층 분석';
   }
 }
 
@@ -59,13 +74,13 @@ function ClaimCard({ claim }: { claim: ClaimGrounding }) {
         </div>
         
         <p className="text-base sm:text-lg font-bold text-slate-800 leading-snug break-keep">
-          "{claim.claim_text}"
+          "{sanitizeKoreanText(claim.claim_text)}"
         </p>
 
         {claim.support_status === 'unsupported' && claim.unsupported_reason && (
           <div className="mt-4 rounded-lg bg-red-100/50 p-3 border border-red-200/60 flex gap-2 items-start">
              <AlertCircle size={14} className="text-red-600 mt-0.5 shrink-0" />
-             <p className="text-xs font-bold text-red-800 leading-relaxed">{claim.unsupported_reason}</p>
+             <p className="text-xs font-bold text-red-800 leading-relaxed">{sanitizeKoreanText(claim.unsupported_reason)}</p>
           </div>
         )}
 
@@ -94,7 +109,7 @@ function ClaimCard({ claim }: { claim: ClaimGrounding }) {
                         {excerpt.chunk_id && <span className="text-[9px] font-bold text-slate-300">ID: {excerpt.chunk_id}</span>}
                       </div>
                       <p className="text-xs font-medium text-slate-600 italic leading-relaxed border-l-2 border-slate-200 pl-3">
-                        {excerpt.text}
+                        {sanitizeKoreanText(excerpt.text)}
                       </p>
                     </div>
                   ))}

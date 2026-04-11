@@ -1,8 +1,8 @@
-ï»¿from __future__ import annotations
+from __future__ import annotations
 
 from types import SimpleNamespace
 
-from polio_api.services.diagnosis_runtime_service import _extract_document_text
+from unifoli_api.services.diagnosis_runtime_service import _extract_document_text
 
 
 def test_extract_document_text_prefers_canonical_metadata_when_primary_text_missing() -> None:
@@ -12,10 +12,10 @@ def test_extract_document_text_prefers_canonical_metadata_when_primary_text_miss
         parse_metadata={
             "student_record_canonical": {
                 "document_confidence": 0.71,
-                "timeline_signals": [{"signal": "2í•™ë…„ 1í•™ê¸°"}],
-                "major_alignment_hints": [{"hint": "ì „ê³µ ì—°ê³„ ì‹¤í—˜ í™œë™"}],
-                "grades_subjects": [{"subject": "ìˆ˜í•™"}],
-                "uncertainties": [{"message": "ì¼ë¶€ ê·¼ê±°ëŠ” ì¶”ê°€ í™•ì¸ í•„ìš”"}],
+                "timeline_signals": [{"signal": "2ÇĞ³â 1ÇĞ±â"}],
+                "major_alignment_hints": [{"hint": "Àü°ø ¿¬°è ½ÇÇè È°µ¿"}],
+                "grades_subjects": [{"subject": "¼öÇĞ"}],
+                "uncertainties": [{"message": "ÀÏºÎ ±Ù°Å´Â Ãß°¡ È®ÀÎ ÇÊ¿ä"}],
             }
         },
     )
@@ -23,6 +23,7 @@ def test_extract_document_text_prefers_canonical_metadata_when_primary_text_miss
     text = _extract_document_text(document)
 
     assert "student_record_confidence" in text
-    assert "2í•™ë…„ 1í•™ê¸°" in text
-    assert "ì „ê³µ ì—°ê³„ ì‹¤í—˜ í™œë™" in text
-    assert "ìˆ˜í•™" in text
+    assert "2ÇĞ³â 1ÇĞ±â" in text
+    assert "Àü°ø ¿¬°è ½ÇÇè È°µ¿" in text
+    assert "¼öÇĞ" in text
+

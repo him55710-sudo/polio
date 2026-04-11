@@ -1,6 +1,6 @@
 # Open Source Snapshots
 
-This directory stores shallow clones of common repositories that are broadly useful for the `polio` backend.
+This directory stores shallow clones of common repositories that are broadly useful for the `unifoli` backend.
 
 ## Purpose
 

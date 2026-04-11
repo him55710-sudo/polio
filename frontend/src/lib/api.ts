@@ -119,6 +119,15 @@ async function download(url: string, config?: AxiosRequestConfig): Promise<ApiDo
   };
 }
 
+export interface RuntimeCapabilities {
+  allow_inline_job_processing: boolean;
+  async_jobs_inline_dispatch: boolean;
+  serverless_runtime: boolean;
+  recommended_document_parse_mode: 'sync' | 'async';
+  recommended_diagnosis_mode: 'sync' | 'async';
+  requires_explicit_process_kicking: boolean;
+}
+
 export const api = {
   get<T = any>(url: string, config?: AxiosRequestConfig) {
     return request<T>({ ...config, method: 'GET', url });
@@ -134,6 +143,9 @@ export const api = {
   },
   download(url: string, config?: AxiosRequestConfig) {
     return download(url, config);
+  },
+  getRuntimeCapabilities() {
+    return this.get<RuntimeCapabilities>('/api/v1/runtime/capabilities');
   },
 };
 

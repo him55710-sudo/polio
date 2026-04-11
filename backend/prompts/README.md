@@ -1,6 +1,6 @@
 # Prompt Registry
 
-This directory is the managed prompt asset registry for Polio v1.
+This directory is the managed prompt asset registry for UniFoli v1.
 
 It is intentionally organized by product purpose instead of by model provider or
 ad hoc experiment name.
@@ -47,6 +47,6 @@ Prompt names use stable dotted identifiers, for example:
 Runtime prompt loading belongs under `backend/`.
 
 The current backend scaffold reads this directory through
-`backend/services/api/src/polio_api/services/prompt_registry.py`.
+`backend/services/api/src/unifoli_api/services/prompt_registry.py`.
 This keeps prompt assets centralized while leaving runtime integration inside the
 backend source of truth.

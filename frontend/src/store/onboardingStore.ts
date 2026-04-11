@@ -17,6 +17,12 @@ export interface ProfileData {
   career: string;
 }
 
+export interface GoalItem {
+  id: string;
+  university: string;
+  major: string;
+}
+
 export interface GoalsData {
   target_university: string;
   target_major: string;
@@ -24,20 +30,37 @@ export interface GoalsData {
   interest_universities: string[];
 }
 
+export type DiagnosisStep = 'PROFILE' | 'GOALS' | 'UPLOAD' | 'ANALYSING' | 'RESULT' | 'FAILED';
+
 interface OnboardingState {
-  step: number;
+  diagnosisStep: DiagnosisStep;
   profile: ProfileData;
   goals: GoalsData;
+  goalList: GoalItem[];
+  activeProjectId: string | null;
+  activeDiagnosisRunId: string | null;
+  activeDocumentId: string | null;
   isLoading: boolean;
   error: string | null;
 
-  setStep: (step: number) => void;
+  setDiagnosisStep: (step: DiagnosisStep) => void;
   setProfile: (data: Partial<ProfileData>) => void;
   setGoals: (data: Partial<GoalsData>) => void;
+  setGoalList: (goals: GoalItem[]) => void;
+  addGoal: (goal: GoalItem) => void;
+  removeGoal: (id: string) => void;
+  setActiveProjectId: (id: string | null) => void;
+  setActiveDiagnosisRunId: (id: string | null) => void;
+  setActiveDocumentId: (id: string | null) => void;
+  
   submitProfile: () => Promise<boolean>;
   submitGoals: (directData?: GoalsData) => Promise<boolean>;
-  reset: () => void;
+  syncWithUser: (user: any) => void;
+  initializeFromProject: (projectId: string) => Promise<boolean>;
+  resetOnboarding: () => void;
 }
+
+import { buildRankedGoals } from '../lib/rankedGoals';
 
 const initialProfile: ProfileData = { grade: '', track: '', career: '' };
 const initialGoals: GoalsData = {
@@ -48,17 +71,35 @@ const initialGoals: GoalsData = {
 };
 
 export const useOnboardingStore = create<OnboardingState>((set, get) => ({
-  step: 1,
+  diagnosisStep: 'GOALS',
   profile: initialProfile,
   goals: initialGoals,
+  goalList: [],
+  activeProjectId: null,
+  activeDiagnosisRunId: null,
+  activeDocumentId: null,
   isLoading: false,
   error: null,
 
-  setStep: (step) => set({ step, error: null }),
+  setDiagnosisStep: (diagnosisStep) => set({ diagnosisStep }),
 
   setProfile: (data) => set((state) => ({ profile: { ...state.profile, ...data } })),
 
   setGoals: (data) => set((state) => ({ goals: { ...state.goals, ...data } })),
+
+  setGoalList: (goalList) => set({ goalList }),
+  
+  addGoal: (goal) => set((state) => ({ 
+    goalList: [...state.goalList, goal].slice(0, 6) 
+  })),
+
+  removeGoal: (id) => set((state) => ({ 
+    goalList: state.goalList.filter(g => g.id !== id) 
+  })),
+
+  setActiveProjectId: (id) => set({ activeProjectId: id }),
+  setActiveDiagnosisRunId: (id) => set({ activeDiagnosisRunId: id }),
+  setActiveDocumentId: (id) => set({ activeDocumentId: id }),
 
   submitProfile: async () => {
     set({ isLoading: true, error: null });
@@ -69,20 +110,20 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (isGuestSessionActive()) {
         const updatedUser = updateGuestProfile(payload, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ step: 2, isLoading: false });
+        set({ diagnosisStep: 'GOALS', isLoading: false });
         return true;
       }
 
       const updatedUser = await api.post<OnboardingProfileUpdateResponse>('/api/v1/users/onboarding/profile', payload);
       useAuthStore.getState().setUser(updatedUser);
-      set({ step: 2, isLoading: false });
+      set({ diagnosisStep: 'GOALS', isLoading: false });
       return true;
     } catch (err: any) {
       if (isGuestSessionActive()) {
         const { profile } = get();
         const updatedUser = updateGuestProfile(profile, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ step: 2, isLoading: false });
+        set({ diagnosisStep: 'GOALS', isLoading: false });
         return true;
       }
       const currentAuthUser = auth?.currentUser;
@@ -90,7 +131,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         const { profile } = get();
         const updatedUser = updateLocalAuthProfile(profile, currentAuthUser, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ step: 2, isLoading: false });
+        set({ diagnosisStep: 'GOALS', isLoading: false });
         return true;
       }
       set({ error: err.response?.data?.detail || '프로필 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
@@ -101,34 +142,49 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   submitGoals: async (directData?: GoalsData) => {
     set({ isLoading: true, error: null });
     try {
-      const goals = directData || get().goals;
+      let goals = directData;
+      if (!goals) {
+        const currentGoalList = get().goalList;
+        if (currentGoalList.length === 0) {
+          set({ isLoading: false, error: '최소 1개의 목표를 설정해야 합니다.' });
+          return false;
+        }
+        const main = currentGoalList[0];
+        const others = currentGoalList.slice(1).map(g => `${g.university} (${g.major})`);
+        goals = {
+          target_university: main.university,
+          target_major: main.major,
+          interest_universities: others,
+          admission_type: get().goals.admission_type || '학생부종합',
+        };
+      }
+
       const payload: OnboardingGoalsUpdateRequest = goals;
 
       if (isGuestSessionActive()) {
         const updatedUser = updateGuestTargets(payload, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ isLoading: false });
+        set({ diagnosisStep: 'UPLOAD', isLoading: false });
         return true;
       }
 
       const updatedUser = await api.post<OnboardingGoalsUpdateResponse>('/api/v1/users/onboarding/goals', payload);
       useAuthStore.getState().setUser(updatedUser);
-      set({ isLoading: false });
+      set({ diagnosisStep: 'UPLOAD', isLoading: false });
       return true;
     } catch (err: any) {
+      const goals = directData || get().goals;
       if (isGuestSessionActive()) {
-        const goals = directData || get().goals;
         const updatedUser = updateGuestTargets(goals, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ isLoading: false });
+        set({ diagnosisStep: 'UPLOAD', isLoading: false });
         return true;
       }
       const currentAuthUser = auth?.currentUser;
       if (currentAuthUser) {
-        const goals = directData || get().goals;
         const updatedUser = updateLocalAuthTargets(goals, currentAuthUser, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ isLoading: false });
+        set({ diagnosisStep: 'UPLOAD', isLoading: false });
         return true;
       }
       set({ error: err.response?.data?.detail || '목표 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
@@ -136,5 +192,88 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     }
   },
 
-  reset: () => set({ step: 1, profile: initialProfile, goals: initialGoals, error: null, isLoading: false }),
+  syncWithUser: (user) => {
+    if (!user) return;
+    const ranked = buildRankedGoals(user, 6);
+    const goalList: GoalItem[] = ranked.map((rg, idx) => ({
+      id: idx === 0 ? 'main' : `interest-${idx - 1}`,
+      university: rg.university,
+      major: rg.major
+    }));
+    
+    set({ 
+      profile: {
+        grade: user.grade || '',
+        track: user.track || '',
+        career: user.career || ''
+      },
+      goalList,
+      goals: {
+        target_university: user.target_university || '',
+        target_major: user.target_major || '',
+        interest_universities: user.interest_universities || [],
+        admission_type: user.admission_type || '학생부종합'
+      }
+    });
+
+    // Unified step logic
+    if (!user.grade || !user.track) {
+      set({ diagnosisStep: 'PROFILE' });
+    } else if (!user.target_university) {
+      set({ diagnosisStep: 'GOALS' });
+    } else {
+      set({ diagnosisStep: 'UPLOAD' });
+    }
+  },
+
+  initializeFromProject: async (projectId: string) => {
+    set({ isLoading: true, error: null, activeProjectId: projectId });
+    try {
+      const project = await api.get<any>(`/api/v1/projects/${projectId}`);
+      const projectGoals: GoalItem[] = [];
+      
+      if (project.target_university) {
+        projectGoals.push({ 
+          id: 'main', 
+          university: project.target_university, 
+          major: project.target_major || '' 
+        });
+        
+        if (project.interest_universities?.length) {
+          project.interest_universities.forEach((iu: string, idx: number) => {
+            const match = iu.match(/^(.+)\s\((.+)\)$/);
+            if (match) {
+              projectGoals.push({ id: `interest-${idx}`, university: match[1].trim(), major: match[2].trim() });
+            } else {
+              projectGoals.push({ id: `interest-${idx}`, university: iu.trim(), major: '' });
+            }
+          });
+        }
+      }
+
+      set({ 
+        goalList: projectGoals,
+        diagnosisStep: project.latest_diagnosis_run_id || project.documents?.length ? 'ANALYSING' : 'UPLOAD',
+        activeDocumentId: project.documents?.[0]?.id || null,
+        activeDiagnosisRunId: project.latest_diagnosis_run_id || null,
+        isLoading: false
+      });
+      return true;
+    } catch (err: any) {
+      set({ isLoading: false, error: '프로젝트 정보를 불러오지 못했습니다.' });
+      return false;
+    }
+  },
+
+  resetOnboarding: () => set({ 
+    diagnosisStep: 'PROFILE',
+    profile: initialProfile, 
+    goals: initialGoals, 
+    goalList: [],
+    activeProjectId: null,
+    activeDiagnosisRunId: null,
+    activeDocumentId: null,
+    error: null, 
+    isLoading: false 
+  }),
 }));

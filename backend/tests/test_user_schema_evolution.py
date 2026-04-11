@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from polio_api.core import database as database_module
+from unifoli_api.core import database as database_module
 
 
 def test_apply_schema_evolution_adds_marketing_agreed_to_legacy_users_table(tmp_path, monkeypatch) -> None:
@@ -59,3 +59,4 @@ def test_apply_schema_evolution_adds_marketing_agreed_to_legacy_users_table(tmp_
         ).scalar_one()
 
     assert marketing_agreed in (0, False)
+

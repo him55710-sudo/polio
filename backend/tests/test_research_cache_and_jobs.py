@@ -11,15 +11,15 @@ from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 from sqlalchemy import func, select
 
-from polio_api.core.config import get_settings
-from polio_api.core.database import SessionLocal
-from polio_api.db.models.document_chunk import DocumentChunk
-from polio_api.db.models.research_chunk import ResearchChunk
-from polio_api.db.models.research_document import ResearchDocument
-from polio_api.main import app
-from polio_api.services.diagnosis_service import DiagnosisResult, evaluate_student_record
-from polio_api.services.rag_service import RAGConfig, build_rag_context
-from polio_api.services.research_service import search_relevant_research_chunks
+from unifoli_api.core.config import get_settings
+from unifoli_api.core.database import SessionLocal
+from unifoli_api.db.models.document_chunk import DocumentChunk
+from unifoli_api.db.models.research_chunk import ResearchChunk
+from unifoli_api.db.models.research_document import ResearchDocument
+from unifoli_api.main import app
+from unifoli_api.services.diagnosis_service import DiagnosisResult, evaluate_student_record
+from unifoli_api.services.rag_service import RAGConfig, build_rag_context
+from unifoli_api.services.research_service import search_relevant_research_chunks
 from backend.tests.auth_helpers import auth_headers
 
 
@@ -90,11 +90,11 @@ def test_research_ingest_stays_separate_and_rag_preserves_provenance(monkeypatch
     previous_inline = settings.async_jobs_inline_dispatch
     settings.async_jobs_inline_dispatch = False
 
-    monkeypatch.setattr("polio_shared.embeddings.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
-    monkeypatch.setattr("polio_api.services.vector_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
-    monkeypatch.setattr("polio_api.services.vector_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
-    monkeypatch.setattr("polio_api.services.research_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
-    monkeypatch.setattr("polio_api.services.research_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
+    monkeypatch.setattr("unifoli_shared.embeddings.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
+    monkeypatch.setattr("unifoli_api.services.vector_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
+    monkeypatch.setattr("unifoli_api.services.vector_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
+    monkeypatch.setattr("unifoli_api.services.research_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
+    monkeypatch.setattr("unifoli_api.services.research_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
 
     try:
         with TestClient(app) as client:
@@ -201,11 +201,11 @@ def test_research_retrieval_prioritizes_official_sources(monkeypatch) -> None:
     previous_inline = settings.async_jobs_inline_dispatch
     settings.async_jobs_inline_dispatch = False
 
-    monkeypatch.setattr("polio_shared.embeddings.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
-    monkeypatch.setattr("polio_api.services.vector_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
-    monkeypatch.setattr("polio_api.services.vector_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
-    monkeypatch.setattr("polio_api.services.research_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
-    monkeypatch.setattr("polio_api.services.research_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
+    monkeypatch.setattr("unifoli_shared.embeddings.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
+    monkeypatch.setattr("unifoli_api.services.vector_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
+    monkeypatch.setattr("unifoli_api.services.vector_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
+    monkeypatch.setattr("unifoli_api.services.research_service.get_embedding_service", lambda *args, **kwargs: fake_embeddings)
+    monkeypatch.setattr("unifoli_api.services.research_service.get_reranker_service", lambda *args, **kwargs: fake_reranker)
 
     try:
         with TestClient(app) as client:
@@ -265,7 +265,7 @@ def test_diagnosis_cache_hits_and_misses(monkeypatch) -> None:
     fake_llm = _FakeDiagnosisLLM()
     unique_scope = f"project:{uuid4()}"
 
-    monkeypatch.setattr("polio_api.services.diagnosis_service.get_llm_client", lambda: fake_llm)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_service.get_llm_client", lambda: fake_llm)
 
     first = asyncio.run(
         evaluate_student_record(
@@ -356,3 +356,4 @@ def test_job_failure_retry_and_dead_letter_are_visible_via_api() -> None:
             assert research_sources.json()[0]["last_error"]
     finally:
         settings.async_jobs_inline_dispatch = previous_inline
+

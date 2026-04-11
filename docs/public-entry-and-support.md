@@ -39,10 +39,10 @@
   - `partnership`
   - `bug_report`
 - Backend location:
-  - route: `backend/services/api/src/polio_api/api/routes/inquiries.py`
-  - schema: `backend/services/api/src/polio_api/schemas/inquiry.py`
-  - model: `backend/services/api/src/polio_api/db/models/inquiry.py`
-  - service: `backend/services/api/src/polio_api/services/inquiry_service.py`
+  - route: `backend/services/api/src/unifoli_api/api/routes/inquiries.py`
+  - schema: `backend/services/api/src/unifoli_api/schemas/inquiry.py`
+  - model: `backend/services/api/src/unifoli_api/db/models/inquiry.py`
+  - service: `backend/services/api/src/unifoli_api/services/inquiry_service.py`
 
 현재 저장 방식은 기존 FastAPI + SQLAlchemy + Pydantic 패턴을 그대로 따릅니다.  
 공개 `/contact` 페이지와 authenticated shell 내부의 `B2BPartnershipModal` 모두 같은 엔드포인트를 사용합니다.

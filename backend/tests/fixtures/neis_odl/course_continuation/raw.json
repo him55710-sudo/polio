@@ -1,5 +1,5 @@
 {
-  "schema_version": "polio.raw_pdf.v1",
+  "schema_version": "unifoli.raw_pdf.v1",
   "source": "opendataloader",
   "parse_mode": "hybrid",
   "ocr_enabled": false,

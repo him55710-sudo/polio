@@ -11,7 +11,6 @@ import {
   type UserTargetsUpdateRequest,
   type UserTargetsUpdateResponse,
 } from '@shared-contracts';
-import { OnboardingModal } from '../components/OnboardingModal';
 import { UniversityLogo } from '../components/UniversityLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -123,11 +122,10 @@ export default function Dashboard() {
   const authStoreUser = useAuthStore(state => state.user);
   const setAuthUser = useAuthStore(state => state.setUser);
 
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isLoadingBlueprint, setIsLoadingBlueprint] = useState(false);
   const [startingQuestId, setStartingQuestId] = useState<string | null>(null);
-  const [stats, setStats] = useState<UserStats>({ report_count: 0, level: 'Loading', completion_rate: 0 });
+  const [stats, setStats] = useState<UserStats>({ report_count: 0, level: '불러오는 중', completion_rate: 0 });
   const [profile, setProfile] = useState<UserProfile | null>(authStoreUser);
   const [storedDiagnosis, setStoredDiagnosis] = useState<StoredDiagnosis | null>(null);
   const [blueprint, setBlueprint] = useState<CurrentBlueprintResponse | null>(null);
@@ -170,7 +168,10 @@ export default function Dashboard() {
         completion_rate: guestProfile?.target_university && guestProfile?.target_major ? 25 : 0,
       });
       setProfile(guestProfile);
-      if (!guestProfile?.target_university || !guestProfile?.target_major) setIsOnboardingOpen(true);
+      if (!guestProfile?.target_university || !guestProfile?.target_major) {
+        // Redirect to diagnosis is handled by App.tsx ProtectedRoute, but for manual triggers:
+        // setIsOnboardingOpen(true); -> Managed via nextAction button
+      }
       return;
     }
 
@@ -182,7 +183,9 @@ export default function Dashboard() {
         completion_rate: hasTargets ? 25 : 0,
       });
       setProfile(authStoreUser);
-      if (!hasTargets) setIsOnboardingOpen(true);
+      if (!hasTargets) {
+        // Handled by ProtectedRoute mostly
+      }
       return;
     }
 
@@ -201,7 +204,9 @@ export default function Dashboard() {
       .get<UserProfile>('/api/v1/users/me')
       .then(data => {
         setProfile(data);
-        if (!data.target_university || !data.target_major) setIsOnboardingOpen(true);
+        if (!data.target_university || !data.target_major) {
+           // Handled by Guide
+        }
       })
       .catch(error => {
         console.error(error);
@@ -209,17 +214,23 @@ export default function Dashboard() {
           const guestProfile = readGuestProfile();
           if (guestProfile) {
             setProfile(guestProfile);
-            if (!guestProfile.target_university || !guestProfile.target_major) setIsOnboardingOpen(true);
+            if (!guestProfile.target_university || !guestProfile.target_major) {
+               // Handled by Guide
+            }
             return;
           }
         }
         if (authStoreUser) {
           setProfile(authStoreUser);
-          if (!authStoreUser.target_university || !authStoreUser.target_major) setIsOnboardingOpen(true);
+          if (!authStoreUser.target_university || !authStoreUser.target_major) {
+             // Handled by Guide
+          }
           return;
         }
         setProfile(null);
-        if (isGuestSession) setIsOnboardingOpen(true);
+        if (isGuestSession) {
+           // Handled by Guide
+        }
       });
   }, [user, isGuestSession, localAuthFallbackActive, authStoreUser]);
 
@@ -250,70 +261,7 @@ export default function Dashboard() {
       .finally(() => setIsLoadingBlueprint(false));
   }, [user, isGuestSession, storedDiagnosis?.projectId, localAuthFallbackActive]);
 
-  const handleSaveTargets = async (payload: { targetUniversity: string; targetMajor: string; interestUniversities: string[] }) => {
-    setIsSavingProfile(true);
-    const loadingId = toast.loading('목표를 저장하는 중입니다...');
-    const request: UserTargetsUpdateRequest = {
-      target_university: payload.targetUniversity,
-      target_major: payload.targetMajor,
-      interest_universities: payload.interestUniversities,
-    };
-
-    const applyGuestFallback = () => {
-      const updated = updateGuestTargets(request, profile);
-      setProfile(updated);
-      setAuthUser(updated);
-      setIsOnboardingOpen(false);
-      toast.success('목표가 저장되었습니다.', { id: loadingId });
-    };
-    
-    const applyLocalAuthFallback = () => {
-      if (!user) return;
-      const updated = updateLocalAuthTargets(request, user, profile);
-      setProfile(updated);
-      setAuthUser(updated);
-      setIsOnboardingOpen(false);
-      toast.success('목표가 저장되었습니다. (로컬 세션)', { id: loadingId });
-    };
-
-    try {
-      if (isGuestSession && !user) {
-        applyGuestFallback();
-        return;
-      }
-
-      let data: UserTargetsUpdateResponse | OnboardingGoalsUpdateResponse;
-      try {
-        data = await api.patch<UserTargetsUpdateResponse>('/api/v1/users/me/targets', request);
-      } catch (patchError) {
-        const status = (patchError as { response?: { status?: number } })?.response?.status;
-        if (status === 401 || status === 403) {
-          throw patchError;
-        }
-        try {
-          data = await api.post<OnboardingGoalsUpdateResponse>('/api/v1/users/onboarding/goals', request);
-        } catch {
-          throw patchError;
-        }
-      }
-      setProfile(data);
-      setAuthUser(data);
-      setIsOnboardingOpen(false);
-      toast.success('목표가 저장되었습니다.', { id: loadingId });
-    } catch (error) {
-      if (isGuestSessionActive()) {
-        applyGuestFallback();
-        return;
-      }
-      if (user) {
-        applyLocalAuthFallback();
-        return;
-      }
-      toast.error('목표 저장에 실패했습니다.', { id: loadingId });
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
+  // handleSaveTargets was only for OnboardingModal, removing.
 
   const handleStartQuest = async (quest: BlueprintQuest) => {
     setStartingQuestId(quest.id);
@@ -358,9 +306,9 @@ export default function Dashboard() {
         title: '목표 대학과 학과를 설정하세요',
         description: '합격 전략의 첫 번째 단추입니다.',
         primaryLabel: '목표 설정하기',
-        onPrimary: () => setIsOnboardingOpen(true),
-        secondaryLabel: '진단 페이지',
-        onSecondary: () => navigate('/app/diagnosis'),
+        onPrimary: () => navigate('/app/diagnosis'),
+        secondaryLabel: '진단 가이드',
+        onSecondary: () => navigate('/help/student-record-pdf'),
       };
     }
     if (!hasDiagnosis) {
@@ -430,11 +378,11 @@ export default function Dashboard() {
             <div className="flex shrink-0 flex-wrap gap-3">
               {hasPrimaryGoal && (
                 <button
-                  onClick={() => setIsOnboardingOpen(true)}
+                  onClick={() => navigate('/app/diagnosis')}
                   className="inline-flex h-12 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-6 font-bold text-white transition-all hover:bg-white/20 backdrop-blur-sm"
                 >
                   <Settings2 size={18} />
-                  목표 대학 수정
+                  목표 정보 관리
                 </button>
               )}
               <button
@@ -477,7 +425,7 @@ export default function Dashboard() {
                 <div className="min-w-0">
                   <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-[11px] font-black tracking-widest text-[#004aad] ring-1 ring-inset ring-blue-500/10 uppercase">
                     <Flag size={10} />
-                    Primary Target
+                    핵심 목표
                   </div>
                   <h2 className="truncate text-3xl font-black tracking-tight text-slate-900">{primaryGoal?.university || '목표 설정 필요'}</h2>
                   <p className="mt-1 truncate text-lg font-bold text-slate-500">{primaryGoal?.major || '학과를 설정해주세요'}</p>
@@ -586,15 +534,7 @@ export default function Dashboard() {
         </SectionCard>
       </div>
 
-      <OnboardingModal
-        isOpen={isOnboardingOpen}
-        onClose={() => setIsOnboardingOpen(false)}
-        initialUniversity={profile?.target_university}
-        initialMajor={profile?.target_major}
-        initialInterests={profile?.interest_universities || []}
-        isSubmitting={isSavingProfile}
-        onSubmit={handleSaveTargets}
-      />
+      {/* OnboardingModal Removed: Integrated into /app/diagnosis */}
     </div>
   );
 }

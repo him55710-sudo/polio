@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from polio_api.services.prompt_registry import get_prompt_registry
+from unifoli_api.services.prompt_registry import get_prompt_registry
 from tests.smoke.helpers import make_client
 
 

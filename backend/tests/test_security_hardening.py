@@ -11,17 +11,17 @@ from pydantic import ValidationError
 from reportlab.pdfgen import canvas
 
 from backend.tests.auth_helpers import auth_headers
-from polio_api.api.routes import projects as projects_route
-from polio_api.api.deps import LOCAL_DEV_JWT_SECRET
-from polio_api.core.config import Settings, get_settings
-from polio_api.core.database import SessionLocal
-from polio_api.core.oauth_state import build_client_binding, build_oauth_state, validate_oauth_state
-from polio_api.db.models.render_job import RenderJob
-from polio_api.db.models.workshop import WorkshopSession
-from polio_api.main import app
-from polio_ingest import ResearchPipelineError, normalize_research_source
-from polio_ingest.models import ResearchSourceInput
-from polio_shared.paths import find_project_root, get_export_root, get_runtime_root
+from unifoli_api.api.routes import projects as projects_route
+from unifoli_api.api.deps import LOCAL_DEV_JWT_SECRET
+from unifoli_api.core.config import Settings, get_settings
+from unifoli_api.core.database import SessionLocal
+from unifoli_api.core.oauth_state import build_client_binding, build_oauth_state, validate_oauth_state
+from unifoli_api.db.models.render_job import RenderJob
+from unifoli_api.db.models.workshop import WorkshopSession
+from unifoli_api.main import app
+from unifoli_ingest import ResearchPipelineError, normalize_research_source
+from unifoli_ingest.models import ResearchSourceInput
+from unifoli_shared.paths import find_project_root, get_export_root, get_runtime_root
 
 
 def _build_sample_pdf_bytes() -> bytes:
@@ -609,3 +609,4 @@ def test_export_route_rejects_oversized_payload() -> None:
         )
 
     assert response.status_code == 422
+

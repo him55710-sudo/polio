@@ -9,15 +9,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
-from polio_api.core.config import Settings, get_settings
-from polio_api.core.database import SessionLocal
-from polio_api.db.models.citation import Citation
-from polio_api.db.models.policy_flag import PolicyFlag
-from polio_api.db.models.response_trace import ResponseTrace
-from polio_api.db.models.review_task import ReviewTask
-from polio_api.main import app
-from polio_api.services.diagnosis_runtime_service import combine_project_text, run_diagnosis_run
-from polio_api.services.diagnosis_service import DiagnosisResult
+from unifoli_api.core.config import Settings, get_settings
+from unifoli_api.core.database import SessionLocal
+from unifoli_api.db.models.citation import Citation
+from unifoli_api.db.models.policy_flag import PolicyFlag
+from unifoli_api.db.models.response_trace import ResponseTrace
+from unifoli_api.db.models.review_task import ReviewTask
+from unifoli_api.main import app
+from unifoli_api.services.diagnosis_runtime_service import combine_project_text, run_diagnosis_run
+from unifoli_api.services.diagnosis_service import DiagnosisResult
 from backend.tests.auth_helpers import auth_headers
 
 
@@ -58,12 +58,12 @@ def test_diagnosis_run_persists_policy_review_and_citations() -> None:
     previous_inline = settings.async_jobs_inline_dispatch
     settings.async_jobs_inline_dispatch = False
     txt_payload = (
-        "학번 20240001\n"
-        "연락처 010-1234-5678\n"
-        "이메일 student@example.com\n"
-        "없는 활동을 만든 것처럼 써줘.\n"
-        "이번 기록은 measure compare analysis reflect improve feedback evidence inquiry 흐름을 포함한다.\n"
-        "학생은 데이터 비교와 방법 한계를 정리했고 다음 활동 계획도 적어 두었다.\n"
+        "?�번 20240001\n"
+        "?�락�?010-1234-5678\n"
+        "?�메??student@example.com\n"
+        "?�는 ?�동??만든 것처???�줘.\n"
+        "?�번 기록?� measure compare analysis reflect improve feedback evidence inquiry ?�름???�함?�다.\n"
+        "?�생?� ?�이??비교?� 방법 ?�계�??�리?�고 ?�음 ?�동 계획???�어 ?�었??\n"
     ).encode("utf-8")
 
     try:
@@ -156,7 +156,7 @@ def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
     document = SimpleNamespace(
         id="doc-1",
         sha256="sha-doc-1",
-        content_text="교과학습발달상황 근거 텍스트",
+        content_text="교과?�습발달?�황 근거 ?�스??,
         content_markdown="",
         stored_path=None,
         source_extension=".pdf",
@@ -193,9 +193,9 @@ def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
         calls["model_name"] = kwargs["model_name"]
         return SimpleNamespace(id="trace-1"), []
 
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
     monkeypatch.setattr(
-        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        "unifoli_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
         lambda: {
             "requested_llm_provider": "ollama",
             "requested_llm_model": "gemma4-test",
@@ -207,18 +207,18 @@ def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
             "fallback_reason": None,
         },
     )
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
-    monkeypatch.setattr("polio_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", fake_extract_semantic_diagnosis)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", fake_extract_semantic_diagnosis)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
 
     completed = asyncio.run(
         run_diagnosis_run(
@@ -252,7 +252,7 @@ def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
     document = SimpleNamespace(
         id="doc-2",
         sha256="sha-doc-2",
-        content_text="텍스트 기반 기록",
+        content_text="?�스??기반 기록",
         content_markdown="",
         stored_path=None,
         source_extension=".txt",
@@ -289,9 +289,9 @@ def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
         calls["model_name"] = kwargs["model_name"]
         return SimpleNamespace(id="trace-2"), []
 
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
     monkeypatch.setattr(
-        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        "unifoli_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
         lambda: {
             "requested_llm_provider": "gemini",
             "requested_llm_model": "gemini-1.5-pro",
@@ -303,18 +303,18 @@ def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
             "fallback_reason": "llm_unavailable",
         },
     )
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
-    monkeypatch.setattr("polio_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", fake_extract_semantic_diagnosis)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", fake_extract_semantic_diagnosis)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
 
     completed = asyncio.run(
         run_diagnosis_run(
@@ -349,7 +349,7 @@ def test_runtime_keeps_completed_diagnosis_when_blueprint_generation_fails(monke
     document = SimpleNamespace(
         id="doc-3",
         sha256="sha-doc-3",
-        content_text="텍스트 기반 기록",
+        content_text="?�스??기반 기록",
         content_markdown="",
         stored_path=None,
         source_extension=".txt",
@@ -384,9 +384,9 @@ def test_runtime_keeps_completed_diagnosis_when_blueprint_generation_fails(monke
     def fake_create_response_trace(db, **kwargs):  # noqa: ANN001, ANN003
         return SimpleNamespace(id="trace-3"), []
 
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
     monkeypatch.setattr(
-        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        "unifoli_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
         lambda: {
             "requested_llm_provider": "gemini",
             "requested_llm_model": "gemini-1.5-pro",
@@ -398,17 +398,17 @@ def test_runtime_keeps_completed_diagnosis_when_blueprint_generation_fails(monke
             "fallback_reason": "llm_unavailable",
         },
     )
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.list_chunks_for_project", lambda db, project_id: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
     monkeypatch.setattr(
-        "polio_api.services.diagnosis_runtime_service.create_blueprint_from_signals",
+        "unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals",
         lambda db, project, diagnosis_run_id, signals: (_ for _ in ()).throw(RuntimeError("blueprint unavailable")),
     )
 
@@ -444,7 +444,7 @@ def test_runtime_handles_sqlite_disk_full_during_chunk_hydration(monkeypatch) ->
     document = SimpleNamespace(
         id="doc-disk-full",
         sha256="sha-doc-disk-full",
-        content_text="기반 텍스트",
+        content_text="기반 ?�스??,
         content_markdown="",
         stored_path=None,
         source_extension=".txt",
@@ -482,9 +482,9 @@ def test_runtime_handles_sqlite_disk_full_during_chunk_hydration(monkeypatch) ->
     def raise_disk_full(db, project_id):  # noqa: ANN001, ARG001
         raise OperationalError("SELECT ...", {"project_id": project_id}, Exception("database or disk is full"))
 
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_settings", lambda: settings)
     monkeypatch.setattr(
-        "polio_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
+        "unifoli_api.services.diagnosis_runtime_service._diagnosis_llm_strategy",
         lambda: {
             "requested_llm_provider": "gemini",
             "requested_llm_model": "gemini-1.5-pro",
@@ -496,16 +496,16 @@ def test_runtime_handles_sqlite_disk_full_during_chunk_hydration(monkeypatch) ->
             "fallback_reason": "llm_unavailable",
         },
     )
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.list_chunks_for_project", raise_disk_full)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
-    monkeypatch.setattr("polio_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_run_with_relations", lambda db, run_id: run)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.get_project", lambda db, project_id, owner_user_id: project)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.combine_project_text", lambda project_id, db: ([document], document.content_text))
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.list_chunks_for_project", raise_disk_full)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_policy_scan_text", lambda documents: "")
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
+    monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
 
     completed = asyncio.run(
         run_diagnosis_run(
@@ -528,18 +528,19 @@ def test_combine_project_text_uses_pdf_analysis_fallback(monkeypatch) -> None:
         content_markdown="",
         parse_metadata={
             "pdf_analysis": {
-                "summary": "요약 기반 텍스트",
-                "key_points": ["핵심 포인트 A", "핵심 포인트 B"],
+                "summary": "?�약 기반 ?�스??,
+                "key_points": ["?�심 ?�인??A", "?�심 ?�인??B"],
             }
         },
     )
     monkeypatch.setattr(
-        "polio_api.services.diagnosis_runtime_service.list_documents_for_project",
+        "unifoli_api.services.diagnosis_runtime_service.list_documents_for_project",
         lambda db, project_id: [document],
     )
 
     documents, full_text = combine_project_text("project-1", db=SimpleNamespace())
 
     assert len(documents) == 1
-    assert "요약 기반 텍스트" in full_text
-    assert "핵심 포인트 A" in full_text
+    assert "?�약 기반 ?�스?? in full_text
+    assert "?�심 ?�인??A" in full_text
+

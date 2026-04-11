@@ -7,8 +7,8 @@ import numpy as np
 from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 
-from polio_api.core.database import engine
-from polio_api.main import app
+from unifoli_api.core.database import engine
+from unifoli_api.main import app
 from backend.tests.auth_helpers import auth_headers
 
 
@@ -64,15 +64,15 @@ def test_grounded_answer_returns_provenance_with_sqlite_fallback(monkeypatch) ->
     fake_embeddings = _FakeEmbeddingService()
     fake_reranker = _FakeRerankerService()
     monkeypatch.setattr(
-        "polio_shared.embeddings.get_embedding_service",
+        "unifoli_shared.embeddings.get_embedding_service",
         lambda *args, **kwargs: fake_embeddings,
     )
     monkeypatch.setattr(
-        "polio_api.services.vector_service.get_embedding_service",
+        "unifoli_api.services.vector_service.get_embedding_service",
         lambda *args, **kwargs: fake_embeddings,
     )
     monkeypatch.setattr(
-        "polio_api.services.vector_service.get_reranker_service",
+        "unifoli_api.services.vector_service.get_reranker_service",
         lambda *args, **kwargs: fake_reranker,
     )
     headers = auth_headers("grounded-answer-user")
@@ -143,15 +143,15 @@ def test_grounded_answer_refuses_when_evidence_is_weak_and_keeps_contract(monkey
     fake_embeddings = _FakeEmbeddingService()
     fake_reranker = _FakeRerankerService()
     monkeypatch.setattr(
-        "polio_shared.embeddings.get_embedding_service",
+        "unifoli_shared.embeddings.get_embedding_service",
         lambda *args, **kwargs: fake_embeddings,
     )
     monkeypatch.setattr(
-        "polio_api.services.vector_service.get_embedding_service",
+        "unifoli_api.services.vector_service.get_embedding_service",
         lambda *args, **kwargs: fake_embeddings,
     )
     monkeypatch.setattr(
-        "polio_api.services.vector_service.get_reranker_service",
+        "unifoli_api.services.vector_service.get_reranker_service",
         lambda *args, **kwargs: fake_reranker,
     )
     headers = auth_headers("grounded-answer-refusal-user")
@@ -197,3 +197,4 @@ def test_grounded_answer_refuses_when_evidence_is_weak_and_keeps_contract(monkey
         assert payload["next_safe_action"]
         assert payload["missing_information"]
         assert isinstance(payload["provenance"], list)
+

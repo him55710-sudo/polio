@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from polio_api.services.prompt_registry import (
+from unifoli_api.services.prompt_registry import (
     PromptAssetNotFoundError,
     PromptRegistry,
 )
@@ -70,3 +70,4 @@ def test_prompt_registry_supports_override_paths(tmp_path: Path) -> None:
     asset = registry.get_asset("chat.override")
 
     assert asset.body == "Override prompt body."
+

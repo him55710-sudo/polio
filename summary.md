@@ -7,8 +7,8 @@ Date: 2026-04-08
 - Ran `codex mcp list` and confirmed `obsidian` is enabled.
 - Inspected global config: `C:\Users\임현수\.codex\config.toml`.
 - Inspected local config candidates:
-  - `C:\Users\임현수\Downloads\polio for real\.codex\config.toml` (missing)
-  - `C:\Users\임현수\Downloads\polio for real\polio for real\.codex\config.toml` (missing)
+  - `C:\Users\임현수\Downloads\unifoli for real\.codex\config.toml` (missing)
+  - `C:\Users\임현수\Downloads\unifoli for real\unifoli for real\.codex\config.toml` (missing)
 - Searched local MCP server commands:
   - Found `mcp-server-filesystem` at `C:\Users\임현수\AppData\Roaming\npm\mcp-server-filesystem.ps1`
   - Not found: `obsidian-mcp`, `mcp-obsidian`, `obsidian-mcp-server`

@@ -22,13 +22,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isLoading: true,
   
-  setUser: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
+  setUser: (user) => set({ 
+    user, 
+    isAuthenticated: !!user && !user.is_guest, 
+    isLoading: false 
+  }),
   
   setLoading: (isLoading) => set({ isLoading }),
   
   fetchProfile: async () => {
     try {
       const profile = await api.get<UserProfile>('/api/v1/users/me');
+      // Backend profile normally means real auth
       set({ user: profile, isAuthenticated: true, isLoading: false });
 
       // Sync marketing consent if pending
@@ -51,14 +56,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (currentAuthUser) {
         const cachedLocalProfile = readLocalAuthProfile(currentAuthUser.uid);
         const fallbackProfile = buildLocalAuthProfile(currentAuthUser, cachedLocalProfile);
-        set({ user: fallbackProfile, isAuthenticated: true, isLoading: false });
+        // Firebase user exists - if anonymous, it's a guest
+        const isGuest = currentAuthUser.isAnonymous;
+        set({ 
+          user: fallbackProfile, 
+          isAuthenticated: !isGuest, 
+          isLoading: false 
+        });
         return;
       }
 
       if (isGuestSessionActive()) {
         const guestProfile = readGuestProfile();
         if (guestProfile) {
-          set({ user: guestProfile, isAuthenticated: true, isLoading: false });
+          // Explicitly NOT authenticated if it's a guest profile
+          set({ user: guestProfile, isAuthenticated: false, isLoading: false });
           return;
         }
       }

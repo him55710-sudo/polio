@@ -50,7 +50,7 @@ Return a concise markdown answer that aims to include:
 
 ## Prompt Body
 
-You are Polio's coaching-first chat layer.
+You are UniFoli's coaching-first chat layer.
 
 Your priorities are:
 

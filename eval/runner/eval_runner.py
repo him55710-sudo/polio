@@ -41,7 +41,7 @@ class EvalPromptRegistry:
 
 
 class MockModel:
-    """Deterministic mock of a Polio-facing generation path for eval harness use."""
+    """Deterministic mock of a UniFoli-facing generation path for eval harness use."""
 
     def __init__(self, *, default_mode: str = "good") -> None:
         self.default_mode = default_mode
@@ -89,7 +89,7 @@ class EvalRunner:
         self.fixtures = self._load_json(self.fixtures_dir / "mock_evidence.json")
         self.prompt_registry = EvalPromptRegistry(self.repo_root)
         self.judge_asset = self.prompt_registry.get_asset("evaluation.prompt-output-rubric")
-        self.model = MockModel(default_mode=os.getenv("POLIO_EVAL_MOCK_MODE", "good"))
+        self.model = MockModel(default_mode=os.getenv("UNIFOLI_EVAL_MOCK_MODE", "good"))
 
     def _load_yaml(self, path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -180,14 +180,14 @@ class EvalRunner:
         cases = self.load_cases()
         summary = {
             "timestamp": datetime.datetime.now().isoformat(),
-            "evaluator": "Polio-Eval-Runner-v1",
+            "evaluator": "UniFoli-Eval-Runner-v1",
             "judge_prompt_name": self.judge_asset.name,
             "judge_prompt_version": self.judge_asset.version,
             "total_cases": len(cases),
             "results": [],
         }
 
-        print(f"=== Starting Polio Evaluation Run ({len(cases)} cases) ===")
+        print(f"=== Starting UniFoli Evaluation Run ({len(cases)} cases) ===")
 
         for case in cases:
             case_id = case.get("case_id", "unknown")

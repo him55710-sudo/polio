@@ -1,8 +1,8 @@
-# Polio gstack Playbook
+# UniFoli gstack Playbook
 
 ## 문서 목적
 
-Polio는 학생 대상 AI 제품이다. 이 제품은 public landing, authenticated app, backend trust boundary가 함께 움직이고, 안전성·신뢰성·QA가 제품 품질의 핵심이다.
+UniFoli는 학생 대상 AI 제품이다. 이 제품은 public landing, authenticated app, backend trust boundary가 함께 움직이고, 안전성·신뢰성·QA가 제품 품질의 핵심이다.
 
 이 문서는 gstack을 단순한 스킬 모음이 아니라, 이 repo에서 반복적으로 사용하는 **기획 → 구현 → 리뷰 → QA → 배포 → 회고 운영 루프**로 고정하기 위한 day-to-day 플레이북이다.
 
@@ -248,7 +248,7 @@ Authenticated:
 3. `/plan-ceo-review`로 support hub가 실제 user trust를 높이는지 검토
 4. `/plan-design-review`로 `/contact`, partnership CTA, error/success toast UX 검토
 5. `/plan-eng-review`로 route, schema, validation, persistence, rate limit 범위 고정
-6. `frontend/src/pages/Contact.tsx`, `backend/services/api/src/polio_api/api/routes/inquiries.py`, `docs/public-entry-and-support.md`를 보고 구현
+6. `frontend/src/pages/Contact.tsx`, `backend/services/api/src/unifoli_api/api/routes/inquiries.py`, `docs/public-entry-and-support.md`를 보고 구현
 7. `/review`로 validation, auth boundary, support regression 확인
 8. `/qa`로 `/contact`, `/contact?type=partnership`, modal entry, 실패 케이스 검증 후 `/ship`
 

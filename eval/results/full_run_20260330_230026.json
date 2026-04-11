@@ -1,6 +1,6 @@
 {
   "timestamp": "2026-03-30T23:00:26.528730",
-  "evaluator": "Polio-Eval-Runner-v1 (Mock-Safe-Mode)",
+  "evaluator": "UniFoli-Eval-Runner-v1 (Mock-Safe-Mode)",
   "total_cases": 4,
   "results": [
     {

@@ -1,12 +1,12 @@
 import asyncio
 from types import SimpleNamespace
 
-from polio_api.services.async_job_service import (
+from unifoli_api.services.async_job_service import (
     _is_non_retryable_failure,
     _public_failure_reason,
     _run_async_callable,
 )
-from polio_domain.enums import AsyncJobType
+from unifoli_domain.enums import AsyncJobType
 
 
 def test_diagnosis_public_failure_reason_surfaces_parse_hint() -> None:
@@ -51,3 +51,4 @@ def test_run_async_callable_works_inside_running_loop() -> None:
         return _run_async_callable(_sample, 41)
 
     assert asyncio.run(_invoke_from_running_loop()) == 42
+

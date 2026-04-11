@@ -6,45 +6,47 @@ import { UniversityLogo } from '../UniversityLogo';
 import { CatalogAutocompleteInput } from '../CatalogAutocompleteInput';
 import { searchUniversities, searchMajors } from '../../lib/educationCatalog';
 
-interface Goal {
-  id: string;
-  university: string;
-  major: string;
-}
+import { useOnboardingStore } from '../../store/onboardingStore';
+import toast from 'react-hot-toast';
 
-interface DiagnosisGoalsProps {
-  goalList: Goal[];
-  isEditingGoals: boolean;
-  setIsEditingGoals: (val: boolean) => void;
-  univInput: string;
-  setUnivInput: (val: string) => void;
-  currentUniv: string;
-  setCurrentUniv: (val: string) => void;
-  currentMajor: string;
-  setCurrentMajor: (val: string) => void;
-  handleAddGoal: () => void;
-  removeGoal: (id: string) => void;
-  saveGoals: () => void;
-  onContinue: () => void;
-  cancelEdit: () => void;
-}
+export const DiagnosisGoals: React.FC = () => {
+  const { 
+    goalList, 
+    setGoalList, 
+    addGoal, 
+    removeGoal, 
+    submitGoals, 
+    setDiagnosisStep 
+  } = useOnboardingStore();
+  
+  const [isEditingGoals, setIsEditingGoals] = React.useState(goalList.length === 0);
+  const [univInput, setUnivInput] = React.useState('');
+  const [currentUniv, setCurrentUniv] = React.useState('');
+  const [currentMajor, setCurrentMajor] = React.useState('');
 
-export const DiagnosisGoals: React.FC<DiagnosisGoalsProps> = ({
-  goalList,
-  isEditingGoals,
-  setIsEditingGoals,
-  univInput,
-  setUnivInput,
-  currentUniv,
-  setCurrentUniv,
-  currentMajor,
-  setCurrentMajor,
-  handleAddGoal,
-  removeGoal,
-  saveGoals,
-  onContinue,
-  cancelEdit,
-}) => {
+  const handleAddGoalDirect = () => {
+    if (!currentUniv || !currentMajor || goalList.length >= 6) return;
+    addGoal({ id: crypto.randomUUID(), university: currentUniv, major: currentMajor });
+    setCurrentUniv('');
+    setCurrentMajor('');
+    setUnivInput('');
+  };
+
+  const saveAndContinue = async () => {
+    if (!goalList.length) {
+      toast.error('최소 1개의 목표를 설정해 주세요.');
+      return;
+    }
+    await submitGoals();
+    setIsEditingGoals(false);
+  };
+
+  const cancelEdit = () => {
+    setIsEditingGoals(false);
+    if (goalList.length === 0) {
+      // If no goals, we can't really cancel out of edit mode if we want to proceed
+    }
+  };
   const univPreviewName = (currentUniv || univInput).trim();
 
   return (
@@ -143,7 +145,7 @@ export const DiagnosisGoals: React.FC<DiagnosisGoalsProps> = ({
                   />
                   <PrimaryButton
                     data-testid="diagnosis-add-goal"
-                    onClick={handleAddGoal}
+                    onClick={handleAddGoalDirect}
                     disabled={!currentUniv || currentMajor.length < 2 || goalList.length >= 6}
                     fullWidth
                     size="lg"
@@ -240,7 +242,7 @@ export const DiagnosisGoals: React.FC<DiagnosisGoalsProps> = ({
           <SecondaryButton className="bg-white border-slate-200" onClick={cancelEdit}>
             변경 취소
           </SecondaryButton>
-          <PrimaryButton data-testid="diagnosis-save-goals" size="lg" onClick={saveGoals}>
+          <PrimaryButton data-testid="diagnosis-save-goals" size="lg" onClick={saveAndContinue}>
             설정 완료
           </PrimaryButton>
         </div>
@@ -252,7 +254,7 @@ export const DiagnosisGoals: React.FC<DiagnosisGoalsProps> = ({
           </div>
           <PrimaryButton
             data-testid="diagnosis-goals-continue"
-            onClick={onContinue}
+            onClick={() => setDiagnosisStep('UPLOAD')}
             size="lg"
             className="h-14 px-10 text-lg shadow-2xl shadow-blue-500/20"
           >

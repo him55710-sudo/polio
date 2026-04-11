@@ -1,9 +1,9 @@
-ï»¿from __future__ import annotations
+from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from polio_api.core.llm import LLMRequestError
-from polio_api.main import app
+from unifoli_api.core.llm import LLMRequestError
+from unifoli_api.main import app
 from backend.tests.auth_helpers import auth_headers
 
 
@@ -30,7 +30,7 @@ def _create_project(client: TestClient, headers: dict[str, str]) -> str:
 
 
 def test_drafts_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> None:
-    monkeypatch.setattr("polio_api.api.routes.drafts.get_llm_client", lambda profile="standard": _FailingStreamLLM())
+    monkeypatch.setattr("unifoli_api.api.routes.drafts.get_llm_client", lambda profile="standard": _FailingStreamLLM())
 
     headers = auth_headers("drafts-fallback-user")
     with TestClient(app) as client:
@@ -39,7 +39,7 @@ def test_drafts_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> None:
         response = client.post(
             "/api/v1/drafts/chat/stream",
             headers=headers,
-            json={"project_id": project_id, "message": "ê·¼ê±°ë¥¼ ì •ë¦¬í•´ì¤˜", "reference_materials": []},
+            json={"project_id": project_id, "message": "±Ù°Å¸¦ Á¤¸®ÇØÁà", "reference_materials": []},
         )
 
     assert response.status_code == 200
@@ -50,7 +50,7 @@ def test_drafts_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> None:
 
 
 def test_workshop_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> None:
-    monkeypatch.setattr("polio_api.api.routes.workshops.get_llm_client", lambda profile="standard": _FailingStreamLLM())
+    monkeypatch.setattr("unifoli_api.api.routes.workshops.get_llm_client", lambda profile="standard": _FailingStreamLLM())
 
     headers = auth_headers("workshop-fallback-user")
     with TestClient(app) as client:
@@ -66,7 +66,7 @@ def test_workshop_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> Non
         response = client.post(
             f"/api/v1/workshops/{workshop_id}/chat/stream",
             headers=headers,
-            json={"message": "ê°œìš”ë¥¼ ë³´ê°•í•´ì¤˜"},
+            json={"message": "°³¿ä¸¦ º¸°­ÇØÁà"},
         )
 
     assert response.status_code == 200
@@ -74,3 +74,4 @@ def test_workshop_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> Non
     assert '"limited_mode": true' in body
     assert '"limited_reason": "ollama_timeout"' in body
     assert '"status": "DONE"' in body
+

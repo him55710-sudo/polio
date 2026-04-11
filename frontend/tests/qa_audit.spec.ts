@@ -11,7 +11,7 @@ test.describe('Uni Folia QA Audit - Desktop', () => {
 
   test('1. Public Landing Page (/)', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/Polio|Uni Folia/i);
+    await expect(page).toHaveTitle(/UniFoli|Uni Folia/i);
     
     // Check main CTA
     const mainCTA = page.locator('button:has-text("시작"), a:has-text("시작"), a:has-text("Get Started")');

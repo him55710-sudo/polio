@@ -10,7 +10,7 @@ This file lists the open-source components that fit the backend plan.
 
 ## Core components to use now
 
-| Name | Role in polio | Why it fits | Status | Local path |
+| Name | Role in unifoli | Why it fits | Status | Local path |
 | --- | --- | --- | --- | --- |
 | FastAPI | HTTP API and internal services | Fast to build, Python-native, strong typing | downloaded | `references/open-source/fastapi` |
 | PostgreSQL | primary relational store | one database for users, jobs, reports, audit logs | recommended | external dependency |
@@ -27,7 +27,7 @@ This file lists the open-source components that fit the backend plan.
 
 ## Core components to use slightly later
 
-| Name | Role in polio | Why it fits | Status | Local path |
+| Name | Role in unifoli | Why it fits | Status | Local path |
 | --- | --- | --- | --- | --- |
 | PptxGenJS | alternate PPTX rendering path | useful if the render service later moves to Node.js | downloaded | `references/open-source/pptxgenjs` |
 | python-hwpx | HWPX ecosystem reference | useful for future full-fidelity HWPX support, but not runtime-critical today | downloaded | `references/open-source/python-hwpx` |

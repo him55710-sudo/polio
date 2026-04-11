@@ -9,7 +9,7 @@ test.describe('Uni Folia QA Audit - Refined', () => {
 
   test('1. Public Landing Page (/)', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/Polio|Uni Folia/i);
+    await expect(page).toHaveTitle(/UniFoli|Uni Folia/i);
     
     // Check main CTA - Based on Landing.tsx, it should be "무료로 시작하기" or "앱으로 이동"
     const mainCTA = page.locator('a:has-text("시작하기"), a:has-text("앱으로 이동")');

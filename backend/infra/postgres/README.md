@@ -8,7 +8,7 @@ Primary database for transactional data plus vector search through pgvector.
 - extensions
 - backup policy
 - row-level access strategy
-`postgres` 폴더는 `polio`의 기본 로컬 데이터베이스 구성을 담습니다.
+`postgres` 폴더는 `unifoli`의 기본 로컬 데이터베이스 구성을 담습니다.
 
 - `docker-compose.yml`의 `postgres` 서비스는 `pgvector`가 포함된 Postgres 이미지를 사용합니다.
 - `init/01-init-db.sql`은 최초 컨테이너 생성 시 `vector` extension을 켭니다.

@@ -4,7 +4,7 @@ These rules are meant to constrain all future backend decisions.
 
 ## Product truth
 
-`polio` helps students plan and refine admissions-relevant work.
+`unifoli` helps students plan and refine admissions-relevant work.
 It does not guarantee admission.
 
 ## Required behavior

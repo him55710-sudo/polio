@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 
-from polio_api.api.deps import LOCAL_DEV_JWT_SECRET
-from polio_api.core.config import get_settings
+from unifoli_api.api.deps import LOCAL_DEV_JWT_SECRET
+from unifoli_api.core.config import get_settings
 
 
 def auth_headers(subject: str) -> dict[str, str]:
@@ -24,3 +24,4 @@ def auth_headers(subject: str) -> dict[str, str]:
         algorithm=settings.auth_jwt_algorithm,
     )
     return {"Authorization": f"Bearer {token}"}
+

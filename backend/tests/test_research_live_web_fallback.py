@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from backend.tests.auth_helpers import auth_headers
-from polio_api.core.config import get_settings
-from polio_api.main import app
-from polio_api.services.scholar_service import ScholarPaper, ScholarSearchResult
+from unifoli_api.core.config import get_settings
+from unifoli_api.main import app
+from unifoli_api.services.scholar_service import ScholarPaper, ScholarSearchResult
 
 
 def test_live_web_source_falls_back_to_semantic_when_provider_disabled(monkeypatch) -> None:
@@ -43,7 +43,7 @@ def test_live_web_source_falls_back_to_semantic_when_provider_disabled(monkeypat
         )
 
     monkeypatch.setattr(
-        "polio_api.api.routes.research.search_research_sources",
+        "unifoli_api.api.routes.research.search_research_sources",
         fake_provider_search,
     )
 
@@ -93,7 +93,7 @@ def test_research_route_supports_both_source(monkeypatch) -> None:
             source_type_counts={"academic_source": 1},
         )
 
-    monkeypatch.setattr("polio_api.api.routes.research.search_research_sources", fake_provider_search)
+    monkeypatch.setattr("unifoli_api.api.routes.research.search_research_sources", fake_provider_search)
 
     with TestClient(app) as client:
         response = client.get(
@@ -106,3 +106,4 @@ def test_research_route_supports_both_source(monkeypatch) -> None:
     assert payload["requested_source"] == "both"
     assert payload["source"] == "both"
     assert payload["providers_used"] == ["semantic_scholar", "kci"]
+

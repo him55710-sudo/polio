@@ -1,6 +1,6 @@
 # Privacy Baseline
 
-This folder documents the internal-alpha privacy baseline for Polio student data.
+This folder documents the internal-alpha privacy baseline for UniFoli student data.
 
 Included docs:
 

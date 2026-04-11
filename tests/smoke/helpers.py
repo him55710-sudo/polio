@@ -35,10 +35,10 @@ def make_client(tmp_path: Path) -> TestClient:
     os.environ["POSTGRES_ENABLE_PGVECTOR"] = "false"
     os.environ["CORS_ORIGINS"] = "http://localhost:3001 http://127.0.0.1:3001"
 
-    from polio_api.core.config import get_settings
+    from unifoli_api.core.config import get_settings
 
     get_settings.cache_clear()
 
-    from polio_api.main import create_app
+    from unifoli_api.main import create_app
 
     return TestClient(create_app())

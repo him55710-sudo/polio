@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from tests.smoke.helpers import REPO_ROOT  # noqa: F401  # Ensures backend packages are on sys.path.
 
-from polio_domain.enums import RenderFormat
-from polio_render.template_registry import (
+from unifoli_domain.enums import RenderFormat
+from unifoli_render.template_registry import (
     build_provenance_appendix_lines,
     get_default_template_id,
     get_template,

@@ -1,6 +1,6 @@
 # Evaluation Harness v1
 
-The Evaluation Harness is Polio's internal system for measuring the core quality of our AI outputs. It ensures that as we iterate on the `DiagnosisEngine` and `ChatOrchestrator`, we maintain our commitment to groundedness, actionability, safety, and usefulness.
+The Evaluation Harness is UniFoli's internal system for measuring the core quality of our AI outputs. It ensures that as we iterate on the `DiagnosisEngine` and `ChatOrchestrator`, we maintain our commitment to groundedness, actionability, safety, and usefulness.
 
 ## What it Evaluates
 

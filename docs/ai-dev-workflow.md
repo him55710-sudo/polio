@@ -2,7 +2,7 @@
 
 ## Why this exists
 
-Polio uses AI agents to help with planning, implementation, review, QA, and release, but the workflow must stay grounded in this product's guardrails:
+UniFoli uses AI agents to help with planning, implementation, review, QA, and release, but the workflow must stay grounded in this product's guardrails:
 
 - execution-oriented support for students
 - reduced anxiety, not anxiety marketing
@@ -59,7 +59,7 @@ To refresh after a gstack pull or local edits:
 
 `gstack-refresh` regenerates skills inside the vendored gstack checkout and then publishes the Codex-facing skill folders back into the repo root `.agents/skills/` so future agents can discover them from the project workspace.
 
-## Standard Polio development loop
+## Standard UniFoli development loop
 
 ### 1. Idea refinement
 
@@ -73,7 +73,7 @@ Skill:
 
 - `/office-hours`
 
-Polio-specific goal:
+UniFoli-specific goal:
 
 - clarify the user problem before touching code
 - verify the feature reduces anxiety
@@ -102,7 +102,7 @@ Skills:
 - `/plan-ceo-review`
 - `/plan-design-review` when UI or conversion changes are involved
 
-Polio-specific goal:
+UniFoli-specific goal:
 
 - avoid building a generic AI chatbot surface
 - keep the product clearly record-first
@@ -128,7 +128,7 @@ Skill:
 
 - `/plan-eng-review`
 
-Polio-specific goal:
+UniFoli-specific goal:
 
 - keep canonical paths intact
 - protect trust boundaries between records, diagnosis, and drafting
@@ -185,7 +185,7 @@ Skill:
 
 - `/review`
 
-Polio-specific review lens:
+UniFoli-specific review lens:
 
 - any trust-boundary leak between records and generated content
 - any UI copy implying guarantees or fabricated experience
@@ -215,7 +215,7 @@ Always test these surfaces when relevant:
 - public: `/`, `/faq`, `/contact`, `/auth`, `/terms`, `/privacy`
 - app: `/app`, `/app/record`, `/app/diagnosis`, `/app/workshop`, `/app/archive`, `/app/trends`, `/app/settings`, `/onboarding`
 
-Polio-specific QA checklist:
+UniFoli-specific QA checklist:
 
 - does the UI make the next action obvious
 - does any copy overpromise outcomes
@@ -234,7 +234,7 @@ Skill:
 
 - `/ship`
 
-Polio-specific expectation:
+UniFoli-specific expectation:
 
 - include test/build results
 - mention user-facing risk areas
@@ -253,7 +253,7 @@ Skill:
 
 - `/retro`
 
-Polio-specific retro questions:
+UniFoli-specific retro questions:
 
 - did the work reduce confusion or add it
 - did we preserve grounded drafting and provenance
@@ -272,7 +272,7 @@ Skill:
 
 - `/codex`
 
-Good uses in Polio:
+Good uses in UniFoli:
 
 - challenge record-to-drafting trust assumptions
 - challenge auth and onboarding flows
@@ -308,7 +308,7 @@ We are not using gstack to justify:
 
 - shipping without product guardrails
 - inventing user activity or record content
-- turning Polio into a generic chatbot
+- turning UniFoli into a generic chatbot
 - replacing real engineering verification with AI-only confidence
 - hiding uncertainty when evidence is weak
 

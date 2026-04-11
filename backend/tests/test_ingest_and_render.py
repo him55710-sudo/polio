@@ -6,9 +6,9 @@ import shutil
 from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 
-from polio_api.main import app
+from unifoli_api.main import app
 from backend.tests.auth_helpers import auth_headers
-from polio_shared.paths import get_export_root, get_upload_root
+from unifoli_shared.paths import get_export_root, get_upload_root
 
 
 def _build_sample_pdf_bytes() -> bytes:
@@ -74,7 +74,7 @@ def test_pdf_ingest_and_selected_render_flow() -> None:
 
             draft_response = client.post(
                 f"/api/v1/projects/{project_id}/documents/{document_id}/drafts",
-                json={"title": "학생부 기반 초안", "include_excerpt_limit": 2000},
+                json={"title": "?�생부 기반 초안", "include_excerpt_limit": 2000},
                 headers=headers,
             )
             assert draft_response.status_code == 201
@@ -103,3 +103,4 @@ def test_pdf_ingest_and_selected_render_flow() -> None:
         for project_id in project_ids:
             shutil.rmtree(get_export_root() / project_id, ignore_errors=True)
             shutil.rmtree(get_upload_root() / project_id, ignore_errors=True)
+

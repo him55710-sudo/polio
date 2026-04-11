@@ -11,8 +11,8 @@ if (-not (Test-Path $pythonPath)) {
   throw "Unable to find $pythonPath even after setup."
 }
 
-Write-Host "Starting polio worker poll loop..."
+Write-Host "Starting unifoli worker poll loop..."
 while($true) {
-  & .\.venv\Scripts\python.exe -m polio_worker.main run-pending --all
+  & .\.venv\Scripts\python.exe -m unifoli_worker.main run-pending --all
   Start-Sleep -Seconds 2
 }

@@ -1,6 +1,6 @@
 # Prompt Registry V1
 
-This document defines the first managed prompt asset registry for Polio.
+This document defines the first managed prompt asset registry for UniFoli.
 
 ## Why This Comes First
 
@@ -16,7 +16,7 @@ stable files, and explicit runtime ownership.
 The v1 prompt registry is split across two places on purpose:
 
 - Prompt assets live in `prompts/`
-- Runtime loading scaffolding lives in `backend/services/api/src/polio_api/services/prompt_registry.py`
+- Runtime loading scaffolding lives in `backend/services/api/src/unifoli_api/services/prompt_registry.py`
 
 The root asset registry is the canonical place to edit prompt content.
 Backend remains the canonical place to decide when and how a prompt is used at
@@ -47,13 +47,13 @@ The following prompt names are now reserved and documented:
 The registry is designed around the prompt-heavy backend files that currently
 assemble inline strings:
 
-- `backend/services/api/src/polio_api/services/diagnosis_service.py`
-- `backend/services/api/src/polio_api/api/routes/drafts.py`
-- `backend/services/api/src/polio_api/api/routes/guided_chat.py`
-- `backend/services/api/src/polio_api/services/workshop_render_service.py`
-- `backend/services/api/src/polio_api/services/quality_control.py`
-- `backend/services/api/src/polio_api/services/rag_service.py`
-- `backend/services/api/src/polio_api/services/inquiry_service.py`
+- `backend/services/api/src/unifoli_api/services/diagnosis_service.py`
+- `backend/services/api/src/unifoli_api/api/routes/drafts.py`
+- `backend/services/api/src/unifoli_api/api/routes/guided_chat.py`
+- `backend/services/api/src/unifoli_api/services/workshop_render_service.py`
+- `backend/services/api/src/unifoli_api/services/quality_control.py`
+- `backend/services/api/src/unifoli_api/services/rag_service.py`
+- `backend/services/api/src/unifoli_api/services/inquiry_service.py`
 - `eval/runner/eval_runner.py`
 
 These files are still the active runtime behavior today, but the main inline

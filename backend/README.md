@@ -1,4 +1,4 @@
-# Polio Backend
+# UniFoli Backend
 
 `backend/` is the only backend source of truth in this repository.
 
@@ -36,7 +36,7 @@ Use a separate Vercel project whose Root Directory is `backend/`.
 
 - `main.py` now exposes the FastAPI `app` from the backend root so Vercel can detect the ASGI entrypoint.
 - Use a real managed database in `DATABASE_URL`. SQLite on Vercel is ephemeral and should only be used for throwaway testing.
-- Uploads and rendered files should be treated as temporary. On Vercel, `POLIO_STORAGE_ROOT` can point to `/tmp/polio` and the backend will also auto-detect the Vercel runtime.
+- Uploads and rendered files should be treated as temporary. On Vercel, `UNIFOLI_STORAGE_ROOT` can point to `/tmp/unifoli` and the backend will also auto-detect the Vercel runtime.
 - Background thread dispatch is intentionally skipped on Vercel. If you deploy without a separate worker, use the synchronous request paths from the frontend by setting `VITE_SYNC_API_JOBS=true` there.
 - Large ML packages are optional now. Install `.[ml]` and/or `.[privacy]` only when you need the sentence-transformers or Presidio-backed paths.
 
@@ -59,13 +59,13 @@ Use a separate Vercel project whose Root Directory is `backend/`.
 
 ## Backend Map
 
-- `services/api/src/polio_api`: FastAPI app, routes, services, persistence wiring
-- `services/worker/src/polio_worker`: worker entrypoint
-- `services/ingest/src/polio_ingest`: ingest flow
-- `services/render/src/polio_render`: export renderers
+- `services/api/src/unifoli_api`: FastAPI app, routes, services, persistence wiring
+- `services/worker/src/unifoli_worker`: worker entrypoint
+- `services/ingest/src/unifoli_ingest`: ingest flow
+- `services/render/src/unifoli_render`: export renderers
 - `services/render/templates`: render templates such as HWPX skeleton assets
-- `packages/domain/src/polio_domain`: backend domain enums and constants
-- `packages/shared/src/polio_shared`: shared backend helpers and path utilities
+- `packages/domain/src/unifoli_domain`: backend domain enums and constants
+- `packages/shared/src/unifoli_shared`: shared backend helpers and path utilities
 - `packages/parsers`: document parsing helpers
 - `packages/pipelines`: ingestion and analysis pipelines
 - `packages/prompts`: backend prompt package area
@@ -120,7 +120,7 @@ Canonical docs now live at the repo root under `../docs/`.
 - `../docs/08-chat-orchestration/README.md`
 - `../docs/09-drafting-provenance/README.md`
 - `../docs/12-security-compliance/README.md`
-- `../docs/reports/polio_security_hardening_20260330.md`
+- `../docs/reports/unifoli_security_hardening_20260330.md`
 - `../docs/research-search-architecture.md`
 
 Duplicated backend docs and old root-level backend notes were moved to `../archive/legacy/backend/`.

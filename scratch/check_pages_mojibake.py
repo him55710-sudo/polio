@@ -16,7 +16,7 @@ def check_mojibake(file_path):
         return f"Error reading {file_path}: {e}"
     return None
 
-pages_dir = r"c:\Users\임현수\Downloads\polio for real\polio for real\frontend\src\pages"
+pages_dir = r"c:\Users\임현수\Downloads\unifoli for real\unifoli for real\frontend\src\pages"
 results = []
 for root, dirs, files in os.walk(pages_dir):
     for file in files:

@@ -79,10 +79,10 @@ Uni Folia는 다음 차이를 공개 페이지와 앱 내부에서 모두 반복
 
 Backend locations:
 
-- route: `backend/services/api/src/polio_api/api/routes/inquiries.py`
-- schema: `backend/services/api/src/polio_api/schemas/inquiry.py`
-- model: `backend/services/api/src/polio_api/db/models/inquiry.py`
-- service: `backend/services/api/src/polio_api/services/inquiry_service.py`
+- route: `backend/services/api/src/unifoli_api/api/routes/inquiries.py`
+- schema: `backend/services/api/src/unifoli_api/schemas/inquiry.py`
+- model: `backend/services/api/src/unifoli_api/db/models/inquiry.py`
+- service: `backend/services/api/src/unifoli_api/services/inquiry_service.py`
 
 현재 `/contact`와 authenticated shell 내부 `B2BPartnershipModal`은 같은 API를 사용합니다.
 

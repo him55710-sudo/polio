@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "polio-backend"
+name = "unifoli-backend"
 version = "0.1.0"
-description = "Beginner-friendly backend skeleton for the polio project."
+description = "Beginner-friendly backend skeleton for the unifoli project."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -44,8 +44,8 @@ privacy = [
 ]
 
 [project.scripts]
-polio-api = "polio_api.main:run"
-polio-worker = "polio_worker.main:main"
+unifoli-api = "unifoli_api.main:run"
+unifoli-worker = "unifoli_worker.main:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -64,3 +64,4 @@ where = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+

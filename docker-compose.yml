@@ -3,16 +3,16 @@ services:
     image: pgvector/pgvector:0.8.2-pg17-trixie
     container_name: polio-postgres
     environment:
-      POSTGRES_DB: polio
-      POSTGRES_USER: polio
-      POSTGRES_PASSWORD: polio
+      POSTGRES_DB: unifoli
+      POSTGRES_USER: unifoli
+      POSTGRES_PASSWORD: unifoli
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U polio -d polio"]
+      test: ["CMD-SHELL", "pg_isready -U unifoli -d unifoli"]
       interval: 10s
       timeout: 5s
       retries: 5

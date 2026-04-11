@@ -19,7 +19,7 @@ render thresholds, and output-depth limits.
 
 Return a JSON object with `profiles.low`, `profiles.mid`, and `profiles.high`.
 Each profile must include the fields consumed by
-`backend/services/api/src/polio_api/services/quality_control.py`.
+`backend/services/api/src/unifoli_api/services/quality_control.py`.
 
 ## Forbidden
 

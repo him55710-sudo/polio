@@ -491,7 +491,7 @@ export function Record() {
         <SectionCard
           title="빠른 업로드 가이드"
           description="정확한 분석을 위해 아래 항목을 확인해 주세요."
-          eyebrow="Checklist"
+          eyebrow="체크리스트"
           className="h-full border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
         >
           <div className="space-y-4">
@@ -533,7 +533,7 @@ export function Record() {
           <SectionCard
             title="다음 단계 안내"
             description="분석이 완료되면 무엇을 할 수 있나요?"
-            eyebrow="Next Steps"
+            eyebrow="다음 단계"
             className="h-full border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
           >
             <div className="space-y-4">
@@ -569,7 +569,7 @@ export function Record() {
           <SectionCard 
             title="문서 업로드" 
             description="PDF 1개(최대 50MB) 업로드를 지원합니다." 
-            eyebrow="Documents"
+            eyebrow="문서"
             className="border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
           >
             <div className="space-y-8">
@@ -612,10 +612,10 @@ export function Record() {
                   
                   <div className="mt-8 flex flex-wrap justify-center gap-3">
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/50 px-3 py-1 text-xs font-bold text-slate-600 backdrop-blur-sm">
-                      MAX 50MB
+                      최대 50MB
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/50 px-3 py-1 text-xs font-bold text-slate-600 backdrop-blur-sm">
-                      PDF ONLY
+                      PDF 전용
                     </span>
                   </div>
                 </div>
@@ -680,7 +680,7 @@ export function Record() {
           <SectionCard 
             title="보호 및 보안 설정" 
             description="데이터는 안전하게 보호됩니다." 
-            eyebrow="Security" 
+            eyebrow="보안" 
             className="border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
             collapsible
           >
@@ -703,7 +703,7 @@ export function Record() {
             <SectionCard 
               title="분석 리포트 알림" 
               description="내용 확인 과정에서 참조가 필요한 사항입니다." 
-              eyebrow="Notifications"
+              eyebrow="알림"
               className="border-none bg-amber-50 shadow-xl shadow-amber-900/5 backdrop-blur-xl"
             >
               <div className="space-y-3">

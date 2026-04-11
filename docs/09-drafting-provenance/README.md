@@ -1,6 +1,6 @@
 # 09 Drafting And Provenance
 
-This is where `polio` stays useful without becoming a trust-destroying ghostwriter.
+This is where `unifoli` stays useful without becoming a trust-destroying ghostwriter.
 
 ## Core rule
 

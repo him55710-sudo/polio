@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "registry_name": "polio-prompt-registry-v1",
+  "registry_name": "unifoli-prompt-registry-v1",
   "prompts": {
     "system.guardrails.admissions-authenticity": {
       "category": "system-guardrails",
@@ -11,9 +11,9 @@
       "wiring_status": "shared-fragment",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/diagnosis_service.py",
-        "backend/services/api/src/polio_api/api/routes/drafts.py",
-        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+        "backend/services/api/src/unifoli_api/services/diagnosis_service.py",
+        "backend/services/api/src/unifoli_api/api/routes/drafts.py",
+        "backend/services/api/src/unifoli_api/services/workshop_render_service.py"
       ]
     },
     "system.guardrails.render-quality-low": {
@@ -25,7 +25,7 @@
       "wiring_status": "wired",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+        "backend/services/api/src/unifoli_api/services/workshop_render_service.py"
       ]
     },
     "system.guardrails.render-quality-mid": {
@@ -37,7 +37,7 @@
       "wiring_status": "wired",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+        "backend/services/api/src/unifoli_api/services/workshop_render_service.py"
       ]
     },
     "system.guardrails.render-quality-high": {
@@ -49,7 +49,7 @@
       "wiring_status": "wired",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+        "backend/services/api/src/unifoli_api/services/workshop_render_service.py"
       ]
     },
     "system.guardrails.workshop-quality-profiles": {
@@ -61,7 +61,7 @@
       "wiring_status": "wired",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/quality_control.py"
+        "backend/services/api/src/unifoli_api/services/quality_control.py"
       ]
     },
     "diagnosis.grounded-analysis": {
@@ -75,7 +75,7 @@
         "chat.guided-diagnosis-orchestration"
       ],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+        "backend/services/api/src/unifoli_api/services/diagnosis_service.py"
       ]
     },
     "chat.guided-diagnosis-orchestration": {
@@ -92,7 +92,7 @@
         "chat.template-recommender"
       ],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+        "backend/services/api/src/unifoli_api/services/diagnosis_service.py"
       ]
     },
     "chat.topic-candidate-generator": {
@@ -104,7 +104,7 @@
       "wiring_status": "wired-shared-fragment",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+        "backend/services/api/src/unifoli_api/services/diagnosis_service.py"
       ]
     },
     "chat.page-count-selector": {
@@ -116,7 +116,7 @@
       "wiring_status": "wired-shared-fragment",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+        "backend/services/api/src/unifoli_api/services/diagnosis_service.py"
       ]
     },
     "chat.template-recommender": {
@@ -128,7 +128,7 @@
       "wiring_status": "wired-shared-fragment",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/diagnosis_service.py"
+        "backend/services/api/src/unifoli_api/services/diagnosis_service.py"
       ]
     },
     "chat.coaching-orchestration": {
@@ -142,7 +142,7 @@
         "system.guardrails.admissions-authenticity"
       ],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/api/routes/drafts.py"
+        "backend/services/api/src/unifoli_api/api/routes/drafts.py"
       ]
     },
     "chat.workshop-choice-copy": {
@@ -154,7 +154,7 @@
       "wiring_status": "wired",
       "dependencies": [],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/quality_control.py"
+        "backend/services/api/src/unifoli_api/services/quality_control.py"
       ]
     },
     "drafting.provenance-boundary": {
@@ -168,8 +168,8 @@
         "system.guardrails.admissions-authenticity"
       ],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/workshop_render_service.py",
-        "backend/services/api/src/polio_api/services/rag_service.py"
+        "backend/services/api/src/unifoli_api/services/workshop_render_service.py",
+        "backend/services/api/src/unifoli_api/services/rag_service.py"
       ]
     },
     "drafting.report-render": {
@@ -184,7 +184,7 @@
         "drafting.provenance-boundary"
       ],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/workshop_render_service.py"
+        "backend/services/api/src/unifoli_api/services/workshop_render_service.py"
       ]
     },
     "inquiry-support.contact-triage": {
@@ -198,7 +198,7 @@
         "system.guardrails.admissions-authenticity"
       ],
       "runtime_targets": [
-        "backend/services/api/src/polio_api/services/inquiry_service.py"
+        "backend/services/api/src/unifoli_api/services/inquiry_service.py"
       ]
     },
     "evaluation.prompt-output-rubric": {

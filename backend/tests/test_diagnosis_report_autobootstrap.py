@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from polio_api.db.models.diagnosis_run import DiagnosisRun
-from polio_api.services import async_job_service
-from polio_domain.enums import AsyncJobStatus
+from unifoli_api.db.models.diagnosis_run import DiagnosisRun
+from unifoli_api.services import async_job_service
+from unifoli_domain.enums import AsyncJobStatus
 
 
 def _completed_run() -> DiagnosisRun:
@@ -139,3 +139,4 @@ def test_dispatch_diagnosis_job_does_not_fail_when_report_bootstrap_errors(monke
         expire_all=lambda: None,
     )
     async_job_service._dispatch_job(fake_db, diagnosis_job)
+

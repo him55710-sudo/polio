@@ -26,4 +26,4 @@ Do not put here:
 ## Current v1 rule
 
 When frontend and backend disagree, fix the implementation to match this package and
-the mirrored backend schemas under `backend/services/api/src/polio_api/schemas/`.
+the mirrored backend schemas under `backend/services/api/src/unifoli_api/schemas/`.

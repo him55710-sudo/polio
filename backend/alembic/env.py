@@ -20,9 +20,9 @@ PACKAGE_PATHS = [
 for package_path in PACKAGE_PATHS:
     sys.path.insert(0, str(package_path))
 
-from polio_api.core.config import get_settings  # noqa: E402
-from polio_api.core.database import Base  # noqa: E402
-from polio_api.db.models import document_chunk, draft, parsed_document, project, render_job, upload_asset  # noqa: F401, E402
+from unifoli_api.core.config import get_settings  # noqa: E402
+from unifoli_api.core.database import Base  # noqa: E402
+from unifoli_api.db.models import document_chunk, draft, parsed_document, project, render_job, upload_asset  # noqa: F401, E402
 
 config = context.config
 if config.config_file_name is not None:

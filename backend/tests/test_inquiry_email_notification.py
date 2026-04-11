@@ -5,13 +5,13 @@ import smtplib
 import pytest
 from sqlalchemy import select
 
-from polio_api.core.config import get_settings
-from polio_api.core.database import SessionLocal
-from polio_api.db.models.inquiry import Inquiry
-from polio_api.schemas.inquiry import InquiryCreate
-from polio_api.services import inquiry_service
-from polio_api.services import async_job_service
-from polio_api.services.async_job_service import get_latest_job_for_resource, process_async_job
+from unifoli_api.core.config import get_settings
+from unifoli_api.core.database import SessionLocal
+from unifoli_api.db.models.inquiry import Inquiry
+from unifoli_api.schemas.inquiry import InquiryCreate
+from unifoli_api.services import inquiry_service
+from unifoli_api.services import async_job_service
+from unifoli_api.services.async_job_service import get_latest_job_for_resource, process_async_job
 
 
 class _FakeSMTP:
@@ -51,10 +51,10 @@ class _FakeSMTP:
 def _payload() -> InquiryCreate:
     return InquiryCreate(
         inquiry_type="one_to_one",
-        name="테스터",
+        name="?�스??,
         email="tester@example.com",
-        subject="로그인 문의",
-        message="로그인이 되지 않아 문의드립니다. 확인 부탁드립니다.",
+        subject="로그??문의",
+        message="로그?�이 ?��? ?�아 문의?�립?�다. ?�인 부?�드립니??",
         inquiry_category="account_login",
         context_location="/app/login",
     )
@@ -304,3 +304,4 @@ def test_inquiry_record_persists_even_when_queue_creation_fails(monkeypatch) -> 
             assert db.scalar(select(Inquiry).where(Inquiry.id == inquiry.id)) is not None
     finally:
         _restore_settings(settings, originals)
+

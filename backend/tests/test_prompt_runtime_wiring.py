@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from polio_api.api.routes.drafts import ReferenceMaterial, _build_system_instruction
-from polio_api.services import quality_control
-from polio_api.services.diagnosis_service import (
+from unifoli_api.api.routes.drafts import ReferenceMaterial, _build_system_instruction
+from unifoli_api.services import quality_control
+from unifoli_api.services.diagnosis_service import (
     _build_diagnosis_prompt,
     _build_diagnosis_system_instruction,
 )
-from polio_api.services.workshop_render_service import (
+from unifoli_api.services.workshop_render_service import (
     _build_quality_guardrail,
     _build_render_prompt,
     _build_render_system_instruction,
@@ -87,7 +87,7 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
             "profiles": {
                 "low": {
                     "level": "low",
-                    "label": "커스텀 안전형",
+                    "label": "커스?� ?�전??,
                     "emoji": "L",
                     "color": "mint",
                     "description": "low description",
@@ -111,7 +111,7 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
                 },
                 "mid": {
                     "level": "mid",
-                    "label": "커스텀 표준형",
+                    "label": "커스?� ?��???,
                     "emoji": "M",
                     "color": "blue",
                     "description": "mid description",
@@ -135,7 +135,7 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
                 },
                 "high": {
                     "level": "high",
-                    "label": "커스텀 심화형",
+                    "label": "커스?� ?�화??,
                     "emoji": "H",
                     "color": "violet",
                     "description": "high description",
@@ -164,24 +164,24 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
                 "low": [
                     {
                         "id": "custom_low_start",
-                        "label": "커스텀 시작",
-                        "description": "커스텀 설명",
+                        "label": "커스?� ?�작",
+                        "description": "커스?� ?�명",
                         "prompt_template": "{quest_label} / {major_label} / {output_label}",
                     }
                 ],
                 "mid": [
                     {
                         "id": "custom_mid_start",
-                        "label": "중간 시작",
-                        "description": "중간 설명",
+                        "label": "중간 ?�작",
+                        "description": "중간 ?�명",
                         "prompt_template": "{quest_label}",
                     }
                 ],
                 "high": [
                     {
                         "id": "custom_high_start",
-                        "label": "심화 시작",
-                        "description": "심화 설명",
+                        "label": "?�화 ?�작",
+                        "description": "?�화 ?�명",
                         "prompt_template": "{quest_label}",
                     }
                 ],
@@ -190,32 +190,32 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
                 "low": [
                     {
                         "id_template": "custom_low_followup_{turn_count}",
-                        "label": "커스텀 후속",
-                        "description": "후속 설명",
-                        "prompt_template": "후속 프롬프트",
+                        "label": "커스?� ?�속",
+                        "description": "?�속 ?�명",
+                        "prompt_template": "?�속 ?�롬?�트",
                     }
                 ],
                 "mid": [
                     {
                         "id_template": "custom_mid_followup_{turn_count}",
-                        "label": "중간 후속",
-                        "description": "중간 후속 설명",
-                        "prompt_template": "중간 후속 프롬프트",
+                        "label": "중간 ?�속",
+                        "description": "중간 ?�속 ?�명",
+                        "prompt_template": "중간 ?�속 ?�롬?�트",
                     }
                 ],
                 "high": [
                     {
                         "id_template": "custom_high_followup_{turn_count}",
-                        "label": "심화 후속",
-                        "description": "심화 후속 설명",
-                        "prompt_template": "심화 후속 프롬프트",
+                        "label": "?�화 ?�속",
+                        "description": "?�화 ?�속 ?�명",
+                        "prompt_template": "?�화 ?�속 ?�롬?�트",
                     }
                 ],
             },
             "acknowledgements": {
                 "choice_template": "[{profile_label}] {label} / {followup_mode}",
                 "message_template": "[{profile_label}] {render_depth} / {guidance}",
-                "guidance_template": "다음: {next_choice_label}",
+                "guidance_template": "?�음: {next_choice_label}",
             },
         },
     }
@@ -231,9 +231,9 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
         profile = quality_control.get_quality_profile("low")
         starter_choices = quality_control.build_starter_choices(
             quality_level="low",
-            quest_title="탐구 주제",
-            target_major="교육학",
-            recommended_output_type="보고서",
+            quest_title="?�구 주제",
+            target_major="교육??,
+            recommended_output_type="보고??,
         )
         followup_choices = quality_control.build_followup_choices(
             quality_level="low",
@@ -241,18 +241,19 @@ def test_quality_control_runtime_uses_registry_assets(monkeypatch) -> None:
         )
         choice_ack = quality_control.build_choice_acknowledgement(
             quality_level="low",
-            label="커스텀 시작",
+            label="커스?� ?�작",
         )
         message_ack = quality_control.build_message_acknowledgement(
             quality_level="low",
-            next_choice_label="커스텀 후속",
+            next_choice_label="커스?� ?�속",
         )
     finally:
         _clear_quality_control_caches()
 
-    assert profile.label == "커스텀 안전형"
-    assert starter_choices[0]["label"] == "커스텀 시작"
-    assert starter_choices[0]["payload"]["prompt"] == "탐구 주제 / 교육학 / 보고서"
+    assert profile.label == "커스?� ?�전??
+    assert starter_choices[0]["label"] == "커스?� ?�작"
+    assert starter_choices[0]["payload"]["prompt"] == "?�구 주제 / 교육??/ 보고??
     assert followup_choices[0]["id"] == "custom_low_followup_7"
-    assert choice_ack == "[커스텀 안전형] 커스텀 시작 / low followup"
-    assert message_ack == "[커스텀 안전형] low depth / 다음: 커스텀 후속"
+    assert choice_ack == "[커스?� ?�전?? 커스?� ?�작 / low followup"
+    assert message_ack == "[커스?� ?�전?? low depth / ?�음: 커스?� ?�속"
+

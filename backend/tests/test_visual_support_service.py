@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from polio_api.main import app
-from polio_api.services.visual_support_service import build_visual_support_plan, rank_external_image_candidates
+from unifoli_api.main import app
+from unifoli_api.services.visual_support_service import build_visual_support_plan, rank_external_image_candidates
 from backend.tests.auth_helpers import auth_headers
 
 
@@ -49,7 +49,7 @@ def _extract_event_payload(raw_stream: str, event_name: str) -> dict[str, object
 
 def test_visual_planner_returns_no_visual_when_context_is_weak() -> None:
     plan = build_visual_support_plan(
-        report_markdown="## Reflection\n학생은 추가 실험 설계를 고민하고 있다.",
+        report_markdown="## Reflection\n?�생?� 추�? ?�험 ?�계�?고�??�고 ?�다.",
         evidence_map={},
         student_submission_note="",
         turns=[],
@@ -173,7 +173,7 @@ def test_workshop_render_persists_visual_specs_and_replays_them(monkeypatch) -> 
             "math_expressions": [],
         }
 
-    monkeypatch.setattr("polio_api.services.workshop_render_service._build_safe_artifact", fake_safe_artifact)
+    monkeypatch.setattr("unifoli_api.services.workshop_render_service._build_safe_artifact", fake_safe_artifact)
 
     with TestClient(app) as client:
         headers = auth_headers(f"visual-support-{uuid4().hex}")
@@ -251,3 +251,4 @@ def test_workshop_render_persists_visual_specs_and_replays_them(monkeypatch) -> 
         assert replay_response.status_code == 200
         replay_payload = _extract_event_payload(replay_response.text, "artifact.ready")
         assert replay_payload["visual_specs"] == latest_artifact["visual_specs"]
+

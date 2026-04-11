@@ -19,12 +19,12 @@ def upgrade() -> None:
     conn = op.get_bind()
     inspector = Inspector.from_engine(conn)
 
-    # workshop_sessions: quality_level 컬럼 추가
+    # workshop_sessions: quality_level 컬럼 추�?
     ws_cols = [c["name"] for c in inspector.get_columns("workshop_sessions")] if "workshop_sessions" in inspector.get_table_names() else []
     if "quality_level" not in ws_cols:
         op.add_column("workshop_sessions", sa.Column("quality_level", sa.String(length=8), nullable=False, server_default="mid"))
 
-    # draft_artifacts: safety/quality 메타 컬럼 추가
+    # draft_artifacts: safety/quality 메�? 컬럼 추�?
     da_cols = [c["name"] for c in inspector.get_columns("draft_artifacts")] if "draft_artifacts" in inspector.get_table_names() else []
     if "quality_level_applied" not in da_cols:
         op.add_column("draft_artifacts", sa.Column("quality_level_applied", sa.String(length=8), nullable=True))

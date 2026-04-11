@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useOnboardingStore } from '../store/onboardingStore';
 import { useAuthStore } from '../store/authStore';
 import {
   AuthError,
@@ -19,6 +20,7 @@ interface AuthContextType {
   isGuestSession: boolean;
   guestModeAvailable: boolean;
   isAuthenticated: boolean;
+  isVerified: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithKakao: () => Promise<void>;
   signInWithNaver: () => Promise<void>;
@@ -92,11 +94,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Fetch backend profile and sync with zustand
         await useAuthStore.getState().fetchProfile();
+        useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
       } else {
         setIsGuestSession(false);
         localStorage.removeItem(GUEST_SESSION_KEY);
         if (hasAppAccessToken()) {
           await useAuthStore.getState().fetchProfile();
+          useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
         } else {
           useAuthStore.getState().setUser(null);
         }
@@ -212,7 +216,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isAuthenticated = Boolean(user) || isGuestSession || backendSessionAuthenticated;
+  const isAuthenticated = (Boolean(user) && !user?.isAnonymous) || backendSessionAuthenticated;
+  const isVerified = (Boolean(user) && !user?.isAnonymous) || backendSessionAuthenticated;
+  const isGuestSession = Boolean(user?.isAnonymous) || (guestModeAvailable && !isAuthenticated && !!localStorage.getItem(GUEST_SESSION_KEY));
 
   return (
     <AuthContext.Provider
@@ -222,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isGuestSession,
         guestModeAvailable,
         isAuthenticated,
+        isVerified,
         signInWithGoogle,
         signInWithKakao,
         signInWithNaver,

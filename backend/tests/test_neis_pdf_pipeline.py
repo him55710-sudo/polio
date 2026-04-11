@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from polio_ingest.neis_pipeline import map_neis_semantics, normalize_odl_payload, stitch_neis_context
+from unifoli_ingest.neis_pipeline import map_neis_semantics, normalize_odl_payload, stitch_neis_context
 
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "neis_odl"
@@ -43,3 +43,4 @@ def test_neis_golden_cases(case_dir: Path) -> None:
     assert neis_document["semantic_mapping_confidence"] >= 0.65
     assert neis_document["parse_trace"]["record_count"] == expected["expected_record_count"]
     assert neis_document["evidence_references"][0]["page_span"] == expected["expected_page_span"]
+

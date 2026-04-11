@@ -1,14 +1,46 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle2, AlertTriangle, Zap } from 'lucide-react';
-import { SectionCard, SurfaceCard } from '../primitives';
+import { CheckCircle2, AlertTriangle, Zap, Clock, Download, AlertCircle } from 'lucide-react';
+import { SectionCard, SurfaceCard, StatusBadge } from '../primitives';
 import { formatRiskLevel } from '../../lib/diagnosis';
+import { DiagnosisRunResponse } from '../../types/api';
 
 interface DiagnosisResultDisplayProps {
   diagnosisResult: any;
+  diagnosisRun?: DiagnosisRunResponse | null;
 }
 
-export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ diagnosisResult }) => {
+const NEEDS_SUPPORT_PATTERN = /\bneeds?\s+support\b/gi;
+const ENGLISH_CHAR_PATTERN = /[A-Za-z]/g;
+
+function sanitizeKoreanText(value: unknown, fallback = '내용을 정리 중입니다.'): string {
+  const source = String(value ?? '').trim();
+  if (!source) return fallback;
+  const replaced = source.replace(NEEDS_SUPPORT_PATTERN, '보완 필요');
+  const withoutEnglish = replaced.replace(ENGLISH_CHAR_PATTERN, '').replace(/\s{2,}/g, ' ').trim();
+  return withoutEnglish || fallback;
+}
+
+function sanitizeList(values: unknown, fallback: string): string[] {
+  if (!Array.isArray(values)) return [fallback];
+  const normalized = values
+    .map((item) => sanitizeKoreanText(item, ''))
+    .filter(Boolean);
+  return normalized.length ? normalized : [fallback];
+}
+
+export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ diagnosisResult, diagnosisRun }) => {
+  const strengths = sanitizeList(diagnosisResult.strengths, '강점 항목을 정리 중입니다.');
+  const gaps = sanitizeList(
+    diagnosisResult.detailed_gaps?.length
+      ? diagnosisResult.detailed_gaps.map((gap: any) => `${gap.title}: ${gap.description}`)
+      : diagnosisResult.gaps,
+    '보완 항목을 정리 중입니다.',
+  );
+  const nextActions = sanitizeList(diagnosisResult.next_actions, '다음 실행 과제를 정리 중입니다.');
+
+  const reportStatus = (diagnosisRun?.report_status || diagnosisRun?.report_async_job_status || '').toUpperCase();
+
   return (
     <motion.div
       key="result"
@@ -18,13 +50,14 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
       className="space-y-6"
     >
       <SectionCard
-        title={diagnosisResult.headline}
-        description="나의 입시 경쟁력을 요약한 AI 종합 진정 분석 리포트입니다."
-        eyebrow="AI 진단 리포트"
+        title={sanitizeKoreanText(diagnosisResult.headline, '진단 결과')}
+        description="나의 입시 경쟁력을 요약한 인공지능 종합 진단 분석 결과입니다."
+        eyebrow="인공지능 진단"
         data-testid="diagnosis-result-panel"
         className="border-none bg-white shadow-2xl ring-1 ring-slate-200/50"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {/* Diagnosis Risk Level */}
             <div
               className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-black shadow-lg ${
                 diagnosisResult.risk_level === 'safe'
@@ -36,6 +69,24 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
             >
               {formatRiskLevel(diagnosisResult.risk_level)}
             </div>
+
+            {/* Report Generation Status */}
+            {reportStatus === 'READY' ? (
+              <StatusBadge status="success">
+                <Download size={14} />
+                진단서 준비 완료
+              </StatusBadge>
+            ) : reportStatus === 'FAILED' ? (
+              <StatusBadge status="danger">
+                <AlertCircle size={14} />
+                진단서 생성 실패
+              </StatusBadge>
+            ) : reportStatus && reportStatus !== 'NOT_REQUESTED' ? (
+              <StatusBadge status="active">
+                <Clock size={14} className="animate-spin" />
+                정밀 진단서 생성 중...
+              </StatusBadge>
+            ) : null}
           </div>
         }
       >
@@ -45,7 +96,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
               <span className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
                 종합 분석 의견
               </span>
-              {diagnosisResult.overview}
+              {sanitizeKoreanText(diagnosisResult.overview)}
             </p>
           </div>
         ) : null}
@@ -60,7 +111,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
               <span className="text-sm font-bold opacity-60">나의 생기부 강점</span>
             </div>
             <ul className="space-y-3">
-              {diagnosisResult.strengths.map((item: string, index: number) => (
+              {strengths.map((item: string, index: number) => (
                 <li key={index} className="flex gap-3 text-base font-bold leading-relaxed text-slate-700">
                   <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
                   {item}
@@ -78,10 +129,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
               <span className="text-sm font-bold opacity-60">보완이 필요한 부분</span>
             </div>
             <ul className="space-y-3">
-              {(diagnosisResult.detailed_gaps?.length
-                ? diagnosisResult.detailed_gaps.map((gap: any) => `${gap.title}: ${gap.description}`)
-                : diagnosisResult.gaps
-              ).map((item: string, index: number) => (
+              {gaps.map((item: string, index: number) => (
                 <li key={index} className="flex gap-3 text-base font-bold leading-relaxed text-slate-700">
                   <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" />
                   {item}
@@ -108,7 +156,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
                 <div className="space-y-4">
                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">주요 실천 과제</p>
                   <ul className="space-y-3">
-                    {diagnosisResult.next_actions.map((action: string, i: number) => (
+                    {nextActions.map((action: string, i: number) => (
                       <li key={i} className="flex gap-3 text-base font-bold text-slate-100">
                         <span className="mt-2.5 flex h-1 w-1 shrink-0 rounded-full bg-blue-400" />
                         {action}
@@ -122,7 +170,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
                 <div className="space-y-4 border-l border-white/10 pl-8">
                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">추천 집중 영역</p>
                   <p className="text-lg font-bold leading-relaxed text-blue-100">
-                    {diagnosisResult.recommended_focus}
+                    {sanitizeKoreanText(diagnosisResult.recommended_focus)}
                   </p>
                 </div>
               ) : null}

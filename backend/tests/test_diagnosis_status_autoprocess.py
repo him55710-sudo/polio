@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 
-from polio_api.api.routes import diagnosis as diagnosis_route
+from unifoli_api.api.routes import diagnosis as diagnosis_route
 
 
 def test_maybe_process_diagnosis_job_inline_processes_queued_job(monkeypatch) -> None:
@@ -488,3 +488,4 @@ def test_download_route_regenerates_when_ready_artifact_binary_missing(monkeypat
     assert regen_calls[0]["force_regenerate"] is True
     assert response.media_type == "application/pdf"
     assert response.body == b"%PDF-regenerated%"
+

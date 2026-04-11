@@ -187,11 +187,7 @@ export function formatAsyncJobStatus(status: string | null | undefined): string 
   if (normalized === 'succeeded') return '완료됨';
   if (normalized === 'failed') return '점검 필요';
 
-  return normalized
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  return '상태 확인 필요';
 }
 
 export function formatRiskLevel(level: DiagnosisRiskLevel): string {

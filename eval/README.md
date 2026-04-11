@@ -1,6 +1,6 @@
-# Polio Evaluation Harness v1
+# UniFoli Evaluation Harness v1
 
-The Evaluation Harness is a structured framework for measuring the quality of Polio's AI outputs.
+The Evaluation Harness is a structured framework for measuring the quality of UniFoli's AI outputs.
 
 ## Core Evaluation Axes
 
@@ -30,6 +30,6 @@ The Evaluation Harness is a structured framework for measuring the quality of Po
 
 ## Notes
 
-- `POLIO_EVAL_MOCK_MODE=good` keeps the mock generator grounded by default.
-- `POLIO_EVAL_MOCK_MODE=bad` intentionally emits a failing sample so the judge
+- `UNIFOLI_EVAL_MOCK_MODE=good` keeps the mock generator grounded by default.
+- `UNIFOLI_EVAL_MOCK_MODE=bad` intentionally emits a failing sample so the judge
   path can be inspected.

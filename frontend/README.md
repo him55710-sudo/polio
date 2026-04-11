@@ -1,6 +1,6 @@
-# Polio Frontend
+# UniFoli Frontend
 
-`frontend/` is the source of truth for the Polio web app.
+`frontend/` is the source of truth for the UniFoli web app.
 
 The old AI Studio template framing is no longer the right mental model for this folder.
 

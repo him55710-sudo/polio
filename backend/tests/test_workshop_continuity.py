@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from polio_api.main import app
-from polio_api.services.chat_memory_service import build_workshop_memory_context, build_workshop_memory_payload
-from polio_api.db.models.workshop import WorkshopSession, WorkshopTurn
-from polio_api.db.models.project import Project
+from unifoli_api.main import app
+from unifoli_api.services.chat_memory_service import build_workshop_memory_context, build_workshop_memory_payload
+from unifoli_api.db.models.workshop import WorkshopSession, WorkshopTurn
+from unifoli_api.db.models.project import Project
 from backend.tests.auth_helpers import auth_headers
 
 
@@ -45,7 +45,7 @@ def test_workshop_memory_receives_context_from_first_turn() -> None:
     
     memory = build_workshop_memory_context(session=session, project=project, quest=None)
     
-    assert "목표 대학: Grounded Univ" in memory
+    assert "목표 ?�?? Grounded Univ" in memory
     assert "Student: Hello, I want to write a thesis about AI." in memory
     assert "Assistant: That sounds great. What specific part of AI?" in memory
 
@@ -61,7 +61,7 @@ def test_bounded_memory_builder_includes_summary_and_stats() -> None:
     
     memory = build_workshop_memory_context(session=session, project=project, quest=None, max_recent_turns=6)
     
-    assert "총 1개의 이전 턴이 진행되었습니다. (생략됨)" in memory
+    assert "�?1개의 ?�전 ?�이 진행?�었?�니?? (?�략??" in memory
     assert "User Message 0" not in memory
     assert "User Message 1" in memory
     assert "User Message 6" in memory
@@ -109,7 +109,7 @@ def test_real_assistant_response_persists_to_history() -> None:
             assert "speaker_role" in turn
 
 def test_contract_workshop_chat_turn_schema_supports_roles() -> None:
-    from polio_api.schemas.workshop import WorkshopTurnResponse
+    from unifoli_api.schemas.workshop import WorkshopTurnResponse
     now = datetime.now(timezone.utc)
     turn = WorkshopTurnResponse(
         id="dummy",
@@ -130,19 +130,19 @@ def test_structured_memory_summary_stays_grounded() -> None:
     session = WorkshopSession(id="memory-summary-session")
     project = Project(id="dummy-id", target_university="Grounded Univ", target_major="Computer Science")
     session.turns = [
-        WorkshopTurn(speaker_role="user", query="수학 탐구 질문을 더 명확하게 하고 싶어요."),
-        WorkshopTurn(speaker_role="assistant", query="좋아요. 현재 근거를 먼저 정리해봅시다."),
+        WorkshopTurn(speaker_role="user", query="?�학 ?�구 질문????명확?�게 ?�고 ?�어??"),
+        WorkshopTurn(speaker_role="assistant", query="좋아?? ?�재 근거�?먼�? ?�리?�봅?�다."),
     ]
     session.pinned_references = []
 
     memory_text, summary = build_workshop_memory_payload(session=session, project=project, quest=None)
 
-    assert "수학 탐구 질문" in memory_text
+    assert "?�학 ?�구 질문" in memory_text
     assert summary["subject"] is None
     assert summary["selected_topic"] is None
     assert isinstance(summary["confirmed_evidence_points"], list)
     assert isinstance(summary["unresolved_evidence_gaps"], list)
-    assert "합격" not in json.dumps(summary, ensure_ascii=False)
+    assert "?�격" not in json.dumps(summary, ensure_ascii=False)
 
 
 def test_workshop_draft_save_conflict_returns_latest_snapshot() -> None:
@@ -209,3 +209,4 @@ def test_workshop_draft_save_conflict_returns_latest_snapshot() -> None:
         assert detail["latest_document_content"] == "Remote draft from tab B"
         assert detail["latest_updated_at"] == remote_updated_at
         assert detail["latest_structured_draft"]["mode"] == "revision"
+

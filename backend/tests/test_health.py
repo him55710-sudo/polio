@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
-from polio_api.api.routes import health as health_route
-from polio_api.core.config import get_settings
-from polio_api.main import app, create_app
+from unifoli_api.api.routes import health as health_route
+from unifoli_api.core.config import get_settings
+from unifoli_api.main import app, create_app
 
 
 def test_health_check() -> None:
@@ -91,3 +91,4 @@ def test_root_page_shows_backend_info_in_local() -> None:
             assert "Open API Docs" in response.text
     finally:
         settings.app_env, settings.api_docs_enabled, settings.api_root_redirect_enabled = original
+

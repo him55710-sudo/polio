@@ -7,6 +7,7 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { RuntimeProvider } from './contexts/RuntimeContext';
 import { Layout } from './components/Layout';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { useAuthStore } from './store/authStore';
@@ -24,7 +25,6 @@ const Archive = lazy(() => import('./pages/Archive').then(m => ({ default: m.Arc
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Trends = lazy(() => import('./pages/Trends').then(m => ({ default: m.Trends })));
 const Diagnosis = lazy(() => import('./pages/Diagnosis').then(m => ({ default: m.Diagnosis })));
-const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
 const RecordPdfHelp = lazy(() => import('./pages/RecordPdfHelp').then(m => ({ default: m.RecordPdfHelp })));
 const TermsOfService = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.TermsOfService })));
 const PrivacyPolicy = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.PrivacyPolicy })));
@@ -54,28 +54,32 @@ function RouteScrollManager() {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isGuestSession, loading } = useAuth();
   const dbUser = useAuthStore(state => state.user);
 
   if (loading) {
     return <PageLoader />;
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isGuestSession) {
     return <Navigate to="/auth" replace />;
   }
 
-  const hasRequiredTargets = Boolean(dbUser?.target_university && dbUser?.target_major);
-  const requiresOnboarding = Boolean(dbUser) && !hasRequiredTargets;
-  const isFullyOnboarded = Boolean(dbUser?.grade && dbUser?.track && dbUser?.target_university && dbUser?.target_major);
-  const isDiagnosisRoute = location.pathname === '/app/diagnosis' || location.pathname === '/diagnosis';
+  const hasProfile = Boolean(dbUser?.grade && dbUser?.track);
+  const hasGoals = Boolean(dbUser?.target_university && dbUser?.target_major);
+  const isFullyOnboarded = hasProfile && hasGoals;
+  const isDiagnosisRoute = location.pathname.includes('/diagnosis');
 
-  if (requiresOnboarding && location.pathname !== '/onboarding' && !isDiagnosisRoute) {
-    return <Navigate to="/onboarding" replace />;
+  // If user is authenticated but hasn't completed profile/goals, 
+  // they should be allowed to access /app/diagnosis to complete them.
+  // Other protected routes (dashboard, record, etc.) should redirect to diagnosis.
+  if (!isFullyOnboarded && !isDiagnosisRoute && location.pathname !== '/onboarding') {
+    return <Navigate to="/app/diagnosis" replace />;
   }
 
-  if (!requiresOnboarding && isFullyOnboarded && dbUser && location.pathname === '/onboarding') {
-    return <Navigate to="/app" replace />;
+  // Legacy /onboarding route should now just go to /app/diagnosis
+  if (location.pathname === '/onboarding') {
+    return <Navigate to="/app/diagnosis" replace />;
   }
 
   return <>{children}</>;
@@ -113,8 +117,9 @@ const DocumentEditorPage = lazy(() => import('./pages/DocumentEditorPage').then(
 export default function App() {
   return (
     <GlobalErrorBoundary>
-      <AuthProvider>
-        <BrowserRouter>
+      <RuntimeProvider>
+        <AuthProvider>
+          <BrowserRouter>
           <RouteScrollManager />
           <Toaster
             position="top-center"
@@ -175,11 +180,7 @@ export default function App() {
 
               <Route
                 path="/onboarding"
-                element={
-                  <ProtectedRoute>
-                    <Onboarding />
-                  </ProtectedRoute>
-                }
+                element={<Navigate to="/app/diagnosis" replace />}
               />
 
               <Route path="/record" element={<LegacyRouteRedirect to="/app/record" />} />
@@ -196,7 +197,8 @@ export default function App() {
             </Routes>
           </Suspense>
         </BrowserRouter>
-      </AuthProvider>
+        </AuthProvider>
+      </RuntimeProvider>
     </GlobalErrorBoundary>
   );
 }

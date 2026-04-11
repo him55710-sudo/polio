@@ -1,0 +1,144 @@
+from pathlib import Path
+from mimetypes import guess_type
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse, Response
+from sqlalchemy.orm import Session
+
+from unifoli_api.api.deps import get_current_user, get_db
+from unifoli_api.core.config import get_settings
+from unifoli_api.core.rate_limit import rate_limit
+from unifoli_api.core.security import ensure_resolved_within_base
+from unifoli_api.db.models.user import User
+from unifoli_api.schemas.render_job import RenderFormatInfo, RenderJobCreate, RenderJobRead, RenderTemplateInfo
+from unifoli_api.services.async_job_service import get_latest_job_for_resource, process_async_job
+from unifoli_api.services.project_service import get_project
+from unifoli_api.services.render_job_service import (
+    build_render_job_payload,
+    create_render_job,
+    get_render_format_catalog,
+    get_render_job_for_owner,
+    get_render_template_catalog,
+    list_render_jobs_for_owner,
+)
+from unifoli_domain.enums import RenderFormat
+from unifoli_shared.paths import get_export_root, resolve_project_path
+from unifoli_shared.storage import get_storage_provider
+
+router = APIRouter(prefix="/render-jobs")
+
+
+def _resolve_render_output_path(output_path: str) -> Path:
+    try:
+        resolved = ensure_resolved_within_base(resolve_project_path(output_path), get_export_root())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.") from exc
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.")
+    return resolved
+
+
+@router.get("/formats", response_model=list[RenderFormatInfo])
+def list_render_formats_route() -> list[RenderFormatInfo]:
+    return get_render_format_catalog()
+
+
+@router.get("/templates", response_model=list[RenderTemplateInfo])
+def list_render_templates_route(
+    render_format: RenderFormat | None = Query(default=None),
+) -> list[RenderTemplateInfo]:
+    return get_render_template_catalog(render_format)
+
+
+@router.post("", response_model=RenderJobRead, status_code=status.HTTP_201_CREATED)
+def create_render_job_route(
+    payload: RenderJobCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(rate_limit(bucket="render_job_create", limit=10, window_seconds=300)),
+) -> RenderJobRead:
+    project = get_project(db, payload.project_id, owner_user_id=current_user.id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project or draft not found.")
+    try:
+        job = create_render_job(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project or draft not found.")
+    return RenderJobRead.model_validate(build_render_job_payload(db, job))
+
+
+@router.get("", response_model=list[RenderJobRead])
+def list_render_jobs_route(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[RenderJobRead]:
+    return [
+        RenderJobRead.model_validate(build_render_job_payload(db, item))
+        for item in list_render_jobs_for_owner(db, current_user.id)
+    ]
+
+
+@router.get("/{job_id}", response_model=RenderJobRead)
+def get_render_job_route(
+    job_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RenderJobRead:
+    job = get_render_job_for_owner(db, job_id, current_user.id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Render job not found.")
+    return RenderJobRead.model_validate(build_render_job_payload(db, job))
+
+
+@router.get("/{job_id}/download")
+def download_render_job_route(
+    job_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    job = get_render_job_for_owner(db, job_id, current_user.id)
+    if not job or not job.output_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.")
+
+    storage = get_storage_provider(get_settings())
+    if storage.exists(job.output_path):
+        content = storage.retrieve(job.output_path)
+        filename = Path(job.output_path).name
+        media_type = guess_type(filename)[0] or "application/octet-stream"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    output_path = _resolve_render_output_path(job.output_path)
+    return FileResponse(path=output_path, filename=output_path.name)
+
+
+@router.post("/{job_id}/process", response_model=RenderJobRead)
+def process_render_job_route(
+    job_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(rate_limit(bucket="render_job_process", limit=20, window_seconds=300)),
+) -> RenderJobRead:
+    settings = get_settings()
+    if not settings.allow_inline_render or not settings.allow_inline_job_processing:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inline render is disabled. Use the worker instead.",
+        )
+
+    job = get_render_job_for_owner(db, job_id, current_user.id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Render job not found.")
+
+    async_job = get_latest_job_for_resource(db, resource_type="render_job", resource_id=job_id)
+    if async_job is not None:
+        process_async_job(db, async_job.id)
+    job = get_render_job_for_owner(db, job_id, current_user.id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Render job not found.")
+    return RenderJobRead.model_validate(build_render_job_payload(db, job))

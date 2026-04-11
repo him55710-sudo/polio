@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import pytest
 
-from polio_api.core.config import Settings
-from polio_api.core.llm import OllamaClient, get_llm_client
+from unifoli_api.core.config import Settings
+from unifoli_api.core.llm import OllamaClient, get_llm_client
 
 
 def test_ollama_profile_model_fallbacks(monkeypatch) -> None:
@@ -22,7 +22,7 @@ def test_ollama_profile_model_fallbacks(monkeypatch) -> None:
         ollama_standard_timeout_seconds=60,
         ollama_render_timeout_seconds=180,
     )
-    monkeypatch.setattr("polio_api.core.llm.get_settings", lambda: settings)
+    monkeypatch.setattr("unifoli_api.core.llm.get_settings", lambda: settings)
 
     fast = get_llm_client(profile="fast")
     standard = get_llm_client(profile="standard")
@@ -61,8 +61,9 @@ def test_gemini_missing_key_falls_back_to_remote_ollama(monkeypatch) -> None:
         ollama_base_url="https://ollama.example.com/v1",
         ollama_model="gemma4-main",
     )
-    monkeypatch.setattr("polio_api.core.llm.get_settings", lambda: settings)
+    monkeypatch.setattr("unifoli_api.core.llm.get_settings", lambda: settings)
 
     client = get_llm_client(profile="standard")
     assert isinstance(client, OllamaClient)
     assert client.model == "gemma4-main"
+
