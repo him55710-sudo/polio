@@ -36,7 +36,8 @@ const TEXT = {
 export function Onboarding() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { step, profile, goals, isLoading, error, setStep, setProfile, setGoals, submitProfile, submitGoals } = useOnboardingStore();
+  const { profile, goals, isLoading, error, setProfile, setGoals, submitProfile, submitGoals } = useOnboardingStore();
+  const [step, setStep] = useState(1);
 
   const [univInput, setUnivInput] = useState('');
   const [currentUniv, setCurrentUniv] = useState('');

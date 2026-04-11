@@ -3,6 +3,7 @@ export interface UserProfile {
   firebase_uid: string;
   email: string | null;
   name: string | null;
+  is_guest?: boolean;
   target_university: string | null;
   target_major: string | null;
   grade: string | null;

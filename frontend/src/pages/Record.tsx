@@ -654,7 +654,7 @@ export function Record() {
                 
                 <SecondaryButton
                   size="lg"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => navigate(`/app/workshop/${document?.project_id}?major=${encodeURIComponent(targetMajor.trim())}`)}
                   disabled={!canContinue}
                 >

@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Download,
   Loader2,
+  Presentation,
   Save,
   Send,
   ShieldCheck,
@@ -57,6 +58,7 @@ import {
   structuredDraftToMarkdown,
   type WorkshopDraftAttribution,
   type WorkshopDraftPatchProposal,
+
   type WorkshopMode,
   type WorkshopStructuredDraftState,
 } from '../lib/workshopCoauthoring';
@@ -193,7 +195,7 @@ interface WorkshopSessionResponse {
   }>;
 }
 
-interface QualityLevelInfo {
+export interface QualityLevelInfo {
   level: QualityLevel;
   label: string;
   emoji: string;
@@ -210,7 +212,7 @@ interface QualityLevelInfo {
   render_threshold: number;
 }
 
-interface RenderRequirementInfo {
+export interface RenderRequirementInfo {
   required_context_score: number;
   minimum_turn_count: number;
   minimum_reference_count: number;

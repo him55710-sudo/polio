@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
@@ -13,18 +13,18 @@ from unifoli_api.services.prompt_registry import PromptAssetNotFoundError
 def _build_minimal_result_payload() -> DiagnosisResultPayload:
     return DiagnosisResultPayload.model_validate(
         {
-            "headline": "기초 진단 ?�드?�인",
-            "strengths": ["?�구 주제???��??�이 보입?�다."],
-            "gaps": ["근거 문장�??�용 ?�결????명확???�야 ?�니??"],
-            "recommended_focus": "근거-주장 매핑 강화",
+            "headline": "湲곗큹 吏꾨떒 ?ㅻ뱶?쇱씤",
+            "strengths": ["?먭뎄 二쇱젣???쇨??깆씠 蹂댁엯?덈떎."],
+            "gaps": ["洹쇨굅 臾몄옣怨??몄슜 ?곌껐????紐낇솗???댁빞 ?⑸땲??"],
+            "recommended_focus": "洹쇨굅-二쇱옣 留ㅽ븨 媛뺥솕",
             "risk_level": "warning",
-            "next_actions": ["?�심 주장 3개에 근거 출처�??�결?�세??"],
-            "recommended_topics": ["?�공 ?�계 ?�구 ?�화"],
+            "next_actions": ["?듭떖 二쇱옣 3媛쒖뿉 洹쇨굅 異쒖쿂瑜??곌껐?섏꽭??"],
+            "recommended_topics": ["?꾧났 ?곌퀎 ?먭뎄 ?ы솕"],
             "citations": [
                 {
-                    "source_label": "?�생부 기록",
+                    "source_label": "?숈깮遺 湲곕줉",
                     "page_number": 2,
-                    "excerpt": "?�구 ?�동??과정�?결과가 ?�리??,
+                    "excerpt": "?먭뎄 ?쒕룞??怨쇱젙怨?寃곌낵媛 ?뺣━??,
                     "relevance_score": 1.7,
                 }
             ],
@@ -35,8 +35,8 @@ def _build_minimal_result_payload() -> DiagnosisResultPayload:
 def test_build_consultant_report_payload_contains_expected_sections(monkeypatch) -> None:
     async def fake_narratives(**kwargs):  # noqa: ANN003
         return report_service._ConsultantNarrativePayload(
-            executive_summary="?�약 문장",
-            final_consultant_memo="최종 메모 문장",
+            executive_summary="?붿빟 臾몄옣",
+            final_consultant_memo="理쒖쥌 硫붾え 臾몄옣",
         )
 
     monkeypatch.setattr(report_service, "_generate_narratives", fake_narratives)
@@ -44,22 +44,22 @@ def test_build_consultant_report_payload_contains_expected_sections(monkeypatch)
     run = SimpleNamespace(id="run-1")
     project = SimpleNamespace(
         id="project-1",
-        title="?�스???�로?�트",
-        target_university="?�울?�?�교",
-        target_major="컴퓨?�공??,
+        title="?뚯뒪???꾨줈?앺듃",
+        target_university="?쒖슱??숆탳",
+        target_major="而댄벂?곌났??,
     )
     result = _build_minimal_result_payload()
     documents = [
         SimpleNamespace(
             parse_metadata={
                 "student_record_structure": {
-                    "section_density": {"?�특": 0.8, "창체": 0.4},
-                    "weak_sections": ["진로"],
-                    "timeline_signals": ["2?�년", "3?�년"],
-                    "activity_clusters": ["?�구/?�험"],
-                    "subject_major_alignment_signals": ["?�공 ?�계 문장 ?�인"],
-                    "continuity_signals": ["?�속 ?�구 계획"],
-                    "process_reflection_signals": ["?�계?� 개선??],
+                    "section_density": {"?명듅": 0.8, "李쎌껜": 0.4},
+                    "weak_sections": ["吏꾨줈"],
+                    "timeline_signals": ["2?숇뀈", "3?숇뀈"],
+                    "activity_clusters": ["?먭뎄/?ㅽ뿕"],
+                    "subject_major_alignment_signals": ["?꾧났 ?곌퀎 臾몄옣 ?뺤씤"],
+                    "continuity_signals": ["?꾩냽 ?먭뎄 怨꾪쉷"],
+                    "process_reflection_signals": ["?쒓퀎? 媛쒖꽑??],
                     "uncertain_items": [],
                 }
             }
@@ -107,7 +107,7 @@ def test_generate_consultant_report_artifact_requires_completed_diagnosis(monkey
     run = SimpleNamespace(id="run-2", result_payload=None)
     project = SimpleNamespace(
         id="project-2",
-        title="진단 미완�??�로?�트",
+        title="吏꾨떒 誘몄셿猷??꾨줈?앺듃",
         target_university=None,
         target_major=None,
     )
@@ -155,9 +155,9 @@ def test_generate_consultant_report_artifact_fallbacks_to_failed_status(monkeypa
     )
     project = SimpleNamespace(
         id="project-3",
-        title="?�패 ?�백 ?�로?�트",
-        target_university="?�세?�?�교",
-        target_major="?�기?�자공학",
+        title="?ㅽ뙣 ?대갚 ?꾨줈?앺듃",
+        target_university="?곗꽭??숆탳",
+        target_major="?꾧린?꾩옄怨듯븰",
     )
 
     artifact = asyncio.run(
@@ -194,12 +194,12 @@ def test_generate_narratives_uses_deterministic_fallback_when_prompt_registry_mi
             project=SimpleNamespace(
                 id="project-registry-missing",
                 title="Prompt Registry Missing Project",
-                target_university="?�세?�?�교",
-                target_major="경영?�과",
+                target_university="?곗꽭??숆탳",
+                target_major="寃쎌쁺?숆낵",
             ),
             result=_build_minimal_result_payload(),
-            document_structure={"weak_sections": ["진로"], "section_density": {"?�특": 0.5}},
-            uncertainty_notes=["?�생부 ?��? ?�이지???�독 ?�뢰?��? ??��?�다."],
+            document_structure={"weak_sections": ["吏꾨줈"], "section_density": {"?명듅": 0.5}},
+            uncertainty_notes=["?숈깮遺 ?쇰? ?섏씠吏???먮룆 ?좊ː?꾧? ??뒿?덈떎."],
         )
     )
 
@@ -217,10 +217,10 @@ def _evidence_bank_sample(count: int = 12) -> list[dict[str, object]]:
             {
                 "anchor_id": f"ev-{index}",
                 "page": page,
-                "section": "창의??체험?�동",
+                "section": "李쎌쓽??泥댄뿕?쒕룞",
                 "normalized_section": "creative_activities",
-                "quote": f"지?��???건축 ?�구 근거 문장 {index}",
-                "major_relevance": ["건축", "?�경"],
+                "quote": f"吏?띻???嫄댁텞 ?먭뎄 洹쇨굅 臾몄옣 {index}",
+                "major_relevance": ["嫄댁텞", "?섍꼍"],
                 "process_elements": {
                     "motivation": True,
                     "method": True,
@@ -237,14 +237,14 @@ def _evidence_bank_sample(count: int = 12) -> list[dict[str, object]]:
 def test_score_groups_keep_student_and_system_scores_separate(monkeypatch) -> None:
     async def fake_narratives(**kwargs):  # noqa: ANN003
         return report_service._ConsultantNarrativePayload(
-            executive_summary="?�약",
-            final_consultant_memo="메모",
+            executive_summary="?붿빟",
+            final_consultant_memo="硫붾え",
         )
 
     monkeypatch.setattr(report_service, "_generate_narratives", fake_narratives)
 
     run = SimpleNamespace(id="run-score-groups")
-    project = SimpleNamespace(id="project-score-groups", title="?�스??, target_university="?�울?�?�교", target_major="건축?�과")
+    project = SimpleNamespace(id="project-score-groups", title="?뚯뒪??, target_university="?쒖슱??숆탳", target_major="嫄댁텞?숆낵")
     result = _build_minimal_result_payload()
     documents = [
         SimpleNamespace(
@@ -268,7 +268,7 @@ def test_score_groups_keep_student_and_system_scores_separate(monkeypatch) -> No
                     },
                 },
                 "student_record_structure": {
-                    "section_density": {"교과?�습발달?�황": 0.9, "창체": 0.8, "?�동?�성": 0.7},
+                    "section_density": {"援먭낵?숈뒿諛쒕떖?곹솴": 0.9, "李쎌껜": 0.8, "?됰룞?뱀꽦": 0.7},
                     "coverage_check": {"coverage_score": 1.0, "reanalysis_required": False, "missing_required_sections": []},
                     "contradiction_check": {"passed": True, "items": []},
                 },
@@ -314,25 +314,25 @@ def test_score_groups_keep_student_and_system_scores_separate(monkeypatch) -> No
 def test_contradiction_check_blocks_premium_render(monkeypatch) -> None:
     async def fake_narratives(**kwargs):  # noqa: ANN003
         return report_service._ConsultantNarrativePayload(
-            executive_summary="?�약",
-            final_consultant_memo="메모",
+            executive_summary="?붿빟",
+            final_consultant_memo="硫붾え",
         )
 
     monkeypatch.setattr(report_service, "_generate_narratives", fake_narratives)
 
     run = SimpleNamespace(id="run-contradiction")
-    project = SimpleNamespace(id="project-contradiction", title="?�스??, target_university="?�울?�?�교", target_major="건축?�과")
+    project = SimpleNamespace(id="project-contradiction", title="?뚯뒪??, target_university="?쒖슱??숆탳", target_major="嫄댁텞?숆낵")
     result = _build_minimal_result_payload()
     documents = [
         SimpleNamespace(
             parse_metadata={
                 "student_record_structure": {
-                    "section_density": {"교과?�습발달?�황": 1.0},
-                    "weak_sections": ["교과?�습발달?�황"],
+                    "section_density": {"援먭낵?숈뒿諛쒕떖?곹솴": 1.0},
+                    "weak_sections": ["援먭낵?숈뒿諛쒕떖?곹솴"],
                     "coverage_check": {"coverage_score": 1.0, "reanalysis_required": False, "missing_required_sections": []},
                     "contradiction_check": {
                         "passed": False,
-                        "items": [{"section": "교과?�습발달?�황", "reason": "weak_or_missing_conflicts_with_density"}],
+                        "items": [{"section": "援먭낵?숈뒿諛쒕떖?곹솴", "reason": "weak_or_missing_conflicts_with_density"}],
                     },
                 }
             }
@@ -357,14 +357,14 @@ def test_contradiction_check_blocks_premium_render(monkeypatch) -> None:
 def test_premium_report_sections_keep_diverse_evidence_anchors(monkeypatch) -> None:
     async def fake_narratives(**kwargs):  # noqa: ANN003
         return report_service._ConsultantNarrativePayload(
-            executive_summary="?�약",
-            final_consultant_memo="메모",
+            executive_summary="?붿빟",
+            final_consultant_memo="硫붾え",
         )
 
     monkeypatch.setattr(report_service, "_generate_narratives", fake_narratives)
 
     run = SimpleNamespace(id="run-diverse-anchors")
-    project = SimpleNamespace(id="project-diverse-anchors", title="?�스??, target_university="?�울?�?�교", target_major="건축?�과")
+    project = SimpleNamespace(id="project-diverse-anchors", title="?뚯뒪??, target_university="?쒖슱??숆탳", target_major="嫄댁텞?숆낵")
     result = _build_minimal_result_payload()
     documents = [
         SimpleNamespace(
@@ -386,7 +386,7 @@ def test_premium_report_sections_keep_diverse_evidence_anchors(monkeypatch) -> N
                     },
                 },
                 "student_record_structure": {
-                    "section_density": {"교과?�습발달?�황": 0.95, "?�특": 0.95, "창체": 0.9, "?�동?�성": 0.8},
+                    "section_density": {"援먭낵?숈뒿諛쒕떖?곹솴": 0.95, "?명듅": 0.95, "李쎌껜": 0.9, "?됰룞?뱀꽦": 0.8},
                     "coverage_check": {"coverage_score": 1.0, "reanalysis_required": False, "missing_required_sections": []},
                     "contradiction_check": {"passed": True, "items": []},
                 },
@@ -413,4 +413,5 @@ def test_premium_report_sections_keep_diverse_evidence_anchors(monkeypatch) -> N
 
     assert len(unique_anchor_labels) >= 10
     assert len(unique_pages) >= 6
+
 

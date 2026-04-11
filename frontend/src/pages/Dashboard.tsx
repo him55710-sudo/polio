@@ -60,9 +60,9 @@ function readStoredDiagnosis(): StoredDiagnosis | null {
   }
 }
 
-const riskVariant = (risk: string) => {
+const riskVariant = (risk: string): any => {
   switch (risk) {
-    case 'danger': return 'error';
+    case 'danger': return 'danger';
     case 'warning': return 'warning';
     case 'safe': return 'success';
     default: return 'neutral';
@@ -81,7 +81,7 @@ const levelSummary = (level: string) => {
 
 const QuestCard = ({ quest, onStart, isStarting }: { quest: BlueprintQuest; onStart: (q: BlueprintQuest) => void; isStarting: boolean }) => {
   const diffLabel = quest.difficulty === 'high' ? '상' : quest.difficulty === 'medium' ? '중' : '하';
-  const diffVariant = quest.difficulty === 'high' ? 'error' : quest.difficulty === 'medium' ? 'warning' : 'success';
+  const diffVariant: any = quest.difficulty === 'high' ? 'danger' : quest.difficulty === 'medium' ? 'warning' : 'success';
 
   return (
     <SurfaceCard className="group relative flex flex-col justify-between overflow-hidden p-6 transition-all hover:shadow-2xl hover:shadow-blue-500/10 active:scale-[0.98]">
@@ -94,7 +94,7 @@ const QuestCard = ({ quest, onStart, isStarting }: { quest: BlueprintQuest; onSt
         </div>
         <div>
           <h4 className="line-clamp-1 text-lg font-black tracking-tight text-slate-900">{quest.title}</h4>
-          <p className="mt-2 line-clamp-2 text-sm font-medium leading-relaxed text-slate-500">{quest.description}</p>
+          <p className="mt-2 line-clamp-2 text-sm font-medium leading-relaxed text-slate-500">{quest.summary}</p>
         </div>
       </div>
       

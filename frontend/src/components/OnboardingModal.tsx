@@ -187,7 +187,7 @@ export function OnboardingModal({
                     autoFocus
                   />
                   <button onClick={handleAddGoal} disabled={!canAddThis || !canAddMore} className="w-full py-3 bg-[#004aad] text-white rounded-2xl font-black text-sm disabled:opacity-30">
-                    {TEXT.addGoal} (+{goals.length}/6)
+                    {TEXT.addGoal} (+{goalList.length}/6)
                   </button>
                 </div>
               )}
@@ -230,7 +230,7 @@ export function OnboardingModal({
                       <GripVertical size={16} />
                       <div className="flex flex-col gap-1">
                         <button onClick={()=>moveGoal(idx, 'up')} disabled={idx===0} className="text-slate-300 hover:text-blue-500 disabled:opacity-30"><ChevronUp size={16}/></button>
-                        <button onClick={()=>moveGoal(idx, 'down')} disabled={idx===goals.length-1} className="text-slate-300 hover:text-blue-500 disabled:opacity-30"><ChevronDown size={16}/></button>
+                        <button onClick={()=>moveGoal(idx, 'down')} disabled={idx===goalList.length-1} className="text-slate-300 hover:text-blue-500 disabled:opacity-30"><ChevronDown size={16}/></button>
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">

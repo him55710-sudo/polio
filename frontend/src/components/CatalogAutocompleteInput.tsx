@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cn } from '../lib/cn';
 import type { CatalogSuggestion } from '../lib/educationCatalog';
 
 interface CatalogAutocompleteInputProps {
@@ -15,6 +16,7 @@ interface CatalogAutocompleteInputProps {
   inputTestId?: string;
   suggestionTestIdPrefix?: string;
   hideSecondaryForMajor?: boolean;
+  inputClassName?: string;
 }
 
 export function CatalogAutocompleteInput({
@@ -31,6 +33,7 @@ export function CatalogAutocompleteInput({
   inputTestId,
   suggestionTestIdPrefix,
   hideSecondaryForMajor = true,
+  inputClassName,
 }: CatalogAutocompleteInputProps) {
   const [isOpen, setIsOpen] = useState(false);
   const shouldShowPanel = isOpen && (suggestions.length > 0 || (value.trim().length > 0 && emptyText));
@@ -53,7 +56,10 @@ export function CatalogAutocompleteInput({
           onChange(event.target.value);
           setIsOpen(true);
         }}
-        className="w-full rounded-3xl border-2 border-slate-100 bg-slate-50 px-5 py-4 text-lg font-bold text-slate-800 shadow-sm outline-none transition-all placeholder:text-slate-300 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+        className={cn(
+          "w-full rounded-3xl border-2 border-slate-100 bg-slate-50 px-5 py-4 text-lg font-bold text-slate-800 shadow-sm outline-none transition-all placeholder:text-slate-300 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60",
+          inputClassName
+        )}
       />
       {helperText ? (
         <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">{helperText}</p>

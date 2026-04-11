@@ -18,7 +18,7 @@ const AuthCallback = lazy(() => import('./pages/AuthCallback').then(m => ({ defa
 const Landing = lazy(() => import('./pages/Landing').then(m => ({ default: m.Landing })));
 const Faq = lazy(() => import('./pages/Faq').then(m => ({ default: m.Faq })));
 const Contact = lazy(() => import('./pages/Contact').then(m => ({ default: m.Contact })));
-const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.default })));
 const Record = lazy(() => import('./pages/Record').then(m => ({ default: m.Record })));
 const Workshop = lazy(() => import('./pages/Workshop').then(m => ({ default: m.Workshop })));
 const Archive = lazy(() => import('./pages/Archive').then(m => ({ default: m.Archive })));

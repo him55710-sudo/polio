@@ -145,7 +145,7 @@ export const api = {
     return download(url, config);
   },
   getRuntimeCapabilities() {
-    return this.get<RuntimeCapabilities>('/api/v1/runtime/capabilities');
+    return api.get<RuntimeCapabilities>('/api/v1/runtime/capabilities');
   },
 };
 

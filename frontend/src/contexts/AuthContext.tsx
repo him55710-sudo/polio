@@ -62,13 +62,13 @@ function extractApiErrorMessage(error: unknown): string | null {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isGuestSession, setIsGuestSession] = useState(false);
+  const [guestSessionActive, setGuestSessionActive] = useState(false);
   const guestModeAvailable = isGuestModeAllowed;
   const backendSessionAuthenticated = useAuthStore(state => state.isAuthenticated);
 
   useEffect(() => {
     localStorage.removeItem(GUEST_SESSION_KEY);
-    setIsGuestSession(false);
+    setGuestSessionActive(false);
 
     if (!auth || !isFirebaseConfigured) {
       if (hasAppAccessToken()) {
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (currentUser) {
         clearAppAccessToken();
         const shouldMarkGuest = currentUser.isAnonymous;
-        setIsGuestSession(shouldMarkGuest);
+        setGuestSessionActive(shouldMarkGuest);
         if (shouldMarkGuest) {
           localStorage.setItem(GUEST_SESSION_KEY, '1');
         } else {
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await useAuthStore.getState().fetchProfile();
         useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
       } else {
-        setIsGuestSession(false);
+        setGuestSessionActive(false);
         localStorage.removeItem(GUEST_SESSION_KEY);
         if (hasAppAccessToken()) {
           await useAuthStore.getState().fetchProfile();
@@ -181,14 +181,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!auth || !isFirebaseConfigured) {
-      setIsGuestSession(true);
+      setGuestSessionActive(true);
       localStorage.setItem(GUEST_SESSION_KEY, '1');
       return;
     }
 
     try {
       await signInAnonymously(auth);
-      setIsGuestSession(true);
+      setGuestSessionActive(true);
       localStorage.setItem(GUEST_SESSION_KEY, '1');
     } catch (error) {
       const authError = error as Partial<AuthError>;
@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    setIsGuestSession(false);
+    setGuestSessionActive(false);
     localStorage.removeItem(GUEST_SESSION_KEY);
     clearAppAccessToken();
     useAuthStore.getState().setUser(null);
@@ -217,8 +217,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isAuthenticated = (Boolean(user) && !user?.isAnonymous) || backendSessionAuthenticated;
-  const isVerified = (Boolean(user) && !user?.isAnonymous) || backendSessionAuthenticated;
-  const isGuestSession = Boolean(user?.isAnonymous) || (guestModeAvailable && !isAuthenticated && !!localStorage.getItem(GUEST_SESSION_KEY));
+  const isGuestSession = Boolean(user?.isAnonymous) || guestSessionActive || (guestModeAvailable && !isAuthenticated && !!localStorage.getItem(GUEST_SESSION_KEY));
+  const isVerified = isAuthenticated;
 
   return (
     <AuthContext.Provider

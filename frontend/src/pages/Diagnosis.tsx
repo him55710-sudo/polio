@@ -40,7 +40,7 @@ import {
 } from '../components/primitives';
 import { AsyncJobStatusCard } from '../components/AsyncJobStatusCard';
 import { useAsyncJob } from '../hooks/useAsyncJob';
-import { TERMINAL_STATUSES, SUCCESS_STATUSES } from '../types/domain';
+import { TERMINAL_STATUSES, SUCCESS_STATUSES, DocumentStatus } from '../types/domain';
 
 import { DiagnosisProfile } from '../components/diagnosis/DiagnosisProfile';
 import { DiagnosisGoals } from '../components/diagnosis/DiagnosisGoals';
@@ -53,7 +53,7 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 interface DiagnosisDocumentStatus {
   id: string;
   project_id: string;
-  status: string;
+  status: DocumentStatus;
   content_text: string;
   page_count?: number;
   latest_async_job_id?: string | null;
@@ -61,8 +61,9 @@ interface DiagnosisDocumentStatus {
   latest_async_job_error?: string | null;
   last_error?: string | null;
   parse_metadata?: {
-    stages?: Record<string, { status: string; error?: string }>;
+    stages?: Record<string, { status: 'pending' | 'processing' | 'success' | 'failed'; error?: string }>;
     fallback_used?: boolean;
+    pipeline_version?: string;
     [key: string]: any;
   };
 }
@@ -126,8 +127,8 @@ export function Diagnosis() {
 
   // Sync state on mount
   useEffect(() => {
-    void syncWithUser();
-  }, [syncWithUser]);
+    if (user) void syncWithUser(user);
+  }, [syncWithUser, user]);
   const [timingPhases, setTimingPhases] = useState<TimingPhaseMap>(createInitialTimingPhases());
   
   const useSynchronousApiJobs = shouldUseSynchronousApiJobs();
@@ -633,7 +634,7 @@ export function Diagnosis() {
           <motion.div key="result-view" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
             <DiagnosisResultDisplay diagnosisResult={diagnosisResult} diagnosisRun={diagnosisRun} />
             <div className="flex justify-center gap-2">
-              <SecondaryButton onClick={() => { resetOnboarding(); void syncWithUser(); }}>진단 새로 시작</SecondaryButton>
+              <SecondaryButton onClick={() => { resetOnboarding(); void syncWithUser(user); }}>진단 새로 시작</SecondaryButton>
               <PrimaryButton onClick={() => navigate(`/app/workshop/${projectId}`)}>워크숍 시작하기 <ArrowRight size={16} /></PrimaryButton>
             </div>
           </motion.div>

@@ -6,7 +6,9 @@ import { cn } from '../../lib/cn';
 interface SectionCardProps extends React.HTMLAttributes<HTMLElement> {
   title?: string;
   description?: string;
+  subtitle?: string; // Alias for description
   eyebrow?: string;
+  badge?: string; // New prop
   actions?: React.ReactNode;
   bodyClassName?: string;
   collapsible?: boolean;
@@ -18,7 +20,9 @@ interface SectionCardProps extends React.HTMLAttributes<HTMLElement> {
 export function SectionCard({
   title,
   description,
+  subtitle,
   eyebrow,
+  badge,
   actions,
   className,
   bodyClassName,
@@ -66,10 +70,21 @@ export function SectionCard({
     <Card className={cn('flex flex-col rounded-3xl border border-slate-200 shadow-sm', className)} {...props}>
       {(title || description || eyebrow || actions || collapsible) ? (
         <header className="mb-4 flex shrink-0 flex-col gap-3 sm:mb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="min-w-0">
-            {eyebrow ? <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{eyebrow}</p> : null}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3">
+              {eyebrow ? <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{eyebrow}</p> : null}
+              {badge ? (
+                <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-black text-blue-600 ring-1 ring-inset ring-blue-500/10">
+                  {badge}
+                </span>
+              ) : null}
+            </div>
             {title ? <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900 sm:text-2xl">{title}</h2> : null}
-            {description ? <p className="mt-2 text-sm font-medium leading-6 text-slate-500 sm:text-base sm:leading-7">{description}</p> : null}
+            {(description || subtitle) ? (
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-500 sm:text-base sm:leading-7">
+                {description || subtitle}
+              </p>
+            ) : null}
           </div>
           {actions || collapsible ? (
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">{headerActions}</div>
