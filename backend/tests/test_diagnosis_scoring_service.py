@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from unifoli_api.services.diagnosis_scoring_service import build_diagnosis_scoring_sheet
 from unifoli_api.services.student_record_feature_service import StudentRecordFeatures
@@ -11,20 +11,20 @@ def _sample_features() -> StudentRecordFeatures:
         total_word_count=1800,
         total_records=14,
         section_presence={
-            "援먭낵?숈뒿諛쒕떖?곹솴": True,
-            "李쎌쓽?곸껜?섑솢??: True,
-            "?됰룞?뱀꽦 諛?醫낇빀?섍껄": True,
-            "?낆꽌?쒕룞": False,
-            "?섏긽寃쎈젰": True,
+            "교과학습발달상황": True,
+            "창의적 체험활동": True,
+            "행동특성 및 종합의견": True,
+            "독서활동": False,
+            "수상경력": True,
         },
         section_record_counts={
-            "援먭낵?숈뒿諛쒕떖?곹솴": 7,
-            "李쎌쓽?곸껜?섑솢??: 3,
-            "?됰룞?뱀꽦 諛?醫낇빀?섍껄": 2,
-            "?낆꽌?쒕룞": 0,
-            "?섏긽寃쎈젰": 2,
+            "교과학습발달상황": 7,
+            "창의적 체험활동": 3,
+            "행동특성 및 종합의견": 2,
+            "독서활동": 0,
+            "수상경력": 2,
         },
-        subject_distribution={"?섑븰": 4, "臾쇰━": 3, "?뺣낫": 3},
+        subject_distribution={"수학": 4, "물리": 3, "정보": 3},
         unique_subject_count=3,
         narrative_char_count=4200,
         narrative_density=0.58,
@@ -46,14 +46,14 @@ def test_scoring_service_is_deterministic() -> None:
     first = build_diagnosis_scoring_sheet(
         features=features,
         project_title="determinism-check",
-        target_major="而댄벂?곌났??,
-        target_university="?뚯뒪?몃??숆탳",
+        target_major="컴퓨터공학",
+        target_university="테스트대학교",
     )
     second = build_diagnosis_scoring_sheet(
         features=features,
         project_title="determinism-check",
-        target_major="而댄벂?곌났??,
-        target_university="?뚯뒪?몃??숆탳",
+        target_major="컴퓨터공학",
+        target_university="테스트대학교",
     )
 
     assert first.model_dump() == second.model_dump()
@@ -67,5 +67,3 @@ def test_scoring_service_is_deterministic() -> None:
     }
     assert all(0 <= axis.score <= 100 for axis in first.admission_axes)
     assert first.document_quality.parse_reliability_score >= 0
-
-

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Literal
 
@@ -7,11 +7,13 @@ from pydantic import BaseModel, Field
 from unifoli_api.services.student_record_feature_service import StudentRecordFeatures
 
 AdmissionAxisKey = Literal[
-    "major_alignment",
-    "inquiry_continuity",
-    "evidence_density",
-    "process_explanation",
-    "authenticity_risk",
+    "universal_rigor",       # Layer 1: 학업 및 근거 엄밀성
+    "universal_specificity", # Layer 1: 근거 구체성
+    "relational_narrative",  # Layer 2: 서사적 발전성
+    "relational_continuity", # Layer 2: 탐구의 연속성
+    "cluster_depth",         # Layer 3: 전공 심층성
+    "cluster_suitability",   # Layer 3: 전공 적합성
+    "authenticity_risk",     # Risk Monitoring
 ]
 RiskLevel = Literal["safe", "warning", "danger"]
 
@@ -23,26 +25,24 @@ class AxisSemanticGrade(BaseModel):
 
 
 class SemanticDiagnosisExtraction(BaseModel):
-    major_alignment: AxisSemanticGrade
-    inquiry_continuity: AxisSemanticGrade
-    evidence_density: AxisSemanticGrade
-    process_explanation: AxisSemanticGrade
+    universal_rigor: AxisSemanticGrade
+    universal_specificity: AxisSemanticGrade
+    relational_narrative: AxisSemanticGrade
+    relational_continuity: AxisSemanticGrade
+    cluster_depth: AxisSemanticGrade
+    cluster_suitability: AxisSemanticGrade
     summary_insight: str
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
 
-_SECTION_LABELS: dict[str, str] = {
-    "援먭낵?숈뒿諛쒕떖?곹솴": "援먭낵?숈뒿諛쒕떖?곹솴",
-    "李쎌쓽?곸껜?섑솢??: "李쎌쓽?곸껜?섑솢??,
-    "?됰룞?뱀꽦 諛?醫낇빀?섍껄": "?됰룞?뱀꽦 諛?醫낇빀?섍껄",
-    "?낆꽌?쒕룞": "?낆꽌?쒕룞",
-    "?섏긽寃쎈젰": "?섏긽寃쎈젰",
-}
+
 _POSITIVE_AXIS_LABELS: dict[str, str] = {
-    "major_alignment": "?꾧났 ?곹빀??,
-    "inquiry_continuity": "?먭뎄 ?곗냽??,
-    "evidence_density": "利앷굅 諛??,
-    "process_explanation": "怨쇱젙 ?ㅻ챸??,
+    "universal_rigor": "학업 및 근거 엄밀성",
+    "universal_specificity": "근거 구체성",
+    "relational_narrative": "서사적 발전성",
+    "relational_continuity": "탐구의 연속성",
+    "cluster_depth": "전공 심층성",
+    "cluster_suitability": "전공 적합성",
 }
 
 
@@ -99,29 +99,28 @@ async def extract_semantic_diagnosis(
     interest_universities: list[str] | None = None,
 ) -> SemanticDiagnosisExtraction:
     from unifoli_api.core.llm import get_llm_client
-    
+
     llm = get_llm_client()
-    # Force use a faster model for scoring to keep latency low
     if hasattr(llm, "model_name"):
         llm.model_name = "gemini-1.5-flash"
-        
+
     interest_context = ""
     if interest_universities:
-        interest_context = f". Other Interest Universities: {', '.join(interest_universities)}"
+        interest_context = f" / Additional targets: {', '.join(interest_universities)}"
 
     system_instruction = (
-        "You are an expert admissions officer. Extract semantic scores for the student record axes. "
-        "Each axis score should reflect the DEPTH and QUALITY of the record, not just the presence of text. "
-        f"Target Major: {target_major or 'General'}. Target University: {target_university or 'General'}{interest_context}. "
-        "Be critical but fair. Provide specific evidence hints for each axis."
+        "You are an elite university admissions evaluator. Analyze student records using a 3-layer framework:\n"
+        "1. Universal Layer: Academic rigor and evidence specificity.\n"
+        "2. Relational Layer: Narrative development and inquiry continuity across years/subjects.\n"
+        "3. Cluster Layer: Deep exploration into the specified major and specific suitability.\n\n"
+        f"Target major: {target_major or 'general'}. Target university: {target_university or 'general'}{interest_context}.\n"
+        "Be extremely conservative. If evidence is missing, give low scores. Rationale must be evidence-backed."
     )
-    
     prompt = (
-        "Analyze the following student record and extract strategic semantic scores.\n\n"
-        f"=== Student Record ===\n{masked_text[:15000]}\n\n"
-        "Return the analysis as JSON aligned to SemanticDiagnosisExtraction schema."
+        "Perform a deep semantic diagnosis of the following student record content. "
+        "Strictly follow the SemanticDiagnosisExtraction schema.\n\n"
+        f"CONTENT:\n{masked_text[:15000]}"
     )
-    
     return await llm.generate_json(
         prompt=prompt,
         response_model=SemanticDiagnosisExtraction,
@@ -159,26 +158,26 @@ def build_diagnosis_scoring_sheet(
         key=lambda axis: axis.score,
         default=None,
     )
-    weakest_label = weakest_axis.label if weakest_axis else "?듭떖 ?됯?異?
-    
-    # Construct multi-university context
-    targets = []
+    weakest_label = weakest_axis.label if weakest_axis else "핵심 축"
+
+    targets: list[str] = []
     if target_university:
         targets.append(f"{target_university} {target_major or ''}".strip())
     if interest_universities:
         targets.extend(interest_universities)
-    
-    target_context = " 諛?".join(targets[:2]) + (f" ??{len(targets)-2}怨? if len(targets) > 2 else "")
+    target_context = " · ".join(targets[:2])
+    if len(targets) > 2:
+        target_context = f"{target_context} 외 {len(targets) - 2}개"
     if not target_context:
-        target_context = target_major or "紐⑺몴 ?꾧났"
+        target_context = target_major or "목표 전공"
 
     overview = (
-        f"{project_title} 湲곗??쇰줈 臾몄꽌 ?좊ː?꾨뒗 {document_quality.parse_reliability_band} ?섏??대ŉ, "
-        f"?꾩옱??{weakest_label} 蹂닿컯???곗꽑?낅땲??"
+        f"{project_title} 기준 문서 신뢰도는 {document_quality.parse_reliability_band} 수준이며, "
+        f"현재는 {weakest_label} 보강이 우선입니다."
     )
     recommended_focus = (
-        f"{target_context} 吏??留λ씫?먯꽌 {weakest_label}??癒쇱? 蹂닿컯?섏꽭?? "
-        "?먯닔???꾩옱 湲곕줉 洹쇨굅瑜?湲곗??쇰줈 寃곗젙濡좎쟻?쇰줈 怨꾩궛?섏뿀?듬땲??"
+        f"{target_context} 맥락에서 {weakest_label}을 먼저 보강하세요. "
+        "점수는 현재 기록 근거를 기준으로 보수적으로 계산했습니다."
     )
 
     return DiagnosisScoringSheet(
@@ -198,19 +197,20 @@ def build_diagnosis_scoring_sheet(
 
 def _build_section_analysis(features: StudentRecordFeatures) -> list[SectionAnalysisItem]:
     rows: list[SectionAnalysisItem] = []
-    for key, label in _SECTION_LABELS.items():
+    keys = list(features.section_record_counts.keys()) or list(features.section_presence.keys())
+    for key in keys[:6]:
         present = bool(features.section_presence.get(key))
         count = int(features.section_record_counts.get(key) or 0)
         if present and count >= 3:
-            note = "湲곕줉 ?섍? 異⑸텇???ы솕 洹쇨굅濡??쒖슜 媛?ν빀?덈떎."
+            note = "기록이 충분해 심화 근거로 활용 가능합니다."
         elif present:
-            note = "湲곕줉? 議댁옱?섏?留??섍? ?곸뼱 蹂닿컯 ?ъ?媛 ?덉뒿?덈떎."
+            note = "기록은 존재하지만 수가 적어 보강 여지가 있습니다."
         else:
-            note = "?대떦 ?뱀뀡 湲곕줉???뺤씤?섏? ?딆븘 蹂닿컯???꾩슂?⑸땲??"
+            note = "해당 섹션 근거가 부족해 보강이 필요합니다."
         rows.append(
             SectionAnalysisItem(
-                key=key,
-                label=label,
+                key=str(key),
+                label=str(key),
                 present=present,
                 record_count=max(0, count),
                 note=note,
@@ -222,15 +222,15 @@ def _build_section_analysis(features: StudentRecordFeatures) -> list[SectionAnal
 def _build_document_quality(features: StudentRecordFeatures) -> DocumentQualitySummary:
     reliability_score = _bounded_int(features.reliability_score * 100.0)
     if reliability_score >= 80:
-        reliability_band = "?믪쓬"
+        reliability_band = "높음"
     elif reliability_score >= 60:
-        reliability_band = "蹂댄넻"
+        reliability_band = "보통"
     else:
-        reliability_band = "二쇱쓽"
+        reliability_band = "주의"
 
     summary = (
-        f"{features.document_count}媛?臾몄꽌, 珥?{features.total_records}媛??덉퐫??湲곗? "
-        f"?뚯떛 ?좊ː??{reliability_score}?먯쑝濡??됯??덉뒿?덈떎."
+        f"{features.document_count}개 문서, 총 {features.total_records}개 기록 기준 "
+        f"파싱 신뢰도 {reliability_score}점입니다."
     )
     return DocumentQualitySummary(
         source_mode=features.source_mode,
@@ -246,127 +246,87 @@ def _build_document_quality(features: StudentRecordFeatures) -> DocumentQualityS
     )
 
 
-def _build_admission_axes(features: StudentRecordFeatures, semantic: SemanticDiagnosisExtraction | None = None) -> list[AdmissionAxisResult]:
-    # 1. Base Heuristic Scores (Deterministic)
-    h_major_alignment = _bounded_int(
-        20
-        + features.major_term_overlap_ratio * 58
-        + min(features.unique_subject_count, 10) * 2.8
-        + (8 if features.section_presence.get("援먭낵?숈뒿諛쒕떖?곹솴") else 0)
-    )
-    h_inquiry_continuity = _bounded_int(
-        24
-        + features.repeated_subject_ratio * 52
-        + min(features.total_records, 40) * 0.9
-        + (6 if features.section_presence.get("李쎌쓽?곸껜?섑솢??) else 0)
-    )
-    h_evidence_density = _bounded_int(
-        20
-        + features.evidence_density * 56
-        + min(features.evidence_reference_count, 25) * 1.0
-    )
-    h_process_explanation = _bounded_int(
-        22
-        + features.narrative_density * 60
-        + min(features.section_record_counts.get("?됰룞?뱀꽦 諛?醫낇빀?섍껄", 0), 8) * 2.0
-    )
+def _build_admission_axes(
+    features: StudentRecordFeatures,
+    semantic: SemanticDiagnosisExtraction | None = None,
+) -> list[AdmissionAxisResult]:
+    # Layer 1: Universal
+    rigor_base = _bounded_int(15 + features.reliability_score * 45 + min(features.total_records, 30) * 1.3)
+    spec_base = _bounded_int(10 + features.evidence_density * 60 + min(features.evidence_reference_count, 20) * 1.5)
     
-    # 2. Merge with Semantic Data (LLM Semantic extraction has 70% weight if available)
-    def _merge(h_score: int, s_grade: AxisSemanticGrade | None) -> tuple[int, str, list[str]]:
-        if not s_grade:
-            return h_score, "", []
-        # Semantic score is more "intelligent", so we weigh it heavily
-        final_score = _bounded_int(h_score * 0.3 + s_grade.score * 0.7)
-        return final_score, s_grade.rationale, s_grade.evidence_hints
+    # Layer 2: Relational
+    narrative_base = _bounded_int(20 + features.narrative_density * 50 + len(features.section_presence) * 4)
+    continuity_base = _bounded_int(15 + features.repeated_subject_ratio * 65 + min(features.unique_subject_count, 12) * 1.5)
+    
+    # Layer 3: Cluster (Major-specific)
+    depth_base = _bounded_int(10 + features.major_term_overlap_ratio * 75 + min(features.unique_subject_count, 8) * 2.0)
+    suitability_base = depth_base # Heuristic fallback matches depth unless semantic provides better
 
-    s_major = semantic.major_alignment if semantic else None
-    s_inquiry = semantic.inquiry_continuity if semantic else None
-    s_evidence = semantic.evidence_density if semantic else None
-    s_process = semantic.process_explanation if semantic else None
+    def _merge(base: int, semantic_grade: AxisSemanticGrade | None) -> tuple[int, str, list[str]]:
+        if semantic_grade is None:
+            return base, "", []
+        score = _bounded_int(base * 0.3 + semantic_grade.score * 0.7)
+        return score, semantic_grade.rationale, semantic_grade.evidence_hints
 
-    # Authenticity risk calculation (Higher is riskier)
+    u_rigor_score, u_rigor_rat, u_rigor_hints = _merge(rigor_base, semantic.universal_rigor if semantic else None)
+    u_spec_score, u_spec_rat, u_spec_hints = _merge(spec_base, semantic.universal_specificity if semantic else None)
+    r_narr_score, r_narr_rat, r_narr_hints = _merge(narrative_base, semantic.relational_narrative if semantic else None)
+    r_cont_score, r_cont_rat, r_cont_hints = _merge(continuity_base, semantic.relational_continuity if semantic else None)
+    c_depth_score, c_depth_rat, c_depth_hints = _merge(depth_base, semantic.cluster_depth if semantic else None)
+    c_suit_score, c_suit_rat, c_suit_hints = _merge(suitability_base, semantic.cluster_suitability if semantic else None)
+
     authenticity_risk = _bounded_int(
-        78
-        - features.reliability_score * 44
-        - features.evidence_density * 20
-        - features.repeated_subject_ratio * 10
-        + (16 if features.needs_review else 0)
-        + (10 if features.total_records < 5 else 0)
+        80 - features.reliability_score * 40 - features.evidence_density * 25 - features.repeated_subject_ratio * 15
+        + (20 if features.needs_review else 0)
     )
 
-    axes: list[AdmissionAxisResult] = []
-    
-    # Axis 1: Major Alignment
-    score, rationale, hints = _merge(h_major_alignment, s_major)
-    axes.append(
+    return [
         _positive_axis(
-            key="major_alignment",
-            score=score,
-            rationale=rationale or _major_alignment_rationale(score),
-            hints=hints or [
-                f"?꾧났 ?ㅼ썙??以묒꺽 鍮꾩쑉: {round(features.major_term_overlap_ratio, 3)}",
-                f"怨좎쑀 怨쇰ぉ ?? {features.unique_subject_count}",
-            ],
-        )
-    )
-    
-    # Axis 2: Inquiry Continuity
-    score, rationale, hints = _merge(h_inquiry_continuity, s_inquiry)
-    axes.append(
+            key="universal_rigor",
+            score=u_rigor_score,
+            rationale=u_rigor_rat or "학업 성취와 기록의 신뢰도를 바탕으로 산출된 학업 엄밀성입니다.",
+            hints=u_rigor_hints or [f"신뢰도 점수: {round(features.reliability_score, 2)}", f"전체 기록 수: {features.total_records}"],
+        ),
         _positive_axis(
-            key="inquiry_continuity",
-            score=score,
-            rationale=rationale or _inquiry_rationale(score),
-            hints=hints or [
-                f"諛섎났 怨쇰ぉ 鍮꾩쑉: {round(features.repeated_subject_ratio, 3)}",
-                f"珥??덉퐫???? {features.total_records}",
-            ],
-        )
-    )
-    
-    # Axis 3: Evidence Density
-    score, rationale, hints = _merge(h_evidence_density, s_evidence)
-    axes.append(
+            key="universal_specificity",
+            score=u_spec_score,
+            rationale=u_spec_rat or "기록 내 구체적 사실과 근거 참조 빈도를 분석한 결과입니다.",
+            hints=u_spec_hints or [f"근거 밀도: {round(features.evidence_density, 2)}", f"근거 참조 수: {features.evidence_reference_count}"],
+        ),
         _positive_axis(
-            key="evidence_density",
-            score=score,
-            rationale=rationale or _evidence_rationale(score),
-            hints=hints or [
-                f"利앷굅 諛?? {round(features.evidence_density, 3)}",
-                f"利앷굅 李몄“ ?? {features.evidence_reference_count}",
-            ],
-        )
-    )
-    
-    # Axis 4: Process Explanation
-    score, rationale, hints = _merge(h_process_explanation, s_process)
-    axes.append(
+            key="relational_narrative",
+            score=r_narr_score,
+            rationale=r_narr_rat or "섹션 간 조화와 서술의 풍부함을 바탕으로 평가한 서사 발전성입니다.",
+            hints=r_narr_hints or [f"서술 밀도: {round(features.narrative_density, 2)}", f"활성화 섹션 수: {sum(1 for p in features.section_presence.values() if p)}"],
+        ),
         _positive_axis(
-            key="process_explanation",
-            score=score,
-            rationale=rationale or _process_rationale(score),
-            hints=hints or [
-                f"?쒖닠 諛?? {round(features.narrative_density, 3)}",
-                f"?됰룞?뱀꽦/醫낇빀?섍껄 ?덉퐫?? {features.section_record_counts.get('?됰룞?뱀꽦 諛?醫낇빀?섍껄', 0)}",
-            ],
-        )
-    )
-    
-    axes.append(
+            key="relational_continuity",
+            score=r_cont_score,
+            rationale=r_cont_rat or "학년별/과목별 탐구 주제의 반복과 심화 과정을 분석했습니다.",
+            hints=r_cont_hints or [f"반복 과목 비율: {round(features.repeated_subject_ratio, 2)}", f"고유 과목 수: {features.unique_subject_count}"],
+        ),
+        _positive_axis(
+            key="cluster_depth",
+            score=c_depth_score,
+            rationale=c_depth_rat or "목표 전공 관련 키워드와 심화 활동의 깊이를 평가했습니다.",
+            hints=c_depth_hints or [f"전공 키워드 중첩도: {round(features.major_term_overlap_ratio, 2)}"],
+        ),
+        _positive_axis(
+            key="cluster_suitability",
+            score=c_suit_score,
+            rationale=c_suit_rat or "기록 전반에 나타난 진로 지향성과 전공 적합성을 종합 분석했습니다.",
+            hints=c_suit_hints or [f"전공 일치 단서 존재 여부", f"진로 탐색 구체성"],
+        ),
         _authenticity_risk_axis(
             score=authenticity_risk,
-            hints=[
-                f"?뚯떛 ?좊ː?? {round(features.reliability_score, 3)}",
-                f"needs_review 臾몄꽌 ?? {features.needs_review_documents}",
-            ],
-        )
-    )
-    return axes
+            hints=[f"파싱 신뢰도: {round(features.reliability_score, 2)}", f"검토 필요 문서: {features.needs_review_documents}"],
+        ),
+    ]
 
 
 def _positive_axis(
     *,
-    key: Literal["major_alignment", "inquiry_continuity", "evidence_density", "process_explanation"],
+    key: AdmissionAxisKey,
     score: int,
     rationale: str,
     hints: list[str],
@@ -395,18 +355,18 @@ def _authenticity_risk_axis(*, score: int, hints: list[str]) -> AdmissionAxisRes
     if score <= 35:
         band = "stable"
         severity: Literal["low", "medium", "high"] = "low"
-        rationale = "洹쇨굅 ?鍮?怨쇱옣 ?꾪뿕????퀬 湲곕줉 ?쇨??깆씠 ?좎??⑸땲??"
+        rationale = "근거 대비 과장 위험이 낮고 기록 일관성이 유지됩니다."
     elif score <= 60:
         band = "watch"
         severity = "medium"
-        rationale = "?쇰? 援ш컙?먯꽌 洹쇨굅 諛?꾩? ?ㅻ챸 ?쇨??깆쓣 異붽? ?뺤씤?댁빞 ?⑸땲??"
+        rationale = "일부 구간에서 근거 밀도와 설명 일관성을 추가 확인해야 합니다."
     else:
         band = "high_risk"
         severity = "high"
-        rationale = "洹쇨굅 ?鍮?二쇱옣 怨쇱옣 媛?μ꽦???덉뼱 蹂댁닔???쒖닠怨?利앷굅 蹂닿컯???꾩슂?⑸땲??"
+        rationale = "근거 대비 주장 과장 가능성이 높아 보수적 서술과 근거 보강이 필요합니다."
     return AdmissionAxisResult(
         key="authenticity_risk",
-        label="吏꾩젙?굿룰낵???꾪뿕",
+        label="진정성·과장 위험",
         score=score,
         band=band,
         severity=severity,
@@ -417,34 +377,34 @@ def _authenticity_risk_axis(*, score: int, hints: list[str]) -> AdmissionAxisRes
 
 def _major_alignment_rationale(score: int) -> str:
     if score >= 80:
-        return "?꾧났 ?곌퀎 ?ㅼ썙?쒖? 怨쇰ぉ 遺꾪룷媛 鍮꾧탳???덉젙?곸쑝濡??곌껐?⑸땲??"
+        return "전공 연계 키워드와 과목 분포가 비교적 안정적으로 연결됩니다."
     if score >= 60:
-        return "?꾧났 ?곌퀎 ?⑥꽌???덉쑝??湲곕줉 ?꾨컲?먯꽌 諛섎났 ?몄텧?????꾩슂?⑸땲??"
-    return "?꾧났 ?곌껐 ?좏샇媛 ?쏀빐 ?듭떖 怨쇰ぉ/?쒕룞 洹쇨굅瑜?紐낆떆?곸쑝濡?蹂닿컯?댁빞 ?⑸땲??"
+        return "전공 연계 단서가 있으나 기록 전반에서 반복 노출이 더 필요합니다."
+    return "전공 연결 신호가 약해 핵심 과목/활동 근거를 보강해야 합니다."
 
 
 def _inquiry_rationale(score: int) -> str:
     if score >= 80:
-        return "?먭뎄 ?먮쫫???⑤컻?깆씠 ?꾨땲???꾩냽 ?쒕룞?쇰줈 ?댁뼱吏???⑦꽩???뺤씤?⑸땲??"
+        return "탐구 흐름이 단발성이 아니라 후속 활동으로 이어집니다."
     if score >= 60:
-        return "?먭뎄 ?곗냽???⑥꽌媛 ?쇰? ?덉쑝??怨쇰ぉ/二쇱젣 ?щ벑???먮쫫????紐낇솗???댁빞 ?⑸땲??"
-    return "?쒕룞???⑦렪?곸쑝濡?蹂댁씪 ???덉뼱 鍮꾧탳쨌?꾩냽쨌?ы솕 ?먮쫫???섎룄?곸쑝濡??곌껐?댁빞 ?⑸땲??"
+        return "탐구 연속성 단서가 일부 있으나 문제-시도-개선 흐름을 더 명확히 해야 합니다."
+    return "활동이 분절적으로 보일 수 있어 비교·연속·심화 흐름 보강이 필요합니다."
 
 
 def _evidence_rationale(score: int) -> str:
     if score >= 80:
-        return "?섏튂/愿李?湲곕줉 洹쇨굅媛 異⑸텇??二쇱옣??諛⑹뼱?섍린 醫뗭뒿?덈떎."
+        return "수치/관찰 기록 근거가 충분해 주장을 방어하기 유리합니다."
     if score >= 60:
-        return "?듭떖 洹쇨굅???덉쑝??二쇱옣 ?鍮?利앷굅 諛?꾨? ???④퀎 ???믪씪 ?꾩슂媛 ?덉뒿?덈떎."
-    return "洹쇨굅 諛?꾧? ??븘 寃곌낵 二쇱옣蹂대떎 愿李??ъ떎??癒쇱? 異뺤쟻?섎뒗 寃껋씠 ?덉쟾?⑸땲??"
+        return "핵심 근거는 있으나 주장 대비 근거 밀도를 단계적으로 높일 필요가 있습니다."
+    return "근거 밀도가 낮아 결론 주장보다 관찰 사실 축적이 우선입니다."
 
 
 def _process_rationale(score: int) -> str:
     if score >= 80:
-        return "怨쇱젙 ?ㅻ챸怨?諛섏꽦 湲곕줉??鍮꾧탳??援ъ껜?곸쑝濡??쒕윭?⑸땲??"
+        return "과정 설명과 반성 기록이 구체적으로 드러납니다."
     if score >= 60:
-        return "怨쇱젙 ?쒖닠? ?덉쑝??諛⑸쾿-?쒓퀎-媛쒖꽑???곌껐?????먮졆?섍쾶 ?곸뼱???⑸땲??"
-    return "臾댁뾿???덈뒗吏??蹂댁씠吏留???洹몃젃寃??덈뒗吏? ?쒓퀎 ?ㅻ챸??遺議깊빀?덈떎."
+        return "과정 서술은 있으나 방법-한계-개선 연결을 더 선명히 해야 합니다."
+    return "무엇을 했는지는 보이나 왜/어떻게 했는지의 과정 설명이 부족합니다."
 
 
 def _derive_risk_level(*, admission_axes: list[AdmissionAxisResult]) -> RiskLevel:
@@ -470,16 +430,11 @@ def _build_strengths(
     strengths: list[str] = []
     if semantic and semantic.strengths:
         strengths.extend(semantic.strengths)
-        
     for axis in admission_axes:
-        if axis.key == "authenticity_risk":
-            continue
-        if axis.band == "strong":
+        if axis.key != "authenticity_risk" and axis.band == "strong":
             strengths.append(f"{axis.label}: {axis.rationale}")
-    if features.section_presence.get("援먭낵?숈뒿諛쒕떖?곹솴") and features.section_record_counts.get("援먭낵?숈뒿諛쒕떖?곹솴", 0) >= 3:
-        strengths.append("援먭낵?숈뒿諛쒕떖?곹솴 湲곕줉?됱씠 異⑸텇???숈뾽 洹쇨굅 ?쒖떆???좊━?⑸땲??")
     if not strengths:
-        strengths.append("?듭떖 ?뱀뀡??湲곕컲?쇰줈 ?뺤옣 媛?ν븳 理쒖냼 洹쇨굅???뺣낫?섏뼱 ?덉뒿?덈떎.")
+        strengths.append("핵심 섹션 기반의 기본 근거는 확보되어 있습니다.")
     return _dedupe_keep_order(strengths)[:8]
 
 
@@ -492,17 +447,13 @@ def _build_gaps(
     gaps: list[str] = []
     if semantic and semantic.gaps:
         gaps.extend(semantic.gaps)
-        
     for axis in admission_axes:
-        if axis.key == "authenticity_risk":
-            continue
-        if axis.band in {"weak", "watch"}:
+        if axis.key != "authenticity_risk" and axis.band in {"weak", "watch"}:
             gaps.append(f"{axis.label}: {axis.rationale}")
-    for section_key, present in features.section_presence.items():
-        if not present and section_key in _SECTION_LABELS:
-            gaps.append(f"{section_key} ?뱀뀡 洹쇨굅媛 遺議깊빀?덈떎.")
+    if features.total_records < 5:
+        gaps.append("기록 총량이 적어 근거 확보가 필요합니다.")
     if not gaps:
-        gaps.append("?꾩옱 援ъ“瑜??좎??섎㈃???몃? 利앷굅(?섏튂, 鍮꾧탳, 諛섏꽦)瑜?異붽??섎㈃ ?꾩꽦?꾧? ?믪븘吏묐땲??")
+        gaps.append("현재 구조를 유지하되 수치·비교·반성 근거를 추가하면 완성도가 높아집니다.")
     return _dedupe_keep_order(gaps)[:10]
 
 
@@ -514,7 +465,7 @@ def _build_risk_flags(
     flags = list(features.risk_flags)
     authenticity = next((axis for axis in admission_axes if axis.key == "authenticity_risk"), None)
     if authenticity and authenticity.band == "high_risk":
-        flags.append("吏꾩젙?굿룰낵???꾪뿕 異뺤씠 ?믪븘 ?쒗쁽 ?섏쐞瑜?蹂댁닔?곸쑝濡??좎??댁빞 ?⑸땲??")
+        flags.append("진정성·과장 위험 축이 높아 보수적 문장 운영이 필요합니다.")
     return _dedupe_keep_order(flags)[:8]
 
 
@@ -530,19 +481,22 @@ def _build_next_action_seeds(
         key=lambda axis: axis.score,
     )[:2]
     for axis in weakest_positive:
-        if axis.key == "major_alignment":
-            actions.append("?꾩옱 湲곕줉 以??꾧났 愿??怨쇰ぉ/?쒕룞 臾몄옣????臾몃떒?쇰줈 ?ъ젙?ы빐 ?곌껐?깆쓣 紐낆떆?섏꽭??")
-        elif axis.key == "inquiry_continuity":
-            actions.append("媛숈? 二쇱젣瑜?2???댁긽 ?댁뼱吏???먮쫫(臾몄젣-?쒕룄-媛쒖꽑)?쇰줈 ?뺣━?섏꽭??")
-        elif axis.key == "evidence_density":
-            actions.append("二쇱옣留덈떎 愿李?洹쇨굅 1媛??댁긽???곌껐?섍퀬 ?섏튂/?ъ떎 ?쒗쁽???곗꽑 諛곗튂?섏꽭??")
-        elif axis.key == "process_explanation":
-            actions.append("諛⑸쾿-?쒓퀎-媛쒖꽑 ?쒖꽌濡?怨쇱젙 ?ㅻ챸??3臾몄옣 ?댁긽 怨좎젙 ?쒗뵆由우쑝濡??묒꽦?섏꽭??")
-
+        if axis.key == "cluster_suitability":
+            actions.append("현재 기록 중 전공 관련 과목/활동 문장을 한 문단으로 재정리해 연결성을 명시하세요.")
+        elif axis.key == "relational_continuity":
+            actions.append("같은 주제를 2단계 이상 이어지는 흐름(문제-시도-개선)으로 정리하세요.")
+        elif axis.key == "universal_specificity":
+            actions.append("주장마다 관찰 근거를 최소 1개 이상 연결하고 수치/사실 표현을 우선 배치하세요.")
+        elif axis.key == "cluster_depth":
+            actions.append("방법-한계-개선 순서로 과정 설명을 3문장 이상 고정 템플릿으로 작성하세요.")
+        elif axis.key == "universal_rigor":
+            actions.append("학업 성취와 기록의 신뢰도를 높이기 위해, 사실 중심의 기술과 근거 확인을 강화하세요.")
+        elif axis.key == "relational_narrative":
+            actions.append("활동 간의 연결 고리를 강화하여 전체적인 성장 서사가 드러나도록 보강하세요.")
     if features.needs_review:
-        actions.append("needs_review ?쒖떆 臾몄꽌???먮Ц ?議????듭떖 臾몄옣??蹂댁닔?곸쑝濡??ъ옉?깊븯?몄슂.")
+        actions.append("검토 필요 문서는 원문 대조 후 핵심 문장을 보수적으로 재작성하세요.")
     if target_major:
-        actions.append(f"{target_major} 吏??留λ씫??留욌뒗 ?쒕룞 1媛쒕? ?좎젙??洹쇨굅 以묒떖?쇰줈 ?ы솕 湲곕줉??異붽??섏꽭??")
+        actions.append(f"{target_major} 맥락에 맞는 활동 1개를 선정해 근거 중심 심화 기록을 추가하세요.")
     return _dedupe_keep_order(actions)[:8]
 
 
@@ -553,9 +507,9 @@ def _build_recommended_topics(
 ) -> list[str]:
     topics = [subject for subject, _ in features.subject_distribution.items()][:5]
     if target_major:
-        topics.insert(0, f"{target_major} ?곌퀎 ?ы솕?먭뎄")
+        topics.insert(0, f"{target_major} 연계 심화탐구")
     if not topics:
-        topics = ["援먭낵 湲곕컲 ?ы솕?먭뎄", "吏꾨줈 ?곌퀎 ?꾨줈?앺듃", "鍮꾧탳쨌遺꾩꽍???쒕룞"]
+        topics = ["교과 기반 심화탐구", "진로 연계 프로젝트", "비교·분석형 활동"]
     return _dedupe_keep_order(topics)[:6]
 
 
@@ -577,4 +531,3 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
         seen.add(normalized)
         deduped.append(normalized)
     return deduped
-

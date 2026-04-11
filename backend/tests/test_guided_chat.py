@@ -8,7 +8,7 @@ from unifoli_api.main import app
 from unifoli_api.schemas.guided_chat import TopicSuggestion
 from backend.tests.auth_helpers import auth_headers
 
-FIXED_GREETING = "?덈뀞?섏꽭?? ?대뼡 二쇱젣??蹂닿퀬?쒕? ?⑤낵源뚯슂?"
+FIXED_GREETING = "안녕하세요. 어떤 주제로 보고서를 써볼까요?"
 
 
 class _FakeGuidedChatLLM:
@@ -19,18 +19,18 @@ class _FakeGuidedChatLLM:
         suggestions = [
             TopicSuggestion(
                 id=f"topic-{index + 1}",
-                title=f"?뚯뒪??二쇱젣 {index + 1}",
-                why_fit_student="?뺤씤??留λ씫 踰붿쐞 ?덉뿉???덉쟾?섍쾶 吏꾪뻾 媛?ν븳 二쇱젣?낅땲??",
-                link_to_record_flow="湲곕줉 ?먮쫫怨??곌껐 媛?ν븳 踰붿쐞?먯꽌 ?쒖븞?쒕┰?덈떎.",
+                title=f"테스트 주제 {index + 1}",
+                why_fit_student="확인된 맥락 범위 안에서 안전하게 진행 가능한 주제입니다.",
+                link_to_record_flow="기록 흐름과 연결 가능한 범위에서 제안합니다.",
                 link_to_target_major_or_university=None,
-                novelty_point="湲곗〈 ?먮쫫??蹂댁닔?곸쑝濡??뺤옣?⑸땲??",
+                novelty_point="기존 흐름을 보수적으로 확장합니다.",
                 caution_note=None,
             )
             for index in range(self.suggestion_count)
         ]
         return response_model(
             greeting=FIXED_GREETING,
-            subject="?섑븰",
+            subject="수학",
             suggestions=suggestions,
             evidence_gap_note=None,
         )
@@ -45,7 +45,7 @@ def _create_project(client: TestClient, headers: dict[str, str]) -> str:
     response = client.post(
         "/api/v1/projects",
         headers=headers,
-        json={"title": "Guided Chat Test Project", "target_major": "?섑븰"},
+        json={"title": "Guided Chat Test Project", "target_major": "수학"},
     )
     assert response.status_code == 201
     return response.json()["id"]
@@ -89,7 +89,7 @@ def test_topic_suggestions_always_return_exactly_three_items(monkeypatch) -> Non
         response = client.post(
             "/api/v1/guided-chat/topic-suggestions",
             headers=headers,
-            json={"project_id": project_id, "subject": "?섑븰"},
+            json={"project_id": project_id, "subject": "수학"},
         )
 
     assert response.status_code == 200
@@ -107,14 +107,14 @@ def test_missing_diagnosis_data_returns_limited_context_note(monkeypatch) -> Non
         response = client.post(
             "/api/v1/guided-chat/topic-suggestions",
             headers=headers,
-            json={"project_id": project_id, "subject": "?섑븰"},
+            json={"project_id": project_id, "subject": "수학"},
         )
 
     assert response.status_code == 200
     payload = response.json()
     note = payload.get("evidence_gap_note") or ""
     assert note
-    assert ("?쒗븳" in note) or ("遺議? in note)
+    assert ("제한" in note) or ("부족" in note)
     assert len(payload["suggestions"]) == 3
 
 
@@ -127,7 +127,7 @@ def test_topic_selection_returns_richer_starter_draft(monkeypatch) -> None:
         suggestions_response = client.post(
             "/api/v1/guided-chat/topic-suggestions",
             headers=headers,
-            json={"project_id": project_id, "subject": "?섑븰"},
+            json={"project_id": project_id, "subject": "수학"},
         )
         assert suggestions_response.status_code == 200
         suggestions_payload = suggestions_response.json()
@@ -139,7 +139,7 @@ def test_topic_selection_returns_richer_starter_draft(monkeypatch) -> None:
             json={
                 "project_id": project_id,
                 "selected_topic_id": selected_id,
-                "subject": "?섑븰",
+                "subject": "수학",
                 "suggestions": suggestions_payload["suggestions"],
             },
         )
@@ -147,9 +147,9 @@ def test_topic_selection_returns_richer_starter_draft(monkeypatch) -> None:
     assert selection_response.status_code == 200
     payload = selection_response.json()
     starter = payload["starter_draft_markdown"]
-    assert "## 利앷굅-?덉쟾 ?묒꽦 寃쎄퀎" in starter
-    assert "## Evidence Memo" in starter
-    assert "## ?꾩엯 臾몃떒(珥덉븞)" in starter
+    assert "## 증거-안전 작성 경계" in starter
+    assert "## 근거 메모" in starter
+    assert "## 도입 문단(초안)" in starter
     assert isinstance(payload.get("state_summary"), dict)
 
 

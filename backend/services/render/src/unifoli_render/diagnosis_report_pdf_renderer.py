@@ -61,8 +61,8 @@ def render_consultant_diagnosis_pdf(
         rightMargin=float(margins.get("right", 46)),
         topMargin=float(margins.get("top", 44)),
         bottomMargin=float(margins.get("bottom", 50)),
-        title=str(report_payload.get("title") or "?좊땲?대━ 吏꾨떒 蹂닿퀬??),
-        author="?좊땲?대━ 吏꾨떒",
+        title=str(report_payload.get("title") or "유니폴리 진단 보고서"),
+        author="유니폴리 진단",
     )
 
     color_tokens = design_contract.get("colors", {}) if isinstance(design_contract.get("colors"), dict) else {}
@@ -78,26 +78,26 @@ def render_consultant_diagnosis_pdf(
     # Cover page
     story.extend(
         [
-            Paragraph("?좊땲?대━ 而⑥꽕?댄듃 吏꾨떒 由ы룷??, style_tokens["cover_label"]),
-            Paragraph(_escape(str(report_payload.get("title") or "?좊땲?대━ 吏꾨떒 蹂닿퀬??)), style_tokens["cover_title"]),
-            Paragraph(_escape(str(report_payload.get("subtitle") or "洹쇨굅 以묒떖 吏꾨떒 寃곌낵")), style_tokens["cover_subtitle"]),
+            Paragraph("유니폴리 컨설턴트 진단 리포트", style_tokens["cover_label"]),
+            Paragraph(_escape(str(report_payload.get("title") or "유니폴리 진단 보고서")), style_tokens["cover_title"]),
+            Paragraph(_escape(str(report_payload.get("subtitle") or "근거 중심 진단 결과")), style_tokens["cover_subtitle"]),
             Spacer(1, style_tokens["spacing"]["cover_block_gap"]),
         ]
     )
 
     cover_meta_rows = [
-        ["????꾨줈?앺듃", _escape(str(report_payload.get("student_target_context") or "-"))],
-        ["由ы룷??紐⑤뱶", "?꾨━誘몄뾼 10履? if report_mode == "premium_10p" else "而댄뙥???붿빟"],
-        ["?쒗뵆由?, "?대? ?쒖? ?쒗뵆由?],
+        ["대상 프로젝트", _escape(str(report_payload.get("student_target_context") or "-"))],
+        ["리포트 모드", "프리미엄 10페이지" if report_mode == "premium_10p" else "컴팩트 요약"],
+        ["템플릿", "내부 고정 템플릿"],
         [
-            "?듭떖 ?먯젙",
-            _escape(str(render_hints.get("one_line_verdict") or "?숈깮遺 洹쇨굅 湲곕컲?쇰줈 吏꾨떒 寃곕줎???뺣━?덉뒿?덈떎.")),
+            "핵심 판정",
+            _escape(str(render_hints.get("one_line_verdict") or "학생부 근거 기반으로 진단 결론을 정리했습니다.")),
         ],
         [
-            "遺꾩꽍 ?좊ː??,
+            "분석 신뢰도",
             f"{int(round(float(render_hints.get('analysis_confidence_score', 0.0)) * 100))}%",
         ],
-        ["?앹꽦 ?쒓컖", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M ?멸퀎?쒖???)],
+        ["생성 시각", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M (UTC)")],
     ]
     cover_meta_table = Table(
         cover_meta_rows,
@@ -126,7 +126,7 @@ def render_consultant_diagnosis_pdf(
 
     story.append(
         _build_callout(
-            text="吏꾨떒?쒕뒗 ?숈깮遺 洹쇨굅瑜?湲곕컲?쇰줈 ?묒꽦?섎ŉ, 遺덊솗?ㅽ븳 ??ぉ? 蹂꾨룄 寃利?硫붾え濡??덈궡?⑸땲??",
+            text="진단서는 학생부 근거를 기반으로 작성되며, 불확실한 항목은 별도 검증 메모로 안내합니다.",
             width=doc.width,
             style=style_tokens["callout"],
             border_color=_hex(color_tokens.get("line_evidence"), "#C7D2FE"),
@@ -147,7 +147,7 @@ def render_consultant_diagnosis_pdf(
         story.append(PageBreak())
         for section_id in available_ids:
             section = section_by_id[section_id]
-            heading = f"{section_number.get(section_id, 0)}. {str(section.get('title') or '吏꾨떒 ?뱀뀡')}"
+            heading = f"{section_number.get(section_id, 0)}. {str(section.get('title') or '진단 섹션')}"
             story.append(Paragraph(_escape(heading), style_tokens["h2"]))
             subtitle = str(section.get("subtitle") or "").strip()
             if subtitle:
@@ -166,7 +166,7 @@ def render_consultant_diagnosis_pdf(
                 story.append(Spacer(1, style_tokens["spacing"]["paragraph_gap"]))
                 if score_groups:
                     for group in score_groups:
-                        group_title = str(group.get("title") or "?먯닔 洹몃９")
+                        group_title = str(group.get("title") or "점수 그룹")
                         story.append(Paragraph(_escape(group_title), style_tokens["h3"]))
                         group_blocks = [item for item in group.get("blocks", []) if isinstance(item, dict)]
                         if group_blocks:
@@ -186,7 +186,7 @@ def render_consultant_diagnosis_pdf(
                             story.append(Paragraph(_escape(note), style_tokens["meta"]))
                         story.append(Spacer(1, style_tokens["spacing"]["list_item_gap"]))
                 elif score_blocks:
-                    story.append(Paragraph("?됯? ?먯닔", style_tokens["h3"]))
+                    story.append(Paragraph("평가 점수", style_tokens["h3"]))
                     story.append(
                         _build_score_table(
                             score_blocks=score_blocks,
@@ -200,7 +200,7 @@ def render_consultant_diagnosis_pdf(
 
             if section_id == "roadmap" and roadmap:
                 story.append(Spacer(1, style_tokens["spacing"]["paragraph_gap"]))
-                story.append(Paragraph("?④퀎蹂??ㅽ뻾 怨꾪쉷", style_tokens["h3"]))
+                story.append(Paragraph("단계별 실행 계획", style_tokens["h3"]))
                 for roadmap_item in roadmap:
                     story.append(Paragraph(_escape(str(roadmap_item.get("title") or "-")), style_tokens["meta_strong"]))
                     for action in list(roadmap_item.get("actions") or [])[:4]:
@@ -210,14 +210,14 @@ def render_consultant_diagnosis_pdf(
             should_render_evidence = section_id in {"evidence_cards", "major_fit", "risk_analysis"}
             if evidence_items and should_render_evidence:
                 story.append(Spacer(1, style_tokens["spacing"]["paragraph_gap"]))
-                story.append(Paragraph("洹쇨굅 ?듭빱", style_tokens["h3"]))
+                story.append(Paragraph("근거 앵커", style_tokens["h3"]))
                 max_evidence_cards = 3 if section_id == "evidence_cards" else 2
                 for evidence in evidence_items[:max_evidence_cards]:
-                    source_label = str(evidence.get("source_label") or "洹쇨굅")
+                    source_label = str(evidence.get("source_label") or "근거")
                     page = evidence.get("page_number")
                     excerpt = str(evidence.get("excerpt") or "").strip()
                     support_status = _support_status_label(str(evidence.get("support_status") or "verified"))
-                    source_text = f"{source_label} {page}履? if page else source_label
+                    source_text = f"{source_label} {page}페이지" if page else source_label
                     text = f"{source_text} ({support_status}): {excerpt}"
                     story.append(
                         _build_callout(
@@ -235,7 +235,7 @@ def render_consultant_diagnosis_pdf(
             if unsupported_claims:
                 story.append(
                     _build_callout(
-                        text="寃利??꾩슂: " + " | ".join(unsupported_claims[:4]),
+                        text="검증 필요: " + " | ".join(unsupported_claims[:4]),
                         width=doc.width,
                         style=style_tokens["callout"],
                         border_color=_hex(color_tokens.get("line_warning"), "#FDBA74"),
@@ -259,50 +259,30 @@ def render_consultant_diagnosis_pdf(
 
     if public_appendix_enabled and (uncertainty_notes or appendix_notes):
         story.append(PageBreak())
-        story.append(Paragraph("遺濡?/ 遺덊솗?ㅼ꽦 諛?寃利?硫붾え", style_tokens["h2"]))
+        story.append(Paragraph("부록 / 불확실성 및 검증 메모", style_tokens["h2"]))
         if uncertainty_notes:
-            story.append(Paragraph("遺덊솗?ㅼ꽦 諛?寃利?寃쎄퀎", style_tokens["h3"]))
+            story.append(Paragraph("불확실성 및 검증 경계", style_tokens["h3"]))
             for note in uncertainty_notes[:max_uncertainty_items]:
                 story.append(Paragraph(f"&#8226; {_escape(note)}", style_tokens["bullet"]))
         if appendix_notes:
             story.append(Spacer(1, style_tokens["spacing"]["section_gap"]))
-            story.append(Paragraph("?댁쁺/?뚯떛 硫붾え", style_tokens["h3"]))
+            story.append(Paragraph("운영/파싱 메모", style_tokens["h3"]))
             for note in appendix_notes[:max_uncertainty_items]:
                 story.append(Paragraph(f"&#8226; {_escape(note)}", style_tokens["bullet"]))
 
     if public_citations_enabled and citations:
         story.append(PageBreak())
-        story.append(Paragraph("遺濡?/ 異쒖쿂 洹쇨굅 紐⑸줉", style_tokens["h2"]))
+        story.append(Paragraph("부록 / 출처 근거 목록", style_tokens["h2"]))
         for citation in citations[:max_citation_items]:
-            source = str(citation.get("source_label") or "異쒖쿂")
+            source = str(citation.get("source_label") or "출처")
             page_number = citation.get("page_number")
             excerpt = str(citation.get("excerpt") or "").strip()
             score = citation.get("relevance_score")
             support_status = _support_status_label(str(citation.get("support_status") or "verified"))
-            prefix = f"{source} ({page_number}履?" if page_number else source
+            prefix = f"{source} ({page_number}페이지)" if page_number else source
             if score is not None:
-                prefix = f"{prefix} | 愿?⑤룄={score} | {support_status}"
+                prefix = f"{prefix} | 관련도={score} | {support_status}"
             story.append(Paragraph(f"&#8226; {_escape(prefix)}: {_escape(excerpt)}", style_tokens["bullet"]))
-
-    estimated_pages = _estimate_pages(
-        section_groups=section_groups,
-        has_uncertainty=bool(public_appendix_enabled and (uncertainty_notes or appendix_notes)),
-        has_citations=bool(public_citations_enabled and citations),
-    )
-    filler_pages = max(0, minimum_pages - estimated_pages)
-    for idx in range(filler_pages):
-        story.append(PageBreak())
-        story.append(Paragraph(f"?덉쭏 ?먭? 硫붾え {idx + 1}", style_tokens["h2"]))
-        story.append(
-            Paragraph(
-                "???섏씠吏??理쒖쥌 ?쒖텧 ??吏꾨떒 臾몄옣怨?洹쇨굅 ?뺥빀?깆쓣 ?먭??섍린 ?꾪븳 ?뺤씤 ?곸뿭?낅땲?? "
-                "遺덊솗?ㅽ븳 ??ぉ? 諛섎뱶??'異붽? ?뺤씤 ?꾩슂'濡??쒖떆??二쇱꽭??",
-                style_tokens["body"],
-            )
-        )
-        story.append(Paragraph("&#8226; ?듭떖 二쇱옣留덈떎 異쒖쿂 ?쇱씤 1媛??댁긽 ?곌껐", style_tokens["bullet"]))
-        story.append(Paragraph("&#8226; 寃利?誘몄셿猷?臾몄옣? 異붽? ?뺤씤 ?꾩슂濡??쒖떆", style_tokens["bullet"]))
-        story.append(Paragraph("&#8226; 怨쇱옣쨌?덉쐞쨌洹쇨굅 遺議??쒗쁽 ?쒓굅", style_tokens["bullet"]))
 
     doc.build(
         story,
@@ -469,14 +449,12 @@ def _build_score_table(
 
     def _score_bar(score: int | None) -> str:
         if score is None:
-            return "?곗씠???놁쓬"
+            return "점수 없음"
         clamped = max(0, min(100, score))
-        filled = int(round(clamped / 10))
-        empty = 10 - filled
-        return f"{'?? * filled}{'?? * empty} {clamped}"
+        return f"{clamped}점"
 
     if compact:
-        rows = [["??ぉ", "?먯닔", "洹몃옒??, "?붿빟"]]
+        rows = [["항목", "점수", "지표", "요약"]]
         for block in score_blocks:
             score = _to_int(block.get("score"))
             interpretation = str(block.get("interpretation") or "").strip()
@@ -486,7 +464,7 @@ def _build_score_table(
             rows.append(
                 [
                     _escape(str(block.get("label") or block.get("key") or "-")),
-                    f"{score}?? if score is not None else "-",
+                    f"{score}점" if score is not None else "-",
                     _escape(_score_bar(score)),
                     _escape(summary),
                 ]
@@ -498,13 +476,13 @@ def _build_score_table(
             hAlign="LEFT",
         )
     else:
-        rows = [["??ぉ", "?먯닔", "洹몃옒??, "?댁꽍", "寃利?硫붾え"]]
+        rows = [["항목", "점수", "지표", "해석", "검증 메모"]]
         for block in score_blocks:
             score = _to_int(block.get("score"))
             rows.append(
                 [
                     _escape(str(block.get("label") or block.get("key") or "-")),
-                    f"{score}?? if score is not None else "-",
+                    f"{score}점" if score is not None else "-",
                     _escape(_score_bar(score)),
                     _escape(_truncate_plain(str(block.get("interpretation") or "-"), 90)),
                     _escape(_truncate_plain(str(block.get("uncertainty_note") or "-"), 70)),
@@ -628,7 +606,7 @@ def _render_section_body(
 ) -> list[Any]:
     lines = _markdown_to_lines(str(section.get("body_markdown") or ""))
     if not lines:
-        return [Paragraph("?댁슜???꾩쭅 以鍮꾨릺吏 ?딆븯?듬땲??", body_style)]
+        return [Paragraph("내용이 아직 준비되지 않았습니다.", body_style)]
     line_caps = {
         "record_baseline_dashboard": 5,
         "evidence_cards": 7,
@@ -636,7 +614,7 @@ def _render_section_body(
     }
     max_lines = line_caps.get(str(section_id or "").strip(), 8)
     if len(lines) > max_lines:
-        lines = [*lines[:max_lines], "- 蹂몃Ц 遺꾨웾? ?섏씠吏 媛?낆꽦???꾪빐 ?붿빟?덉뒿?덈떎."]
+        lines = [*lines[:max_lines], "- 본문 분량은 페이지 가독성을 위해 요약했습니다."]
     rendered: list[Any] = []
     for line in lines:
         stripped = line.strip()
@@ -653,7 +631,7 @@ def _truncate_plain(text: str, limit: int) -> str:
     stripped = " ".join(str(text or "").replace("\n", " ").split())
     if len(stripped) <= limit:
         return stripped
-    return f"{stripped[: max(1, limit - 1)].rstrip()}??
+    return f"{stripped[: max(1, limit - 3)].rstrip()}..."
 
 
 def _markdown_to_lines(markdown: str) -> list[str]:
@@ -689,30 +667,30 @@ def _draw_page_chrome(
     canvas.rect(0, height - 16, width, 16, stroke=0, fill=1)
     canvas.setFillColor(colors.white)
     canvas.setFont(font_bold, 7.4)
-    canvas.drawString(doc.leftMargin, height - 11, "?좊땲?대━ 吏꾨떒 蹂닿퀬??)
+    canvas.drawString(doc.leftMargin, height - 11, "유니폴리 진단 보고서")
 
     canvas.setStrokeColor(_hex(color_tokens.get("line_soft"), "#D7DEE8"))
     canvas.setLineWidth(0.6)
     canvas.line(doc.leftMargin, 32, width - doc.rightMargin, 32)
     canvas.setFont(font_name, 8.3)
     canvas.setFillColor(_hex(color_tokens.get("text_muted"), "#526173"))
-    canvas.drawString(doc.leftMargin, 18, "洹쇨굅 以묒떖 吏꾨떒 由ы룷??)
-    canvas.drawRightString(width - doc.rightMargin, 18, f"{canvas.getPageNumber()} ?섏씠吏")
+    canvas.drawString(doc.leftMargin, 18, "근거 중심 진단 리포트")
+    canvas.drawRightString(width - doc.rightMargin, 18, f"{canvas.getPageNumber()} 페이지")
     canvas.restoreState()
 
 
 def _support_status_label(value: str) -> str:
     normalized = value.strip().lower()
     mapping = {
-        "verified": "寃利앸맖",
-        "supported": "洹쇨굅 異⑸텇",
-        "probable": "媛?μ꽦 ?믪쓬",
-        "partial": "遺遺?寃利?,
-        "needs_review": "寃???꾩슂",
-        "needs_verification": "寃利??꾩슂",
-        "unsupported": "洹쇨굅 遺議?,
+        "verified": "검증됨",
+        "supported": "근거 충분",
+        "probable": "가능성 높음",
+        "partial": "부분 검증",
+        "needs_review": "검토 필요",
+        "needs_verification": "검증 필요",
+        "unsupported": "근거 부족",
     }
-    return mapping.get(normalized, "?뺤씤 ?꾩슂")
+    return mapping.get(normalized, "확인 필요")
 
 
 def _hex(value: Any, fallback: str) -> colors.Color:

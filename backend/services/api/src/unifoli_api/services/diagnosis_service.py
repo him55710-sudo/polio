@@ -60,11 +60,12 @@ class DiagnosisSummary(BaseModel):
 
 
 GapAxisKey = Literal[
-    "conceptual_depth",
-    "inquiry_continuity",
-    "evidence_density",
-    "process_explanation",
-    "subject_major_alignment",
+    "universal_rigor",
+    "universal_specificity",
+    "relational_narrative",
+    "relational_continuity",
+    "cluster_depth",
+    "cluster_suitability",
 ]
 AxisSeverity = Literal["strong", "watch", "weak"]
 DirectionComplexity = Literal["lighter", "balanced", "deeper"]
@@ -214,14 +215,15 @@ class PolicyFlagMatch:
 
 
 MASKING_PIPELINE = MaskingPipeline()
-TOKEN_PATTERN = re.compile(r"[A-Za-z가-??-9]{2,}")
+TOKEN_PATTERN = re.compile(r"[A-Za-z媛�-??-9]{2,}")
 OPEN_REVIEW_STATUSES = {"open", "pending"}
 AXIS_LABELS: dict[GapAxisKey, str] = {
-    "conceptual_depth": "Conceptual depth",
-    "inquiry_continuity": "Inquiry continuity",
-    "evidence_density": "Evidence density",
-    "process_explanation": "Process explanation",
-    "subject_major_alignment": "Subject-major alignment",
+    "universal_rigor": "학업 및 근거 충실도",
+    "universal_specificity": "근거 구체성",
+    "relational_narrative": "서사 및 발전성",
+    "relational_continuity": "탐구 및 지속성",
+    "cluster_depth": "전공 심층성",
+    "cluster_suitability": "전공 적합성",
 }
 POLICY_FLAG_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
@@ -246,14 +248,14 @@ POLICY_FLAG_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "sensitive_student_id",
         "medium",
         "Input text contains a student identifier.",
-        re.compile(r"(?:?�번|?�생번호|student\s*id)\s*[:#]?\s*[A-Za-z0-9-]{4,20}", re.IGNORECASE),
+        re.compile(r"(?:?숇쾲|?숈깮踰덊샇|student\s*id)\s*[:#]?\s*[A-Za-z0-9-]{4,20}", re.IGNORECASE),
     ),
     (
         "fabrication_request",
         "critical",
         "Input text appears to request fabricated or false admissions content.",
         re.compile(
-            r"(?�위|조작|?�는\s+(?:?�동|경험|?�험)|?�실??s+?�닌|꾸며|가�?fabricat(?:e|ed|ion)|make\s+up)",
+            r"(?덉쐞|議곗옉|?녿뒗\s+(?:?쒕룞|寃쏀뿕|?ㅽ뿕)|?ъ떎??s+?꾨땶|袁몃ŉ|媛�吏?fabricat(?:e|ed|ion)|make\s+up)",
             re.IGNORECASE,
         ),
     ),
@@ -1359,7 +1361,7 @@ def _guided_choice_contract_block() -> str:
         [
             "[Structured Response Contract]",
             "- diagnosis_summary: overview, target_context, reasoning, authenticity_note",
-            "- gap_axes: use only conceptual_depth, inquiry_continuity, evidence_density, process_explanation, subject_major_alignment",
+            "- gap_axes: use only universal_rigor, universal_specificity, relational_narrative, relational_continuity, cluster_depth, cluster_suitability",
             "- recommended_directions: adaptive count from 2 to 5 based on actual diagnosis complexity",
             "- topic_candidates: 2 to 4 realistic, evidence-aware options per direction",
             "- page_count_options: every option must be between 5 and 20 pages",

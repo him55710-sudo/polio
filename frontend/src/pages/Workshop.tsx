@@ -835,7 +835,7 @@ export function Workshop() {
     if (!documentContent) {
       const seed =
         questStart?.document_seed_markdown ||
-        `# [연구 초안] ${questStart?.title || '새 주제'}\n\n## Introduction / Background\n\n## Body Section 1\n\n## Body Section 2\n\n## Body Section 3\n\n## Conclusion / Reflection / Next Step`;
+        `# [연구 초안] ${questStart?.title || '새 주제'}\n\n## 배경 및 문제의식\n\n## 핵심 탐구 내용 1\n\n## 핵심 탐구 내용 2\n\n## 핵심 탐구 내용 3\n\n## 결론 및 다음 단계`;
       const derived = markdownToStructuredDraft(seed, 'planning');
       setStructuredDraft(derived);
       setWorkshopMode(derived.mode);
@@ -1531,7 +1531,7 @@ export function Workshop() {
                   URL.revokeObjectURL(url);
                 }}>
                   <Download size={14} className="mr-1.5" />
-                  Markdown
+                  마크다운
                 </SecondaryButton>
               </div>
             }
@@ -1548,7 +1548,7 @@ export function Workshop() {
 
               {pendingDraftPatch ? (
                 <SurfaceCard tone="muted" className="mb-3 border-[#004aad]/10 bg-[#004aad]/5 p-3">
-                  <p className="text-xs font-black uppercase tracking-wide text-[#004aad]">Pending section proposal</p>
+                  <p className="text-xs font-black uppercase tracking-wide text-[#004aad]">섹션 제안 대기</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">
                     {pendingDraftPatch.heading || pendingDraftPatch.block_id}
                   </p>

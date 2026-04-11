@@ -1,3 +1,4 @@
+# -*- coding: latin-1 -*-
 from __future__ import annotations
 
 import abc

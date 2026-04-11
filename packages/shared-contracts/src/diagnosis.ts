@@ -2,21 +2,24 @@ export const DIAGNOSIS_RISK_LEVEL_VALUES = ['safe', 'warning', 'danger'] as cons
 export const DIAGNOSIS_GAP_DIFFICULTY_VALUES = ['low', 'medium', 'high'] as const;
 export const DIAGNOSIS_QUEST_PRIORITY_VALUES = ['low', 'medium', 'high'] as const;
 export const DIAGNOSIS_GAP_AXIS_VALUES = [
-  'conceptual_depth',
-  'inquiry_continuity',
-  'evidence_density',
-  'process_explanation',
-  'subject_major_alignment',
+  'universal_rigor',
+  'universal_specificity',
+  'relational_narrative',
+  'relational_continuity',
+  'cluster_depth',
+  'cluster_suitability',
 ] as const;
 export const DIAGNOSIS_AXIS_SEVERITY_VALUES = ['strong', 'watch', 'weak'] as const;
 export const DIAGNOSIS_DIRECTION_COMPLEXITY_VALUES = ['lighter', 'balanced', 'deeper'] as const;
 export const DIAGNOSIS_EXPORT_FORMAT_VALUES = ['pdf', 'pptx', 'hwpx'] as const;
 export const DIAGNOSIS_REPORT_MODE_VALUES = ['compact', 'premium_10p'] as const;
 export const DIAGNOSIS_ADMISSION_AXIS_VALUES = [
-  'major_alignment',
-  'inquiry_continuity',
-  'evidence_density',
-  'process_explanation',
+  'universal_rigor',
+  'universal_specificity',
+  'relational_narrative',
+  'relational_continuity',
+  'cluster_depth',
+  'cluster_suitability',
   'authenticity_risk',
 ] as const;
 
