@@ -132,7 +132,7 @@ def combine_project_text(project_id: str, db: Session) -> tuple[list[Any], str]:
     if not documents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Upload a parsed document before running diagnosis.",
+            detail="진단 실행 전에 파싱이 완료된 문서를 먼저 업로드해 주세요.",
         )
 
     merged_parts: list[str] = []
@@ -153,7 +153,7 @@ def combine_project_text(project_id: str, db: Session) -> tuple[list[Any], str]:
     if not full_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Parsed document content is empty. Re-run parsing with a clearer source file.",
+            detail="파싱된 문서 내용이 비어 있습니다. 더 선명한 원본으로 다시 파싱해 주세요.",
         )
     return documents, full_text
 
@@ -300,13 +300,13 @@ def _update_run_status(
 
 
 def _diagnosis_runtime_failure_message(exc: Exception) -> str:
-    fallback = "Diagnosis job failed. Retry after checking the project evidence."
+    fallback = "진단 작업이 실패했습니다. 프로젝트 근거를 확인한 뒤 다시 시도해 주세요."
     normalized = sanitize_public_error(str(exc), fallback=fallback)
     lowered = normalized.lower()
     if "database is locked" in lowered:
-        return "Diagnosis storage is temporarily busy. Retry after a short wait."
+        return "진단 저장소가 일시적으로 사용 중입니다. 잠시 후 다시 시도해 주세요."
     if "database or disk is full" in lowered:
-        return "Diagnosis storage is temporarily saturated on the server. Retry after a short wait."
+        return "진단 저장소 용량이 일시적으로 포화 상태입니다. 잠시 후 다시 시도해 주세요."
     return normalized
 
 
@@ -367,7 +367,7 @@ async def run_diagnosis_run(
             db,
             run,
             status="RUNNING",
-            status_message="?낅줈?쒕맂 臾몄꽌 洹쇨굅瑜?寃?좏븯怨??덉뒿?덈떎...",
+            status_message="업로드한 문서 근거를 점검하고 있습니다...",
         )
         findings = detect_policy_flags(policy_scan_text)
         flag_records = run.policy_flags
@@ -377,13 +377,13 @@ async def run_diagnosis_run(
             review_task = ensure_review_task_for_flags(db, run=run, project=project, user=owner, findings=findings)
 
         target_major = fallback_target_major or project.target_major
-        user_major = project.target_major or fallback_target_major or "General Studies"
+        user_major = project.target_major or fallback_target_major or "일반 탐구"
         evidence_keys = [document.sha256 or document.id for document in documents if (document.sha256 or document.id)]
 
         _update_run_status(
             db,
             run,
-            status_message="?앺솢湲곕줉遺 ?뱀쭠?먯쓣 異붿텧?섍퀬 ?덉뒿?덈떎...",
+            status_message="학생부 핵심 지표를 추출하고 있습니다...",
         )
         features = extract_student_record_features(
             documents=documents,
@@ -399,13 +399,13 @@ async def run_diagnosis_run(
             _update_run_status(
                 db,
                 run,
-                status_message="異붿텧??洹쇨굅瑜?諛뷀깢?쇰줈 ?ы솕 ?섎? 遺꾩꽍???섑뻾?섍퀬 ?덉뒿?덈떎...",
+                status_message="추출된 근거를 바탕으로 심화 의미 분석을 수행하고 있습니다...",
             )
             try:
                 semantic_data = await asyncio.wait_for(
                     extract_semantic_diagnosis(
                         masked_text=semantic_input_text,
-                        target_major=target_major or "?쇰컲 ?꾪삎",
+                        target_major=target_major or "일반 탐구",
                         target_university=fallback_target_university,
                         interest_universities=resolved_interest_universities,
                     ),
@@ -433,7 +433,7 @@ async def run_diagnosis_run(
             _update_run_status(
                 db,
                 run,
-                status_message="?곸꽭 吏꾨떒 ?댁슜???앹꽦?섍퀬 洹쇨굅 ?곗씠?곕? 留ㅽ븨?섍퀬 ?덉뒿?덈떎...",
+                status_message="정밀 진단 내용을 생성하고 근거 데이터를 매핑하고 있습니다...",
             )
             try:
                 result = await evaluate_student_record(
@@ -504,7 +504,7 @@ async def run_diagnosis_run(
 
         run.result_payload = result.model_dump_json()
         run.status = "COMPLETED"
-        run.status_message = "吏꾨떒???꾨즺?섏뿀?듬땲??"
+        run.status_message = "진단이 완료되었습니다."
         run.error_message = None
         _persist_run(db, run)
         db.refresh(run)
@@ -543,7 +543,7 @@ async def run_diagnosis_run(
         try:
             latest_run = get_run_with_relations(db, run_id) or run
             latest_run.status = "FAILED"
-            latest_run.status_message = "吏꾨떒 ?ㅽ뻾???ㅽ뙣?덉뒿?덈떎."
+            latest_run.status_message = "진단 실행이 실패했습니다."
             latest_run.error_message = public_reason
             _persist_run(db, latest_run)
         except Exception:  # noqa: BLE001

@@ -37,12 +37,6 @@ def render_consultant_diagnosis_pdf(
         )
 
     margins = design_contract.get("canvas", {}).get("margins", {}) if isinstance(design_contract.get("canvas"), dict) else {}
-    minimum_pages = int(
-        report_payload.get("render_hints", {}).get("minimum_pages")
-        or design_contract.get("canvas", {}).get("minimum_pages")
-        or (10 if report_mode == "premium_10p" else 5)
-    )
-
     sections = [item for item in report_payload.get("sections", []) if isinstance(item, dict)]
     sections = _order_sections(sections, design_contract=design_contract)
     score_blocks = [item for item in report_payload.get("score_blocks", []) if isinstance(item, dict)]
@@ -247,7 +241,7 @@ def render_consultant_diagnosis_pdf(
             verification_needed = [str(item).strip() for item in section.get("additional_verification_needed", []) if str(item).strip()]
             if verification_needed:
                 story.append(Spacer(1, style_tokens["spacing"]["list_item_gap"]))
-                story.append(Paragraph("異붽? ?뺤씤 ?꾩슂", style_tokens["meta_strong"]))
+                story.append(Paragraph("추가 확인 필요", style_tokens["meta_strong"]))
                 for item in verification_needed[:2]:
                     story.append(Paragraph(f"&#8226; {_escape(item)}", style_tokens["bullet"]))
 
@@ -546,16 +540,6 @@ def _resolve_section_groups(*, design_contract: dict[str, Any], section_ids: lis
         if clean:
             normalized.append(clean)
     return normalized or [[section_id] for section_id in section_ids if section_id]
-
-
-def _estimate_pages(*, section_groups: list[list[str]], has_uncertainty: bool, has_citations: bool) -> int:
-    pages = 1  # cover
-    pages += len([group for group in section_groups if group])
-    if has_uncertainty:
-        pages += 1
-    if has_citations:
-        pages += 1
-    return pages
 
 
 def _resolve_font_names() -> tuple[str, str]:
