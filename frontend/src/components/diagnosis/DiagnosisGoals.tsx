@@ -5,6 +5,7 @@ import { SectionCard, SecondaryButton, SurfaceCard, PrimaryButton, EmptyState } 
 import { UniversityLogo } from '../UniversityLogo';
 import { CatalogAutocompleteInput } from '../CatalogAutocompleteInput';
 import { searchUniversities, searchMajors } from '../../lib/educationCatalog';
+import { findFirstInvalidGoal, hasValidGoalSelection, validateGoalSelection } from '../../lib/goalValidation';
 
 import { useOnboardingStore } from '../../store/onboardingStore';
 import toast from 'react-hot-toast';
@@ -19,13 +20,28 @@ export const DiagnosisGoals: React.FC = () => {
     setDiagnosisStep 
   } = useOnboardingStore();
   
-  const [isEditingGoals, setIsEditingGoals] = React.useState(goalList.length === 0);
+  const [isEditingGoals, setIsEditingGoals] = React.useState(goalList.length === 0 || goalList.some(goal => !hasValidGoalSelection(goal)));
   const [univInput, setUnivInput] = React.useState('');
   const [currentUniv, setCurrentUniv] = React.useState('');
   const [currentMajor, setCurrentMajor] = React.useState('');
+  const currentGoalValidation = validateGoalSelection(currentUniv, currentMajor);
+
+  React.useEffect(() => {
+    if (goalList.length === 0 || goalList.some(goal => !hasValidGoalSelection(goal))) {
+      setIsEditingGoals(true);
+    }
+  }, [goalList]);
 
   const handleAddGoalDirect = () => {
     if (!currentUniv || !currentMajor || goalList.length >= 6) return;
+    if (!currentGoalValidation.valid) {
+      toast.error(currentGoalValidation.message || '선택한 대학에 있는 학과만 추가할 수 있어요.');
+      return;
+    }
+    if (goalList.some((goal) => goal.university === currentUniv && goal.major === currentMajor)) {
+      toast.error('이미 추가한 목표입니다.');
+      return;
+    }
     addGoal({ id: crypto.randomUUID(), university: currentUniv, major: currentMajor });
     setCurrentUniv('');
     setCurrentMajor('');
@@ -35,6 +51,11 @@ export const DiagnosisGoals: React.FC = () => {
   const saveAndContinue = async () => {
     if (!goalList.length) {
       toast.error('최소 1개의 목표를 설정해 주세요.');
+      return;
+    }
+    const invalidGoal = findFirstInvalidGoal(goalList);
+    if (invalidGoal) {
+      toast.error(`${invalidGoal.university}에 맞는 학과를 다시 선택해 주세요.`);
       return;
     }
     await submitGoals();
@@ -102,6 +123,7 @@ export const DiagnosisGoals: React.FC = () => {
                         data-testid={`diagnosis-university-option-${index}`}
                         onClick={() => {
                           setCurrentUniv(suggestion.label);
+                          setCurrentMajor('');
                           setUnivInput('');
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#004aad]/5"
@@ -129,7 +151,10 @@ export const DiagnosisGoals: React.FC = () => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setCurrentUniv('')}
+                      onClick={() => {
+                        setCurrentUniv('');
+                        setCurrentMajor('');
+                      }}
                       className="rounded-xl p-2 text-slate-400 hover:bg-white hover:text-red-500"
                     >
                       <Trash2 size={18} />
@@ -146,7 +171,7 @@ export const DiagnosisGoals: React.FC = () => {
                   <PrimaryButton
                     data-testid="diagnosis-add-goal"
                     onClick={handleAddGoalDirect}
-                    disabled={!currentUniv || currentMajor.length < 2 || goalList.length >= 6}
+                    disabled={!currentGoalValidation.valid || goalList.length >= 6}
                     fullWidth
                     size="lg"
                     className="shadow-lg shadow-blue-500/10"
@@ -246,7 +271,7 @@ export const DiagnosisGoals: React.FC = () => {
             설정 완료
           </PrimaryButton>
         </div>
-      ) : goalList.length > 0 ? (
+      ) : goalList.length > 0 && goalList.every(hasValidGoalSelection) ? (
         <div className="flex flex-col items-center gap-6 pt-4">
           <div className="inline-flex items-center gap-3 rounded-2xl bg-[#004aad]/5 px-6 py-3 text-sm font-bold text-[#004aad]">
             <CheckCircle2 size={20} className="text-[#004aad]" />

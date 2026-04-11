@@ -92,7 +92,7 @@ export function RecordPdfHelp() {
       <SectionCard
         title="어떤 파일이 필요한가요?"
         eyebrow="필수 파일"
-        description="Uni Foli는 공식 학생부 원본 PDF를 기준으로 진단합니다."
+        description="UniFoli는 공식 학생부 원본 PDF를 기준으로 진단합니다."
       >
         <SurfaceCard tone="muted" padding="sm" className="space-y-2 border border-sky-100 bg-sky-50/60">
           {REQUIRED_FILE_ITEMS.map((item) => (
@@ -205,7 +205,7 @@ export function RecordPdfHelp() {
       <WorkflowNotice
         tone="info"
         title="근거 기반 작성 원칙"
-        description="Uni Foli는 학생부 원문 근거를 벗어나 새로운 활동을 임의로 만들지 않습니다. 불확실한 정보는 불확실성으로 표시됩니다."
+        description="UniFoli는 학생부 원문 근거를 벗어나 새로운 활동을 임의로 만들지 않습니다. 불확실한 정보는 불확실성으로 표시됩니다."
       />
 
       <SurfaceCard tone="muted" padding="sm" className="flex items-start gap-2 border border-blue-100 bg-blue-50/60">

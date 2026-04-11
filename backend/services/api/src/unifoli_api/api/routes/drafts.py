@@ -58,24 +58,24 @@ def _format_reference_materials(reference_materials: list[ReferenceMaterial]) ->
     if not reference_materials:
         return ""
 
-    blocks = ["[참고 ?�료]"]
+    blocks = ["[참고 자료]"]
     for index, material in enumerate(reference_materials, start=1):
-        authors = ", ".join(material.authors[:6]) if material.authors else "?�???�보 ?�음"
-        year_text = str(material.year) if material.year else "?�도 미상"
-        abstract = (material.abstract or "초록 ?�보 ?�음").replace("\n", " ").strip()
+        authors = ", ".join(material.authors[:6]) if material.authors else "저자정보 없음"
+        year_text = str(material.year) if material.year else "연도 미상"
+        abstract = (material.abstract or "초록 정보 없음").replace("\n", " ").strip()
         if len(abstract) > 700:
             abstract = f"{abstract[:700]}..."
         source_text = material.source_label or material.source_type or "external_source"
         provider_text = material.source_provider or "unknown_provider"
         freshness_text = material.freshness_label or "unknown"
-        link_text = material.url or "링크 ?�보 ?�음"
+        link_text = material.url or "링크 정보 없음"
         blocks.append(
-            f"{index}. ?�목: {material.title}\n"
-            f"   ?�?? {authors}\n"
-            f"   ?�도: {year_text}\n"
-            f"   출처 ?�형: {source_text} ({provider_text}, freshness={freshness_text})\n"
+            f"{index}. 제목: {material.title}\n"
+            f"   저자: {authors}\n"
+            f"   연도: {year_text}\n"
+            f"   출처 유형: {source_text} ({provider_text}, freshness={freshness_text})\n"
             f"   링크: {link_text}\n"
-            f"   ?�약: {abstract}"
+            f"   요약: {abstract}"
         )
     return "\n".join(blocks)
 
@@ -96,15 +96,15 @@ def _build_system_instruction(
     diagnosis_copilot_brief: str | None = None,
 ) -> str:
     profile_context = (
-        f"?�생 목표 ?�?? {target_university or '미정'} / 목표 ?�공: {target_major or '미정'}"
+        f"학생 목표 저자: {target_university or '미정'} / 목표 전공: {target_major or '미정'}"
     )
     reference_context = _format_reference_materials(reference_materials)
     guided_context = _safe_json_dump(guided_state_summary)
     base_instruction = get_prompt_registry().compose_prompt("chat.coaching-orchestration")
 
-    sections = [f"[?�생 맥락]\n{profile_context}"]
+    sections = [f"[학생 맥락]\n{profile_context}"]
     if guided_context:
-        sections.append(f"[가?�드???�래?�팅 ?�태]\n{guided_context}")
+        sections.append(f"[가이드드래프팅 상태]\n{guided_context}")
     if document_grounding_context:
         sections.append(document_grounding_context)
     if reference_context:
@@ -115,7 +115,7 @@ def _build_system_instruction(
         snapshot = draft_snapshot_markdown.strip()
         if len(snapshot) > 5000:
             snapshot = f"{snapshot[:5000].rstrip()}..."
-        sections.append(f"[?�측 최신 초안 ?�냅??\n{snapshot}")
+        sections.append(f"[학생측 최신 초안 스냅샷\n{snapshot}")
     sections.append(base_instruction)
     return "\n\n".join(sections)
 
@@ -194,7 +194,7 @@ def _build_streaming_response(
         try:
             llm = get_llm_client(profile="standard")
             async for token in llm.stream_chat(
-                prompt=f"[?�생 메시지]\n{payload.message}",
+                prompt=f"[학생 메시지]\n{payload.message}",
                 system_instruction=system_instruction,
                 temperature=get_llm_temperature(profile="standard"),
             ):

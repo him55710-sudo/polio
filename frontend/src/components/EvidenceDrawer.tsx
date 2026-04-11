@@ -44,7 +44,7 @@ export function EvidenceDrawer({ evidenceMap }: EvidenceDrawerProps) {
               <div className="mb-4 flex items-start gap-2 rounded-xl bg-white p-4 border border-[#004aad]/10">
                 <AlertCircle size={16} className="mt-0.5 text-[#004aad] shrink-0" />
                 <p className="text-xs font-semibold text-[#004aad] leading-relaxed">
-                  Uni Foli는 학생이 제출한 대화 및 근거 맥락 내에서만 텍스트를 생성하며, 존재하지 않는 허위 사실이나 수치는 배제합니다. 
+                  UniFoli는 학생이 제출한 대화 및 근거 맥락 내에서만 텍스트를 생성하며, 존재하지 않는 허위 사실이나 수치는 배제합니다. 
                   아래 카드는 AI가 요약 생성한 각 주장이 어떤 원본 근거에서 도출되었는지 매핑해줍니다.
                 </p>
               </div>

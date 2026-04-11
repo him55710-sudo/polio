@@ -1,18 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  ChevronDown, 
-  ChevronRight, 
-  ChevronLeft,
-  Sparkles,
-  Home,
-  CheckCircle,
-  BookOpen,
-  Settings,
-  User,
-  LogOut
-} from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { UniFoliLogo } from '../UniFoliLogo';
 import { Badge, Button } from '../ui';
 import { appNavSections, isNavItemActive } from './nav-config';
@@ -104,13 +92,10 @@ export function AppSidebar({
 
       <div className={cn("flex flex-col h-full", !isOpen && "items-center")}>
         {/* Logo Section */}
-        <div className={cn("p-6 mb-2", !isOpen && "px-2 py-6")}>
-          <div className="flex items-center gap-3">
-            <div className="flex bg-[#004aad] p-2 rounded-xl text-white shadow-lg shadow-[#004aad]/20">
-              <Sparkles size={20} />
-            </div>
-            {isOpen && <span className="text-xl font-bold bg-gradient-to-r from-[#004aad] to-[#0055c7] bg-clip-text text-transparent">Uni Foli</span>}
-          </div>
+        <div className={cn("mb-2 p-6", !isOpen && "px-2 py-6")}>
+          <Link to="/app" onClick={onCloseMobile} className={cn('flex', !isOpen && 'justify-center')}>
+            <UniFoliLogo size={isOpen ? 'md' : 'sm'} markOnly={!isOpen} subtitle={null} />
+          </Link>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-6">

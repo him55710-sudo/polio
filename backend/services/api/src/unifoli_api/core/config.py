@@ -181,8 +181,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=(
-            str(find_project_root() / ".env"),
             str(find_project_root().parent / ".env"),
+            str(find_project_root() / ".env"),
+            str(find_project_root() / "backend" / ".env"),
         ),
         env_file_encoding="utf-8",
         extra="ignore",

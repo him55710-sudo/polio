@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Loader2, Sparkles, Target, User, Trash2, School, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { motion } from 'motion/react';
+import toast from 'react-hot-toast';
 import { CatalogAutocompleteInput } from '../components/CatalogAutocompleteInput';
 import { UniversityLogo } from '../components/UniversityLogo';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { searchUniversities, searchMajors } from '../lib/educationCatalog';
+import { coerceMajorForUniversity, findFirstInvalidGoal, validateGoalSelection } from '../lib/goalValidation';
 
 const TEXT = {
   profileTitle: '기본 정보 설정',
@@ -67,7 +69,10 @@ export function Onboarding() {
       if (match) initialList.push({ id: generateId(), university: match[1], major: match[2] });
       else initialList.push({ id: generateId(), university: i, major: '' });
     });
-    setGoalList(initialList.slice(0, 6));
+    setGoalList(initialList.map((goal) => ({
+      ...goal,
+      major: coerceMajorForUniversity(goal.university, goal.major),
+    })).slice(0, 6));
   }, [user]);
 
   if (!user) return <Navigate to="/auth" replace />;
@@ -75,7 +80,8 @@ export function Onboarding() {
   const universitySuggestions = searchUniversities(univInput, { excludeNames: [currentUniv, ...goalList.map(g => g.university)] });
   const majorSuggestions = searchMajors(currentMajor, currentUniv || univInput, 20);
   const logoPreviewName = (currentUniv || univInput).trim();
-  const canAddCurrentGoal = logoPreviewName.length >= 2 && currentMajor.trim().length >= 2 && goalList.length < 6;
+  const currentGoalValidation = validateGoalSelection(logoPreviewName, currentMajor);
+  const canAddCurrentGoal = currentGoalValidation.valid && goalList.length < 6;
 
   const handleAddGoal = () => {
     const generateId = () => {
@@ -88,6 +94,10 @@ export function Onboarding() {
     const universityName = (currentUniv || univInput).trim();
     const majorName = currentMajor.trim();
     if (!universityName || !majorName || goalList.length >= 6) return;
+    if (!currentGoalValidation.valid) {
+      toast.error(currentGoalValidation.message || '선택한 대학에 있는 학과만 추가할 수 있어요.');
+      return;
+    }
     if (goalList.some(goal => goal.university === universityName && goal.major === majorName)) return;
     setGoalList(prev => [...prev, { id: generateId(), university: universityName, major: majorName }]);
     setCurrentUniv('');
@@ -129,6 +139,11 @@ export function Onboarding() {
 
   const handleStart = async () => {
     if (goalList.length === 0) return;
+    const invalidGoal = findFirstInvalidGoal(goalList);
+    if (invalidGoal) {
+      toast.error(`${invalidGoal.university}에 맞는 학과를 다시 선택해 주세요.`);
+      return;
+    }
     const main = goalList[0];
     const others = goalList.slice(1).map(g => `${g.university} (${g.major})`);
     
@@ -223,7 +238,7 @@ export function Onboarding() {
                          ) : null}
                          {univInput && universitySuggestions.length > 0 && (
                             <div className="absolute top-full left-0 right-0 z-10 mt-1 max-h-40 overflow-auto bg-white border border-slate-100 rounded-xl shadow-xl">
-                               {universitySuggestions.map(s => <button key={s.label} onClick={() => { setCurrentUniv(s.label); setUnivInput(''); }} className="w-full text-left p-3 hover:bg-slate-50 text-sm font-bold border-b border-slate-50 last:border-0">{s.label}</button>)}
+                               {universitySuggestions.map(s => <button key={s.label} onClick={() => { setCurrentUniv(s.label); setCurrentMajor(''); setUnivInput(''); }} className="w-full text-left p-3 hover:bg-slate-50 text-sm font-bold border-b border-slate-50 last:border-0">{s.label}</button>)}
                             </div>
                          )}
                          {univInput && universitySuggestions.length === 0 && univInput.trim().length >= 2 && (
@@ -232,6 +247,7 @@ export function Onboarding() {
                                 type="button"
                                 onClick={() => {
                                   setCurrentUniv(univInput.trim());
+                                  setCurrentMajor('');
                                   setUnivInput('');
                                 }}
                                 className="w-full p-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"
@@ -253,7 +269,7 @@ export function Onboarding() {
                                  />
                                  <span className="truncate text-sm font-black text-[#004aad]">{currentUniv}</span>
                                </div>
-                               <button onClick={() => setCurrentUniv('')} className="text-slate-400"><Trash2 size={16}/></button>
+                               <button onClick={() => { setCurrentUniv(''); setCurrentMajor(''); }} className="text-slate-400"><Trash2 size={16}/></button>
                             </div>
                             <CatalogAutocompleteInput label={TEXT.majorLabel} value={currentMajor} onChange={setCurrentMajor} placeholder="전공명 입력..." suggestions={majorSuggestions} onSelect={s => setCurrentMajor(s.label)} />
                             <button onClick={handleAddGoal} disabled={!canAddCurrentGoal} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-sm disabled:opacity-40">

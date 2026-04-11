@@ -200,6 +200,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       university: rg.university,
       major: rg.major
     }));
+    const [primaryGoal, ...otherGoals] = goalList;
+    const hasPrimaryGoal = Boolean(primaryGoal?.university && primaryGoal?.major);
     
     set({ 
       profile: {
@@ -209,9 +211,9 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       },
       goalList,
       goals: {
-        target_university: user.target_university || '',
-        target_major: user.target_major || '',
-        interest_universities: user.interest_universities || [],
+        target_university: primaryGoal?.university || '',
+        target_major: primaryGoal?.major || '',
+        interest_universities: otherGoals.filter((goal) => goal.major).map((goal) => `${goal.university} (${goal.major})`),
         admission_type: user.admission_type || '학생부종합'
       }
     });
@@ -219,7 +221,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     // Unified step logic
     if (!user.grade || !user.track) {
       set({ diagnosisStep: 'PROFILE' });
-    } else if (!user.target_university) {
+    } else if (!hasPrimaryGoal) {
       set({ diagnosisStep: 'GOALS' });
     } else {
       set({ diagnosisStep: 'UPLOAD' });

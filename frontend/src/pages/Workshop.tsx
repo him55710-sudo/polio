@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Download,
   Loader2,
+  PenSquare,
   Presentation,
   Save,
   Send,
@@ -17,7 +18,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
 import { auth } from '../lib/firebase';
@@ -661,6 +662,7 @@ const ChatBubble = memo(function ChatBubble({
   );
 });
 export function Workshop() {
+  const navigate = useNavigate();
   const { projectId } = useParams<{ projectId: string }>();
   const location = useLocation();
 
@@ -1040,6 +1042,14 @@ export function Workshop() {
     },
     [guidedProjectId],
   );
+
+  const handleOpenProfessionalEditor = useCallback(() => {
+    navigate(`/app/editor/${projectId || 'demo'}`, {
+      state: {
+        seedMarkdown: documentContent,
+      },
+    });
+  }, [documentContent, navigate, projectId]);
 
   const coauthoringTier = useMemo<'basic' | 'plus' | 'pro'>(() => {
     if (qualityLevel === 'high') return 'pro';
@@ -1547,6 +1557,10 @@ export function Workshop() {
                   {showDraftControls ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   초안 옵션
                 </button>
+                <SecondaryButton size="sm" onClick={handleOpenProfessionalEditor}>
+                  <PenSquare size={14} className="mr-1.5" />
+                  전문 편집기
+                </SecondaryButton>
                 <PrimaryButton size="sm" onClick={handleSaveDraft}>
                   <Save size={14} className="mr-1.5" />
                   저장

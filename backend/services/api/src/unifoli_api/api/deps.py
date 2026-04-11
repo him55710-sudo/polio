@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import jwt
@@ -14,9 +15,32 @@ from sqlalchemy.orm import Session
 
 from unifoli_api.core.database import SessionLocal
 from unifoli_api.db.models.user import User
+from unifoli_shared.paths import resolve_runtime_path
 
 security = HTTPBearer()
 LOCAL_DEV_JWT_SECRET = "local-dev-secret-please-change-1234567890"
+
+
+def _resolve_firebase_project_id(certificate_payload: dict[str, Any] | None = None) -> str | None:
+    if certificate_payload:
+        project_id = str(certificate_payload.get("project_id") or "").strip()
+        if project_id:
+            return project_id
+
+    for env_name in ("FIREBASE_PROJECT_ID", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT"):
+        value = os.getenv(env_name, "").strip()
+        if value:
+            return value
+
+    return None
+
+
+def _resolve_google_application_credentials_path() -> str | None:
+    raw_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not raw_path:
+        return None
+
+    return str(resolve_runtime_path(raw_path).expanduser())
 
 
 @lru_cache(maxsize=1)
@@ -37,21 +61,45 @@ def get_firebase_auth_client():
     if not firebase_admin._apps:
         inline_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
         inline_json_b64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64", "").strip()
+        credential = None
+        project_id = None
 
         if inline_json or inline_json_b64:
             try:
                 if inline_json_b64:
                     inline_json = base64.b64decode(inline_json_b64).decode("utf-8")
                 certificate_payload = json.loads(inline_json)
+                project_id = _resolve_firebase_project_id(certificate_payload)
                 credential = firebase_admin.credentials.Certificate(certificate_payload)
-                firebase_admin.initialize_app(credential)
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Firebase service account configuration is invalid.",
                 ) from exc
         else:
-            # Defaults to ADC or GOOGLE_APPLICATION_CREDENTIALS path
+            credentials_path = _resolve_google_application_credentials_path()
+            if credentials_path:
+                credential_path = Path(credentials_path)
+                if credential_path.exists():
+                    try:
+                        credential = firebase_admin.credentials.Certificate(str(credential_path))
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Firebase service account file is invalid.",
+                        ) from exc
+            project_id = _resolve_firebase_project_id()
+
+        init_kwargs: dict[str, Any] = {}
+        if credential is not None:
+            init_kwargs["credential"] = credential
+        if project_id:
+            init_kwargs["options"] = {"projectId": project_id}
+
+        if init_kwargs:
+            firebase_admin.initialize_app(**init_kwargs)
+        else:
+            # Fall back to ADC when no explicit credential or project id is configured.
             firebase_admin.initialize_app()
 
     return auth

@@ -34,7 +34,7 @@ function toAuthMessage(error: unknown): string {
 }
 
 export function Auth() {
-  const { isAuthenticated, signInWithGoogle, signInWithKakao, signInWithNaver, signInAsGuest } = useAuth();
+  const { isAuthenticated, isGuestSession, signInWithGoogle, signInWithKakao, signInWithNaver, signInAsGuest } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState<'google' | 'kakao' | 'naver' | 'guest' | null>(null);
   
   const [agreements, setAgreements] = useState({
@@ -48,7 +48,7 @@ export function Auth() {
 
   const missingFirebaseKeys = useMemo(() => getFirebaseMissingKeys(), []);
 
-  if (isAuthenticated) {
+  if (isAuthenticated || isGuestSession) {
     return <Navigate to="/app" replace />;
   }
 
@@ -215,8 +215,8 @@ export function Auth() {
             className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] sm:rounded-[40px] sm:p-8"
           >
             <div className="text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-[#004aad]/10 bg-[#004aad]/5 sm:h-20 sm:w-20 sm:rounded-[28px]">
-                <UniFoliLogo size="lg" markOnly />
+              <div className="flex justify-center">
+                <UniFoliLogo size="lg" subtitle={null} />
               </div>
               <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-900 sm:mt-6 sm:text-3xl">로그인하고 시작하기</h2>
               <p className="mt-2.5 text-sm font-medium leading-7 text-slate-500 sm:mt-3 sm:text-base">

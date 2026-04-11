@@ -135,7 +135,9 @@ export function getMajorsForUniversity(name: string): string[] {
 export function isMajorInUniversity(universityName: string, majorName: string): boolean {
   const university = universityMap.get(universityName);
   if (!university) return false;
-  return university.majors.includes(majorName);
+  const normalizedMajor = majorName.trim();
+  if (!normalizedMajor) return false;
+  return university.majors.includes(normalizedMajor);
 }
 
 export function searchMajors(
@@ -151,33 +153,12 @@ export function searchMajors(
   const universityMajors = universityName ? getMajorsForUniversity(universityName) : [];
 
   if (universityMajors.length > 0) {
-    // Search within the university's departments first
-    const universityResults = searchNames(universityMajors, query, limit).map((name) => ({
+    return searchNames(universityMajors, query, limit).map((name) => ({
       id: `major:${universityName}:${name}`,
       label: name,
       secondary: undefined,
       type: 'major' as const,
     }));
-
-    // If we have enough results from the university, return them directly
-    if (universityResults.length >= limit || !query) {
-      return universityResults.slice(0, limit);
-    }
-
-    // Otherwise supplement from global list, excluding already-found names
-    const foundNames = new Set(universityResults.map((r) => r.label));
-    const globalFill = searchNames(
-      catalog.all_majors.filter((m) => !foundNames.has(m)),
-      query,
-      limit - universityResults.length,
-    ).map((name) => ({
-      id: `major:all:${name}`,
-      label: name,
-      secondary: undefined,
-      type: 'major' as const,
-    }));
-
-    return [...universityResults, ...globalFill];
   }
 
   // Fallback: no university selected — search all majors

@@ -364,7 +364,7 @@ export default function Dashboard() {
                   </>
                 ) : (
                   <>
-                    나만의 <span className="text-[#00c2ff]">Uni Foli</span> <br className="hidden sm:block" />
+                    나만의 <span className="text-[#00c2ff]">UniFoli</span> <br className="hidden sm:block" />
                     합격 전략을 만드세요
                   </>
                 )}

@@ -152,7 +152,7 @@ export function PublicLayout() {
                 개인정보처리방침
               </Link>
             </div>
-            <p className="text-xs leading-6 text-slate-400">Uni Foli는 준비 과정의 품질 향상을 지원하며, 입시 결과를 보장하지 않습니다.</p>
+            <p className="text-xs leading-6 text-slate-400">UniFoli는 준비 과정의 품질 향상을 지원하며, 입시 결과를 보장하지 않습니다.</p>
           </div>
         </div>
       </footer>

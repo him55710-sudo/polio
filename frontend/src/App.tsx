@@ -10,7 +10,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { RuntimeProvider } from './contexts/RuntimeContext';
 import { Layout } from './components/Layout';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
-import { useAuthStore } from './store/authStore';
 
 const PublicLayout = lazy(() => import('./components/PublicLayout').then(m => ({ default: m.PublicLayout })));
 const Auth = lazy(() => import('./pages/Auth').then(m => ({ default: m.Auth })));
@@ -53,9 +52,7 @@ function RouteScrollManager() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
   const { isAuthenticated, isGuestSession, loading } = useAuth();
-  const dbUser = useAuthStore(state => state.user);
 
   if (loading) {
     return <PageLoader />;
@@ -63,21 +60,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated && !isGuestSession) {
     return <Navigate to="/auth" replace />;
-  }
-
-  const hasProfile = Boolean(dbUser?.grade && dbUser?.track);
-  const isDiagnosisRoute = location.pathname.includes('/diagnosis');
-
-  // Only block navigation for brand-new users who haven't even set grade/track.
-  // Once profile basics are set, allow free navigation to all routes.
-  // Users can always access /app/diagnosis regardless of onboarding state.
-  if (!hasProfile && !isDiagnosisRoute && location.pathname !== '/onboarding') {
-    return <Navigate to="/app/diagnosis" replace />;
-  }
-
-  // Legacy /onboarding route should now just go to /app/diagnosis
-  if (location.pathname === '/onboarding') {
-    return <Navigate to="/app/diagnosis" replace />;
   }
 
   return <>{children}</>;

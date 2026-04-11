@@ -1,4 +1,5 @@
 import type { UserProfile } from '@shared-contracts';
+import { coerceMajorForUniversity } from './goalValidation';
 
 export interface RankedGoal {
   university: string;
@@ -29,7 +30,7 @@ export function buildRankedGoals(
 
   const pushGoal = (university: string, major: string) => {
     const normalizedUniversity = university.trim();
-    const normalizedMajor = major.trim();
+    const normalizedMajor = coerceMajorForUniversity(normalizedUniversity, major);
     if (!normalizedUniversity) return;
 
     const key = `${normalizedUniversity}__${normalizedMajor}`;
@@ -53,4 +54,3 @@ export function buildRankedGoals(
 
   return goals.slice(0, Math.max(1, limit));
 }
-
