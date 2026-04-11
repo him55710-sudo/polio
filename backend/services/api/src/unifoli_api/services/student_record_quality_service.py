@@ -1,3 +1,4 @@
+# -*- coding: latin-1 -*-
 from __future__ import annotations
 
 from typing import Any
@@ -85,7 +86,7 @@ def evaluate_quality(
     if not canonical.extracurricular_narratives:
         warnings.append("No extracurricular narratives found.")
     if not canonical.subject_special_notes:
-        warnings.append("No subject-specific notes (?�특) found.")
+        warnings.append("No subject-specific notes (??특) found.")
 
     # Calculate overall confidence
     if not classifications:

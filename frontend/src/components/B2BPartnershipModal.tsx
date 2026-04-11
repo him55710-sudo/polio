@@ -5,7 +5,13 @@ import toast from 'react-hot-toast';
 import type { InstitutionType } from '@shared-contracts';
 import { useAuth } from '../contexts/AuthContext';
 import { useAuthStore } from '../store/authStore';
-import { submitInquiry, type InquiryErrors, type InquiryPayload, validateInquiry } from '../lib/inquiries';
+import {
+  getInquirySubmissionFeedback,
+  submitInquiry,
+  type InquiryErrors,
+  type InquiryPayload,
+  validateInquiry,
+} from '../lib/inquiries';
 import { Badge, Button, Dialog, DialogBody, DialogHeader, DialogPanel, Input, TextArea } from './ui';
 
 interface B2BPartnershipModalProps {
@@ -62,10 +68,15 @@ export function B2BPartnershipModal({ isOpen, onClose }: B2BPartnershipModalProp
     const loadingId = toast.loading('문의를 접수하고 있습니다...');
 
     try {
-      await submitInquiry(form);
+      const response = await submitInquiry(form);
+      const feedback = getInquirySubmissionFeedback(response);
       setSubmitted(true);
       setErrors({});
-      toast.success('문의가 접수되었습니다. 남겨주신 연락처로 안내드릴게요.', { id: loadingId });
+      if (feedback.kind === 'success') {
+        toast.success(feedback.message, { id: loadingId });
+      } else {
+        toast(feedback.message, { id: loadingId, duration: 7000 });
+      }
     } catch (error) {
       console.error('Partnership inquiry failed:', error);
       toast.error('문의 접수에 실패했습니다. 잠시 후 다시 시도해주세요.', { id: loadingId });

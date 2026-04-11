@@ -322,9 +322,14 @@ def build_provenance_appendix_lines(
     for claim, support in list((evidence_map or {}).items())[:max_evidence_items]:
         if not isinstance(support, dict):
             continue
-        evidence = str(support.get("洹쇨�?) or support.get("evidence") or "Grounded student evidence")
+        evidence = str(
+            support.get("근거")
+            or support.get("evidence")
+            or support.get("text")
+            or "Grounded student evidence"
+        )
         source = humanize_provenance_source(
-            str(support.get("?�쒖�?) or support.get("source") or ""),
+            str(support.get("출처") or support.get("source") or ""),
             hide_internal=hide_internal,
         )
         lines.append(f"{claim}: {evidence} ({source})")

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from unifoli_api.services.student_record_page_classifier_service import PageCategory
@@ -50,27 +51,21 @@ class StudentRecordCanonicalSchema(BaseModel):
 
 
 class StudentRecordNormalizerService:
-    """
-    Compatibility wrapper used by StudentRecordPipelineService.
-    """
+    """Compatibility wrapper used by StudentRecordPipelineService."""
 
     def normalize_sections(self, sections: list[StudentRecordSection]) -> StudentRecordCanonicalSchema:
         return normalize_sections(sections)
 
 
 def normalize_sections(sections: list[StudentRecordSection]) -> StudentRecordCanonicalSchema:
-    """
-    Normalizes a list of sections into a canonical schema.
-    """
     canonical = StudentRecordCanonicalSchema()
-    
+
     for section in sections:
         if section.section_type == PageCategory.ATTENDANCE:
             canonical.attendance.extend(_parse_attendance(section))
         elif section.section_type == PageCategory.AWARDS:
             canonical.awards.extend(_parse_awards(section))
         elif section.section_type == PageCategory.GRADES_AND_NOTES:
-            # Separating grades (tables) and notes (text)
             canonical.grades.extend(_parse_grades(section))
             canonical.subject_special_notes.update(_parse_subject_notes(section))
         elif section.section_type == PageCategory.EXTRACURRICULAR:
@@ -78,7 +73,7 @@ def normalize_sections(sections: list[StudentRecordSection]) -> StudentRecordCan
         elif section.section_type == PageCategory.READING:
             canonical.reading_activities.extend(_parse_reading(section))
         elif section.section_type == PageCategory.BEHAVIOR:
-            canonical.behavior_opinion = section.raw_text
+            canonical.behavior_opinion = (section.raw_text or "").strip() or None
         elif section.section_type == PageCategory.STUDENT_INFO:
             _extract_student_info(section, canonical)
 
@@ -86,46 +81,60 @@ def normalize_sections(sections: list[StudentRecordSection]) -> StudentRecordCan
 
 
 def _parse_attendance(section: StudentRecordSection) -> list[AttendanceEntry]:
-    # Placeholder: Extracting attendance info from tables or text
-    entries = []
-    # Implementation details would go here
+    entries: list[AttendanceEntry] = []
+    for match in re.finditer(r"(\d)학년", section.raw_text or ""):
+        entries.append(AttendanceEntry(grade=int(match.group(1)), school_days=0))
     return entries
 
 
 def _parse_awards(section: StudentRecordSection) -> list[AwardEntry]:
-    entries = []
+    entries: list[AwardEntry] = []
     for table in section.tables:
         rows = table.get("rows", [])
         if not rows:
             continue
-        # Check if it looks like an award table
-        # Structure: ?�상�?| ?�급(?? | ?�상?�월??| ?�여기�? | 참�??�???�원)
-        for row in rows[1:]: # Skip header
-             cells = [str(c.get("text", "")).strip() for c in row if isinstance(c, dict)]
-             if len(cells) >= 1:
-                 entries.append(AwardEntry(
-                     award_name=cells[0],
-                     grade=cells[1] if len(cells) >= 2 else None,
-                     date=cells[2] if len(cells) >= 3 else None,
-                     host=cells[3] if len(cells) >= 4 else None,
-                     participation=cells[4] if len(cells) >= 5 else None,
-                 ))
+        for row in rows[1:]:
+            cells = [str(cell.get("text", "")).strip() for cell in row if isinstance(cell, dict)]
+            if not cells or not cells[0]:
+                continue
+            entries.append(
+                AwardEntry(
+                    award_name=cells[0],
+                    grade=cells[1] if len(cells) >= 2 else None,
+                    date=cells[2] if len(cells) >= 3 else None,
+                    host=cells[3] if len(cells) >= 4 else None,
+                    participation=cells[4] if len(cells) >= 5 else None,
+                )
+            )
     return entries
 
 
 def _parse_grades(section: StudentRecordSection) -> list[GradeEntry]:
-    entries = []
+    entries: list[GradeEntry] = []
     for table in section.tables:
         rows = table.get("rows", [])
-        # Placeholder for complex grade table parsing
+        for row in rows[1:]:
+            cells = [str(cell.get("text", "")).strip() for cell in row if isinstance(cell, dict)]
+            if not cells or not cells[0]:
+                continue
+            unit = _to_int(cells[1]) if len(cells) >= 2 else None
+            entries.append(
+                GradeEntry(
+                    subject=cells[0],
+                    unit=unit,
+                    original_score=_to_float(cells[2]) if len(cells) >= 3 else None,
+                    average=_to_float(cells[3]) if len(cells) >= 4 else None,
+                    achievement=cells[4] if len(cells) >= 5 else None,
+                    rank=cells[5] if len(cells) >= 6 else None,
+                )
+            )
     return entries
 
 
 def _parse_subject_notes(section: StudentRecordSection) -> dict[str, str]:
-    notes = {}
-    # Extract narratives like "�?��: ~~~"
-    text = section.raw_text
-    matches = re.finditer(r"\[([^\]]+)\]\s*(.*?)(?=\[|$)", text, re.DOTALL)
+    notes: dict[str, str] = {}
+    text = section.raw_text or ""
+    matches = re.finditer(r"\[([^\]]+)\]\s*(.*?)(?=\[[^\]]+\]|$)", text, re.DOTALL)
     for match in matches:
         subject = match.group(1).strip()
         note = match.group(2).strip()
@@ -135,27 +144,58 @@ def _parse_subject_notes(section: StudentRecordSection) -> dict[str, str]:
 
 
 def _parse_extracurricular(section: StudentRecordSection) -> dict[str, str]:
-    narratives = {}
-    text = section.raw_text
-    # Common headers: ?�율?�동, ?�아리활?? 진로?�동, 봉사?�동
-    for header in ["?�율?�동", "?�아리활??, "진로?�동", "봉사?�동"]:
-        match = re.search(rf"{header}\s*(.*?)(?=?�율?�동|?�아리활??진로?�동|봉사?�동|$)", text, re.DOTALL)
+    narratives: dict[str, str] = {}
+    text = section.raw_text or ""
+    headers = ["자율활동", "동아리활동", "진로활동", "봉사활동"]
+    for header in headers:
+        match = re.search(
+            rf"{re.escape(header)}\s*(.*?)(?={'|'.join(re.escape(value) for value in headers)}|$)",
+            text,
+            re.DOTALL,
+        )
         if match:
-            narratives[header] = match.group(1).strip()
+            content = match.group(1).strip()
+            if content:
+                narratives[header] = content
     return narratives
 
 
 def _parse_reading(section: StudentRecordSection) -> list[str]:
-    # Reading activities are usually grade-wise
-    return [section.raw_text]
+    text = (section.raw_text or "").strip()
+    return [text] if text else []
 
 
 def _extract_student_info(section: StudentRecordSection, canonical: StudentRecordCanonicalSchema) -> None:
-    text = section.raw_text
-    name_match = re.search(r"??s*�?s*:\s*([가-??{2,4})", text)
+    text = section.raw_text or ""
+
+    name_match = re.search(r"(?:학생명|성명)\s*[:：]?\s*([가-힣]{2,5})", text)
     if name_match:
         canonical.student_name = name_match.group(1)
-    
-    school_match = re.search(r"([가-??+고등?�교)", text)
+
+    school_match = re.search(r"([가-힣A-Za-z0-9 ]+고등학교)", text)
     if school_match:
-        canonical.school_name = school_match.group(1)
+        canonical.school_name = school_match.group(1).strip()
+
+
+def _to_int(value: str | None) -> int | None:
+    if not value:
+        return None
+    digits = re.sub(r"[^\d-]", "", value)
+    if not digits:
+        return None
+    try:
+        return int(digits)
+    except ValueError:
+        return None
+
+
+def _to_float(value: str | None) -> float | None:
+    if not value:
+        return None
+    normalized = re.sub(r"[^0-9.\-]", "", value)
+    if not normalized:
+        return None
+    try:
+        return float(normalized)
+    except ValueError:
+        return None

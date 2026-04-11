@@ -3,7 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Building2, Bug, Headset, Mail, Phone, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { BugReportInquiryCategory, InstitutionType, OneToOneInquiryCategory } from '@shared-contracts';
-import { submitInquiry, type InquiryErrors, type InquiryPayload, validateInquiry } from '../lib/inquiries';
+import {
+  getInquirySubmissionFeedback,
+  submitInquiry,
+  type InquiryErrors,
+  type InquiryPayload,
+  validateInquiry,
+} from '../lib/inquiries';
 import {
   Input,
   PageHeader,
@@ -157,8 +163,13 @@ export function Contact() {
     setSubmittingTab(tab);
     const loadingId = toast.loading('문의 내용을 전송하는 중이에요...');
     try {
-      await submitInquiry(payload);
-      toast.success('문의가 접수됐어요. 남겨주신 연락처로 안내드릴게요.', { id: loadingId });
+      const response = await submitInquiry(payload);
+      const feedback = getInquirySubmissionFeedback(response);
+      if (feedback.kind === 'success') {
+        toast.success(feedback.message, { id: loadingId });
+      } else {
+        toast(feedback.message, { id: loadingId, duration: 7000 });
+      }
       setErrors(prev => ({ ...prev, [tab]: {} }));
       if (tab === 'one_to_one') setOneToOne(oneToOneInitial);
       if (tab === 'partnership') setPartnership(partnershipInitial);
@@ -461,4 +472,3 @@ function SubmitRow({ pending }: { pending: boolean }) {
     </div>
   );
 }
-

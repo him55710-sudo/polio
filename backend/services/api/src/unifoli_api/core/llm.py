@@ -217,7 +217,7 @@ class OllamaClient(LLMClient):
         content = response.choices[0].message.content
         if not content:
             raise LLMRequestError(
-                "LLM ?�답??비어 ?�어 ?�한 모드�??�환?�니??",
+                "LLM ??답??비어 ??어 ??한 모드?????환??니??",
                 limited_reason="empty_response",
                 provider="ollama",
                 profile=self.profile_name,
@@ -227,7 +227,7 @@ class OllamaClient(LLMClient):
             return response_model.model_validate_json(content)
         except Exception as exc:  # noqa: BLE001
             raise LLMRequestError(
-                "?�답 ?�식???�석?��? 못해 ?�한 모드�??�환?�니??",
+                "??답 ??식????석???? 못해 ??한 모드?????환??니??",
                 limited_reason="invalid_json",
                 provider="ollama",
                 profile=self.profile_name,
@@ -463,11 +463,11 @@ def _to_ollama_request_error(
     _log_ollama_failure_once(reason, base_url=base_url, model=model, profile=profile, exc=exc)
 
     if reason in {"timeout", "unreachable"}:
-        message = "AI ?�답??지?�되???�한 모드�??�환?�니??"
+        message = "AI ??답??지??되????한 모드?????환??니??"
     elif reason == "invalid_request":
-        message = "AI ?�청 구성??맞�? ?�아 ?�한 모드�??�환?�니??"
+        message = "AI ??청 구성??맞?? ??아 ??한 모드?????환??니??"
     else:
-        message = "AI ?�출 �??�류가 발생???�한 모드�??�환?�니??"
+        message = "AI ??출 ?????류가 발생????한 모드?????환??니??"
 
     return LLMRequestError(
         message,

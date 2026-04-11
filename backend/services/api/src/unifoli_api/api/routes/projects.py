@@ -1,3 +1,4 @@
+# -*- coding: latin-1 -*-
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -229,7 +230,7 @@ def get_user_stats(
 ) -> UserStatsRead:
     projects = list_projects(db, owner_user_id=current_user.id)
     report_count = len(projects)
-    level_map = ["?êµ¬???œì‘ ?£", "?±ì¥?˜ëŠ” ?ìƒˆ ?Œ±", "?´ë§¤ ë§ºëŠ” ?˜ë¬´ ?Œ³"]
+    level_map = ["??êµ¬????ì‘ ???", "??ì¥??ëŠ” ??ìƒˆ ???", "??ë§¤ ë§ºëŠ” ??ë¬´ ???"]
     level_index = min(report_count, len(level_map) - 1)
     
     return UserStatsRead(

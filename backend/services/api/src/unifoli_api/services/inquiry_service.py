@@ -21,8 +21,8 @@ _INQUIRY_LOGGER = logging.getLogger("unifoli.api.inquiries")
 _SMTP_TIMEOUT_SECONDS = 20.0
 _SMTP_DISABLED_REASON = "SMTP_ENABLED=false"
 _GENERIC_INQUIRY_DELIVERY_FAILURE = "Inquiry email delivery failed. Retry after checking SMTP configuration."
-_FABRICATION_PATTERN = re.compile(r"\b(make up|fabricat(?:e|ed|ion)|ì¡°ìž‘|ê±°ì§“|?ˆìœ„)\b", re.IGNORECASE)
-_GUARANTEE_PATTERN = re.compile(r"\b(guarantee|guaranteed|100%|?©ê²© ë³´ìž¥|?•ì • ?©ê²©)\b", re.IGNORECASE)
+_FABRICATION_PATTERN = re.compile(r"\b(make up|fabricat(?:e|ed|ion)|manipulat(?:e|ed|ion)|falsehood)\b", re.IGNORECASE)
+_GUARANTEE_PATTERN = re.compile(r"\b(guarantee|guaranteed|100%|admission guarantee|certain admission)\b", re.IGNORECASE)
 _SENSITIVE_PATTERN = re.compile(
     r"(\b\d{6}\s*[-]?\s*[1-4]\d{6}\b|\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b)",
     re.IGNORECASE,
@@ -30,6 +30,7 @@ _SENSITIVE_PATTERN = re.compile(
 
 
 def create_inquiry(db: Session, payload: InquiryCreate) -> Inquiry:
+    settings = get_settings()
     inquiry = Inquiry(
         inquiry_type=payload.inquiry_type,
         status="received",
@@ -108,6 +109,19 @@ def create_inquiry(db: Session, payload: InquiryCreate) -> Inquiry:
         )
         db.add(inquiry)
         db.commit()
+        db.refresh(inquiry)
+
+    if _should_process_inquiry_delivery_inline(settings):
+        from unifoli_api.services.async_job_service import process_async_job
+
+        _INQUIRY_LOGGER.info(
+            "Processing inquiry email delivery inline. inquiry_id=%s job_id=%s serverless=%s inline_dispatch=%s",
+            inquiry.id,
+            job.id,
+            settings.serverless_runtime,
+            settings.async_jobs_inline_dispatch,
+        )
+        process_async_job(db, job.id)
         db.refresh(inquiry)
 
     return inquiry
@@ -231,20 +245,20 @@ def _build_inquiry_email_message(*, payload: InquiryCreate, from_email: str, to_
     msg["To"] = to_email
     msg["Reply-To"] = payload.email
     
-    # Explicitly encode subject to handle non-ASCII (Korean) characters safely
+    # Use an encoded header so the subject stays safe across mail clients.
     from email.header import Header
-    subject_text = f"[{payload.inquiry_type.upper()}] ??ë¬¸ì˜ê°€ ?‘ìˆ˜?˜ì—ˆ?µë‹ˆ?? {payload.name or '?µëª…'}"
+    subject_text = f"[{payload.inquiry_type.upper()}] New inquiry received - {payload.name or 'Anonymous'}"
     msg["Subject"] = Header(subject_text, "utf-8").encode()
 
-    body = f"""? í˜•: {payload.inquiry_type}
-ì¹´í…Œê³ ë¦¬: {payload.inquiry_category or '-'}
-?´ë¦„: {payload.name or '-'}
-?´ë©”?? {payload.email}
-?°ë½ì²? {payload.phone or '-'}
-ê¸°ê?ëª? {payload.institution_name or '-'}
-ë°œìƒ?„ì¹˜: {payload.context_location or '-'}
+    body = f"""Type: {payload.inquiry_type}
+Category: {payload.inquiry_category or '-'}
+Name: {payload.name or '-'}
+Email: {payload.email}
+Phone: {payload.phone or '-'}
+Institution: {payload.institution_name or '-'}
+Context: {payload.context_location or '-'}
 
---- ë¬¸ì˜?´ìš© ---
+--- Inquiry Message ---
 {payload.message}
 """
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -271,6 +285,12 @@ def _resolve_receiver_email(settings: Settings) -> str | None:
         return receiver
     fallback = (settings.smtp_username or "").strip()
     return fallback or None
+
+
+def _should_process_inquiry_delivery_inline(settings: Settings) -> bool:
+    if not settings.allow_inline_job_processing:
+        return False
+    return settings.serverless_runtime or not settings.async_jobs_inline_dispatch
 
 
 def _send_via_smtp(*, settings: Settings, message: MIMEMultipart) -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from enum import Enum
 from typing import Any
 
@@ -27,77 +26,74 @@ class PageClassification(BaseModel):
     is_continuation: bool = False
 
 
-# Patterns for each category
-CATEGORY_PATTERNS = {
+CATEGORY_PATTERNS: dict[PageCategory, tuple[str, ...]] = {
     PageCategory.STUDENT_INFO: (
-        "?�적·?�적?�항",
-        "?�적 ?�적?�항",
-        "?�적?�항",
-        "?�적?�항",
-        "?�명",
-        "주�??�록번호",
+        "인적·학적사항",
+        "인적 학적사항",
+        "인적사항",
+        "학생명",
+        "주민등록번호",
         "주소",
     ),
     PageCategory.ATTENDANCE: (
-        "출결?�황",
+        "출결상황",
         "결석",
-        "지�?,
+        "지각",
         "조퇴",
         "결과",
         "질병",
-        "미인??,
+        "미인정",
     ),
     PageCategory.AWARDS: (
-        "?�상경력",
-        "?�상 경력",
-        "?�상�?,
-        "?�급(??",
-        "?�상?�월??,
-        "?�여기�?",
+        "수상경력",
+        "수상 경력",
+        "수상명",
+        "등급(위)",
+        "수상년월일",
+        "수여기관",
     ),
     PageCategory.LICENSES: (
-        "?�격�?�??�증 취득?�황",
-        "?�격�?,
-        "기술?�격",
-        "�??기술?�격",
+        "자격면허 및 인증 취득상황",
+        "자격증",
+        "기술자격",
+        "국가기술자격",
     ),
     PageCategory.EXTRACURRICULAR: (
-        "창의??체험?�동",
-        "창의?�체?�활??,
-        "?�율?�동",
-        "?�아리활??,
-        "봉사?�동",
-        "진로?�동",
-        "?�기?�항",
+        "창의적 체험활동",
+        "창의적체험활동",
+        "자율활동",
+        "동아리활동",
+        "봉사활동",
+        "진로활동",
+        "행동특성",
     ),
     PageCategory.GRADES_AND_NOTES: (
-        "교과?�습발달?�황",
-        "?��??�력 �??�기?�항",
-        "?�특",
-        "?�점??,
+        "교과학습발달상황",
+        "교과 학습 발달 상황",
+        "세부능력 및 특기사항",
+        "세특",
+        "원점수",
         "과목",
-        "?�위",
-        "?�취??,
-        "?�차?�급",
+        "단위",
+        "성취도",
+        "석차등급",
     ),
     PageCategory.READING: (
-        "?�서?�동?�황",
-        "?�서 ?�동",
-        "?�??,
-        "?�서�?,
+        "독서활동상황",
+        "독서 활동",
+        "독서",
+        "도서명",
     ),
     PageCategory.BEHAVIOR: (
-        "?�동?�성 �?종합?�견",
-        "?�동?�성",
-        "종합?�견",
+        "행동특성 및 종합의견",
+        "행동특성",
+        "종합의견",
     ),
 }
 
 
 class StudentRecordPageClassifierService:
-    """
-    Compatibility wrapper used by StudentRecordPipelineService.
-    """
+    """Compatibility wrapper used by StudentRecordPipelineService."""
 
     def classify_pages(self, pages: list[Any]) -> list[PageClassification]:
         normalized_pages: list[dict[str, Any]] = []
@@ -107,6 +103,7 @@ class StudentRecordPageClassifierService:
                 text = str(page.get("text") or page.get("raw_text") or "")
                 normalized_pages.append({"page_number": page_number, "text": text})
                 continue
+
             extract_text = getattr(page, "extract_text", None)
             if callable(extract_text):
                 try:
@@ -115,15 +112,13 @@ class StudentRecordPageClassifierService:
                     text = ""
                 normalized_pages.append({"page_number": index, "text": text})
                 continue
+
             normalized_pages.append({"page_number": index, "text": str(page or "")})
 
         return classify_pages(normalized_pages)
 
 
 def classify_page(page_number: int, text: str) -> PageClassification:
-    """
-    Classifies a single page based on its text content.
-    """
     if not text.strip():
         return PageClassification(
             page_number=page_number,
@@ -133,75 +128,38 @@ def classify_page(page_number: int, text: str) -> PageClassification:
         )
 
     hits: dict[PageCategory, list[str]] = {}
-    
     for category, patterns in CATEGORY_PATTERNS.items():
-        matched = []
-        for pattern in patterns:
-            if pattern in text:
-                matched.append(pattern)
+        matched = [pattern for pattern in patterns if pattern in text]
         if matched:
             hits[category] = matched
 
+    continuation_markers = ("계속", "다음 페이지", "이어서", "continued")
     if not hits:
-        # Check for continuation patterns
-        if "계속" in text or "?�어?? in text:
-             return PageClassification(
-                page_number=page_number,
-                category=PageCategory.UNKNOWN,
-                confidence=0.1,
-                matched_tokens=["continuation_marker"],
-                is_continuation=True
-            )
-
+        is_continuation = any(marker in text for marker in continuation_markers)
         return PageClassification(
             page_number=page_number,
             category=PageCategory.UNKNOWN,
-            confidence=0.0,
-            matched_tokens=[],
+            confidence=0.1 if is_continuation else 0.0,
+            matched_tokens=["continuation_marker"] if is_continuation else [],
+            is_continuation=is_continuation,
         )
 
-    # Sort categories by hit count (len of matched tokens)
-    sorted_hits = sorted(hits.items(), key=lambda x: len(x[1]), reverse=True)
+    sorted_hits = sorted(hits.items(), key=lambda item: len(item[1]), reverse=True)
     best_category, best_tokens = sorted_hits[0]
-    
-    # Simple confidence score (could be more sophisticated)
     confidence = min(0.95, len(best_tokens) * 0.2 + 0.1)
-    
-    # Check for continuation headers like "[교과?�습발달?�황(계속)]"
-    is_continuation = "계속" in text and best_category.value in text
+    is_continuation = any(marker in text for marker in continuation_markers)
 
     return PageClassification(
         page_number=page_number,
         category=best_category,
         confidence=confidence,
         matched_tokens=best_tokens,
-        is_continuation=is_continuation
+        is_continuation=is_continuation,
     )
 
 
 def classify_pages(pages: list[dict[str, Any]]) -> list[PageClassification]:
-    """
-    Classifies a list of pages.
-    """
-    classifications = []
-    for page in pages:
-        page_number = page.get("page_number", 0)
-        text = page.get("text") or page.get("raw_text") or ""
-        classifications.append(classify_page(page_number, text))
-    
-    # Refine classification based on context (continuation logic)
-    refined = []
-    prev_category = PageCategory.UNKNOWN
-    
-    for i, cls in enumerate(classifications):
-        if cls.category == PageCategory.UNKNOWN and prev_category != PageCategory.UNKNOWN:
-            # If current page is unknown but looks like it follows the previous one
-            # We can tentatively mark it as continuation if there are certain signals
-            # For now, we'll keep it as is and let the section parser handle grouping.
-            pass
-        
-        refined.append(cls)
-        if cls.category != PageCategory.UNKNOWN:
-            prev_category = cls.category
-            
-    return refined
+    return [
+        classify_page(int(page.get("page_number", 0)), str(page.get("text") or page.get("raw_text") or ""))
+        for page in pages
+    ]

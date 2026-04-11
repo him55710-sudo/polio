@@ -1,2345 +1,528 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import re
-import threading
-from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from unifoli_api.core.config import get_settings
-from unifoli_api.core.llm import get_pdf_analysis_llm_client
-from unifoli_api.core.security import sanitize_public_error
 from unifoli_ingest.models import ParsedDocumentPayload
 
-_MAX_PAGES_FOR_PROMPT = 8
-_MAX_PAGE_TEXT_CHARS = 1400
-_MAX_RAW_LLM_RESPONSE_CHARS = 16000
-_PDF_ANALYSIS_FALLBACK_REASON = "LLM PDF analysis failed. Generated heuristic summary instead."
-_CANONICAL_SCHEMA_VERSION = "2026-04-10"
-_CANONICAL_MAX_ITEMS_PER_FIELD = 8
-_CANONICAL_MAX_EVIDENCE_PER_ITEM = 3
+_CANONICAL_SCHEMA_VERSION = "2026-04-12"
+_MAX_PAGE_INSIGHTS = 8
+_MAX_KEY_POINTS = 5
+_MAX_EVIDENCE_GAPS = 5
 
 _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "grades_subjects": ("교과?�습발달?�황", "과목", "?�취??, "?�급", "?�균", "grades"),
-    "subject_special_notes": ("?�특", "?��??�력", "?�기?�항", "subject_special_notes"),
-    "extracurricular": ("창의??체험?�동", "창체", "?�아�?, "봉사", "?�율?�동", "진로?�동"),
-    "career_signals": ("진로", "진학", "?�망?�과", "?�망 ?�공", "목표", "career"),
-    "reading_activity": ("?�서", "?�서", "?��?", "reading"),
-    "behavior_opinion": ("?�동?�성", "종합?�견", "?�성", "?�도", "behavior"),
+    "student_info": ("인적사항", "학적사항", "학생명", "학교명", "주민등록번호"),
+    "attendance": ("출결상황", "결석", "지각", "조퇴", "결과", "미인정"),
+    "awards": ("수상경력", "수상명", "수여기관"),
+    "creative_activities": ("창의적 체험활동", "창체", "자율활동", "동아리활동"),
+    "volunteer": ("봉사활동", "봉사시간", "봉사"),
+    "grades_subjects": ("교과학습발달상황", "과목", "원점수", "성취도", "등급"),
+    "subject_special_notes": ("세부능력", "특기사항", "세특"),
+    "reading": ("독서활동상황", "독서", "도서명", "저자"),
+    "behavior_general_comments": ("행동특성 및 종합의견", "행동특성", "종합의견"),
 }
 
-_SUBJECT_KEYWORDS: tuple[str, ...] = (
-    "�?��",
-    "?�학",
-    "?�어",
-    "?�국??,
-    "?�회",
-    "??��",
-    "과학",
-    "물리",
-    "?�학",
-    "?�명과학",
-    "지구과??,
-    "?�보",
-    "컴퓨??,
-    "?�로그래�?,
-    "기하",
-    "?�률�??�계",
-    "미적�?,
-    "경제",
-    "?�치",
-    "�?,
-    "?�리",
-    "철학",
-    "미술",
-    "?�악",
-    "체육",
+_LEGACY_SECTION_LABELS: dict[str, str] = {
+    "student_info": "인적사항",
+    "attendance": "출결상황",
+    "awards": "수상경력",
+    "creative_activities": "창의적 체험활동",
+    "volunteer": "봉사활동",
+    "grades_subjects": "교과학습발달상황",
+    "subject_special_notes": "세특",
+    "reading": "독서",
+    "behavior_general_comments": "행동특성",
+}
+
+_TIMELINE_PATTERNS = (
+    re.compile(r"[1-3]\s*학년\s*[1-2]\s*학기"),
+    re.compile(r"[1-3]\s*학년"),
+    re.compile(r"[1-2]\s*학기"),
 )
 
-_NORMALIZED_SECTION_ORDER: tuple[str, ...] = (
-    "student_info",
-    "attendance",
-    "awards",
-    "creative_activities",
-    "volunteer",
-    "grades_subjects",
-    "subject_special_notes",
-    "reading",
-    "behavior_general_comments",
-)
-
-_NORMALIZED_SECTION_LABELS: dict[str, str] = {
-    "student_info": "?�적?�항",
-    "attendance": "출결?�황",
-    "awards": "?�상경력",
-    "creative_activities": "창의??체험?�동",
-    "volunteer": "봉사?�동",
-    "grades_subjects": "교과?�습발달?�황",
-    "subject_special_notes": "?��??�력 �??�기?�항",
-    "reading": "?�서?�동?�황",
-    "behavior_general_comments": "?�동?�성 �?종합?�견",
-}
-
-_NORMALIZED_SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "student_info": ("?�적?�항", "?�적?�항", "?�명", "주�??�록번호", "?�교�?, "?�년"),
-    "attendance": ("출결?�황", "결석", "지�?, "조퇴", "결과", "무단"),
-    "awards": ("?�상경력", "?�상�?, "?�여기�?", "?�상?�자", "?�상"),
-    "creative_activities": ("창의??체험?�동", "?�율?�동", "?�아리활??, "진로?�동", "창체"),
-    "volunteer": ("봉사?�동", "봉사", "봉사?�간", "봉사?�동 ?�적"),
-    "grades_subjects": ("교과?�습발달?�황", "?�취??, "?�차", "과목", "?�점??, "?�균"),
-    "subject_special_notes": ("?��??�력", "?�기?�항", "?�특", "과목�??��??�력"),
-    "reading": ("?�서?�동?�황", "?�서", "?�서�?, "?�??),
-    "behavior_general_comments": ("?�동?�성 �?종합?�견", "?�동?�성", "종합?�견"),
-}
-
-_REQUIRED_NORMALIZED_SECTIONS: tuple[str, ...] = _NORMALIZED_SECTION_ORDER
-
-
-class PdfPageInsight(BaseModel):
-    page_number: int = Field(ge=1, le=5000)
-    summary: str = Field(min_length=1, max_length=260)
-
-
-class PdfAnalysisLLMResponse(BaseModel):
-    summary: str = Field(min_length=1, max_length=900)
-    key_points: list[str] = Field(default_factory=list, max_length=8)
-    page_insights: list[PdfPageInsight] = Field(default_factory=list, max_length=20)
-    evidence_gaps: list[str] = Field(default_factory=list, max_length=8)
+_MAJOR_HINT_KEYWORDS = ("전공", "진로", "학과", "관심", "목표", "희망", "진학")
+_CAREER_KEYWORDS = ("진로", "학과", "전공", "희망", "진학", "목표")
 
 
 def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any] | None:
     settings = get_settings()
-    if not settings.pdf_analysis_llm_enabled:
+    if not getattr(settings, "pdf_analysis_llm_enabled", True):
         return None
     if parsed.source_extension.lower() != ".pdf":
         return None
 
     started_at = datetime.now(timezone.utc)
-    page_items = _extract_page_items(parsed)
-    heuristic = _build_heuristic_analysis(parsed=parsed, page_items=page_items)
-    requested_model = _resolve_pdf_analysis_model_name()
-    requested_provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
+    page_texts = _extract_page_texts(parsed)
+    summary = _build_pdf_summary(parsed, page_texts)
+    key_points = _extract_key_points(page_texts)
+    evidence_gaps = _build_evidence_gaps(parsed, page_texts)
+    page_insights = _build_page_insights(page_texts)
 
-    def _base_metadata(
-        *,
-        engine: str,
-        actual_provider: str,
-        actual_model: str,
-        fallback_used: bool,
-        fallback_reason: str | None = None,
-    ) -> dict[str, Any]:
-        duration_ms = int(
-            max(
-                0.0,
-                (datetime.now(timezone.utc) - started_at).total_seconds() * 1000.0,
-            )
-        )
-        payload: dict[str, Any] = {
-            "provider": actual_provider,
-            "model": actual_model,
-            "engine": engine,
-            "pdf_analysis_engine": engine,
-            "generated_at": _utc_iso(),
-            "requested_pdf_analysis_provider": requested_provider,
-            "requested_pdf_analysis_model": requested_model,
-            "actual_pdf_analysis_provider": actual_provider,
-            "actual_pdf_analysis_model": actual_model,
-            "fallback_used": fallback_used,
-            "processing_duration_ms": duration_ms,
-        }
-        if fallback_reason:
-            payload["fallback_reason"] = fallback_reason
-        return payload
+    duration_ms = int(max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds() * 1000.0))
+    provider = str(getattr(settings, "pdf_analysis_llm_provider", "") or "heuristic").strip().lower()
+    model = str(getattr(settings, "pdf_analysis_llm_model", "") or "heuristic-summary-v1").strip()
 
-    if not page_items:
-        return {
-            **_base_metadata(
-                engine="fallback",
-                actual_provider="heuristic",
-                actual_model="heuristic",
-                fallback_used=True,
-                fallback_reason="No extractable PDF page text was available for LLM analysis.",
-            ),
-            "attempted_provider": requested_provider,
-            "attempted_model": requested_model,
-            "failure_reason": "No extractable PDF page text was available for LLM analysis.",
-            **heuristic,
-        }
-
-    llm = None
-    prompt = _build_prompt(parsed=parsed, page_items=page_items)
-    try:
-        llm = get_pdf_analysis_llm_client()
-        llm_response = _run_async(
-            llm.generate_json(
-                prompt=prompt,
-                response_model=PdfAnalysisLLMResponse,
-                system_instruction=_pdf_analysis_system_instruction(),
-                temperature=0.15,
-            )
-        )
-        normalized = _normalize_llm_response(llm_response=llm_response, heuristic=heuristic, page_items=page_items)
-        return {
-            **_base_metadata(
-                engine="llm",
-                actual_provider=requested_provider,
-                actual_model=requested_model,
-                fallback_used=False,
-            ),
-            **normalized,
-        }
-    except Exception as exc:
-        failure_reason = sanitize_public_error(
-            str(exc),
-            fallback=_PDF_ANALYSIS_FALLBACK_REASON,
-            max_length=220,
-        )
-        recovered = _recover_structured_response_from_text(
-            llm=llm,
-            prompt=prompt,
-            heuristic=heuristic,
-            page_items=page_items,
-        )
-        if recovered is not None:
-            normalized = _normalize_llm_response(
-                llm_response=recovered,
-                heuristic=heuristic,
-                page_items=page_items,
-            )
-            return {
-                **_base_metadata(
-                    engine="llm",
-                    actual_provider=requested_provider,
-                    actual_model=requested_model,
-                    fallback_used=True,
-                    fallback_reason="recovered_from_text_fallback",
-                ),
-                "attempted_provider": requested_provider,
-                "attempted_model": requested_model,
-                "recovered_from_text_fallback": True,
-                **normalized,
-            }
-        return {
-            **_base_metadata(
-                engine="fallback",
-                actual_provider="heuristic",
-                actual_model="heuristic",
-                fallback_used=True,
-                fallback_reason=failure_reason,
-            ),
-            "attempted_provider": requested_provider,
-            "attempted_model": requested_model,
-            "failure_reason": failure_reason,
-            **heuristic,
-        }
-
-
-def _run_async(coro):  # noqa: ANN001
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    result_holder: dict[str, Any] = {}
-    error_holder: list[BaseException] = []
-
-    def _runner() -> None:
-        loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(loop)
-            result_holder["value"] = loop.run_until_complete(coro)
-        except BaseException as exc:  # noqa: BLE001
-            error_holder.append(exc)
-        finally:
-            loop.close()
-
-    thread = threading.Thread(target=_runner, daemon=True)
-    thread.start()
-    thread.join()
-
-    if error_holder:
-        raise error_holder[0]
-    return result_holder.get("value")
-
-
-def _pdf_analysis_system_instruction() -> str:
-    return (
-        "??��: ?�생부/?�로??PDF???�이지�??�심 ?�용???�전?�게 ?�약?�는 분석 ?�우�?\n"
-        "규칙:\n"
-        "- 반드???�국??존댓말만 ?�용??주세??\n"
-        "- ?�공???�스??근거 밖의 ?�실??만들지 마세??\n"
-        "- 근거가 부족하�?evidence_gaps??명확???�어 주세??\n"
-        "- 출력?� 반드??지?�된 JSON ?�키마�? ?�르?�요.\n"
-        "- summary??3~5문장, key_points??최�? 5�? page_insights???�이지�???�??�약?�로 ?�성??주세??\n"
-    )
-
-
-def _build_prompt(*, parsed: ParsedDocumentPayload, page_items: list[dict[str, Any]]) -> str:
-    prompt_payload = {
-        "page_count": parsed.page_count,
-        "word_count": parsed.word_count,
-        "parser_name": parsed.parser_name,
-        "warnings": parsed.warnings[:5],
-        "pages": page_items[:_MAX_PAGES_FOR_PROMPT],
-    }
-    return (
-        "[?�청]\n"
-        "?�로?�된 PDF???�이지�??�심�??�체 문서 ?�름???�약??주세??\n"
-        "과장/추측 ?�이 근거 기반?�로 ?�성??주세??\n\n"
-        "[문서 ?�이??JSON]\n"
-        f"{json.dumps(prompt_payload, ensure_ascii=False, indent=2)}\n"
-    )
-
-
-def _recover_structured_response_from_text(
-    *,
-    llm: Any,
-    prompt: str,
-    heuristic: dict[str, Any],
-    page_items: list[dict[str, Any]],
-) -> PdfAnalysisLLMResponse | None:
-    if llm is None:
-        return None
-    try:
-        raw_response = _run_async(_request_flexible_json_response(llm=llm, prompt=prompt))
-    except Exception:
-        return None
-    return _parse_flexible_llm_response(raw=raw_response, heuristic=heuristic, page_items=page_items)
-
-
-async def _request_flexible_json_response(*, llm: Any, prompt: str) -> str:
-    fallback_prompt = (
-        f"{prompt}\n"
-        "[출력 ?�식]\n"
-        "반드??JSON 객체 ?�나�?출력??주세?? 마크?�운/?�명문�? 금�??�니??\n"
-        "{\n"
-        '  "summary": "문서 ?�체 ?�름 ?�약 (존댓�?",\n'
-        '  "key_points": ["?�심 ?�인??", "?�심 ?�인??"],\n'
-        '  "page_insights": [{"page_number": 1, "summary": "1?�이지 ?�심"}],\n'
-        '  "evidence_gaps": ["근거 부�???��"]\n'
-        "}\n"
-    )
-    chunks: list[str] = []
-    total_chars = 0
-    async for token in llm.stream_chat(
-        prompt=fallback_prompt,
-        system_instruction=_pdf_analysis_system_instruction(),
-        temperature=0.1,
-    ):
-        if token:
-            chunks.append(token)
-            total_chars += len(token)
-            if total_chars >= _MAX_RAW_LLM_RESPONSE_CHARS:
-                break
-    return "".join(chunks).strip()
-
-
-def _parse_flexible_llm_response(
-    *,
-    raw: str,
-    heuristic: dict[str, Any],
-    page_items: list[dict[str, Any]],
-) -> PdfAnalysisLLMResponse | None:
-    if not raw:
-        return None
-
-    json_candidate = _extract_json_object_candidate(raw)
-    if json_candidate:
-        try:
-            payload = json.loads(json_candidate)
-            return _coerce_payload_to_response(
-                payload=payload,
-                heuristic=heuristic,
-                page_items=page_items,
-            )
-        except Exception:
-            pass
-
-    freeform_response = _coerce_freeform_text_to_response(
-        raw=raw,
-        heuristic=heuristic,
-        page_items=page_items,
-    )
-    return freeform_response
-
-
-def _extract_json_object_candidate(raw: str) -> str | None:
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.IGNORECASE).strip()
-        cleaned = re.sub(r"```$", "", cleaned).strip()
-
-    try:
-        json.loads(cleaned)
-        return cleaned
-    except Exception:
-        pass
-
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start == -1 or end <= start:
-        return None
-    candidate = cleaned[start : end + 1].strip()
-    try:
-        json.loads(candidate)
-    except Exception:
-        return None
-    return candidate
-
-
-def _coerce_payload_to_response(
-    *,
-    payload: Any,
-    heuristic: dict[str, Any],
-    page_items: list[dict[str, Any]],
-) -> PdfAnalysisLLMResponse:
-    if not isinstance(payload, dict):
-        raise ValueError("LLM JSON payload must be a dictionary.")
-
-    allowed_pages = {int(item["page_number"]) for item in page_items if isinstance(item.get("page_number"), int)}
-    summary = _clean_paragraph(str(payload.get("summary") or ""), max_len=900) or heuristic["summary"]
-
-    key_points_raw = payload.get("key_points")
-    key_points: list[str] = []
-    if isinstance(key_points_raw, list):
-        key_points = [_clean_line(str(item), max_len=180) for item in key_points_raw if str(item).strip()]
-        key_points = [item for item in key_points if item][:5]
-    if not key_points:
-        key_points = heuristic["key_points"]
-
-    evidence_raw = payload.get("evidence_gaps")
-    evidence_gaps: list[str] = []
-    if isinstance(evidence_raw, list):
-        evidence_gaps = [_clean_line(str(item), max_len=180) for item in evidence_raw if str(item).strip()]
-        evidence_gaps = [item for item in evidence_gaps if item][:5]
-    if not evidence_gaps:
-        evidence_gaps = heuristic["evidence_gaps"]
-
-    normalized_page_insights: list[dict[str, Any]] = []
-    page_insights_raw = payload.get("page_insights")
-    if isinstance(page_insights_raw, list):
-        for item in page_insights_raw:
-            if not isinstance(item, dict):
-                continue
-            page_number = item.get("page_number")
-            try:
-                page_number_int = int(page_number)
-            except (TypeError, ValueError):
-                continue
-            if page_number_int not in allowed_pages:
-                continue
-            summary_text = _clean_line(str(item.get("summary") or ""), max_len=260)
-            if not summary_text:
-                continue
-            normalized_page_insights.append(
-                {
-                    "page_number": page_number_int,
-                    "summary": summary_text,
-                }
-            )
-            if len(normalized_page_insights) >= 8:
-                break
-    if not normalized_page_insights:
-        normalized_page_insights = heuristic["page_insights"]
-
-    return PdfAnalysisLLMResponse(
-        summary=summary,
-        key_points=key_points,
-        page_insights=normalized_page_insights,
-        evidence_gaps=evidence_gaps,
-    )
-
-
-def _coerce_freeform_text_to_response(
-    *,
-    raw: str,
-    heuristic: dict[str, Any],
-    page_items: list[dict[str, Any]],
-) -> PdfAnalysisLLMResponse | None:
-    normalized = raw.replace("\r\n", "\n").strip()
-    if not normalized:
-        return None
-    normalized = re.sub(r"[*_`#>\-]{2,}", " ", normalized)
-    normalized = re.sub(r"[ \t]+", " ", normalized)
-
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", normalized) if part.strip()]
-    summary = _clean_paragraph(paragraphs[0] if paragraphs else "", max_len=900) or heuristic["summary"]
-
-    line_items = [line.strip(" -*??t") for line in normalized.splitlines() if line.strip()]
-    key_points: list[str] = []
-    for line in line_items:
-        if re.match(r"^\d+\.", line) or line.startswith("?�심") or line.startswith("?�약"):
-            cleaned = _clean_line(line, max_len=180)
-            if cleaned:
-                key_points.append(cleaned)
-        if len(key_points) >= 5:
-            break
-    if not key_points:
-        key_points = heuristic["key_points"]
-
-    allowed_pages = {int(item["page_number"]) for item in page_items if isinstance(item.get("page_number"), int)}
-    page_insights: list[dict[str, Any]] = []
-    for line in line_items:
-        match = re.search(r"(?P<page>\d{1,4})\s*?�이지\s*[:�?]?\s*(?P<summary>.+)", line)
-        if not match:
-            continue
-        page_number = int(match.group("page"))
-        if page_number not in allowed_pages:
-            continue
-        page_summary = _clean_line(match.group("summary"), max_len=260)
-        if not page_summary:
-            continue
-        page_insights.append({"page_number": page_number, "summary": page_summary})
-        if len(page_insights) >= 8:
-            break
-    if not page_insights:
-        page_insights = heuristic["page_insights"]
-
-    evidence_gaps: list[str] = []
-    for line in line_items:
-        if any(keyword in line for keyword in ("부�?, "?�계", "?�인 ?�요", "근거", "?�락")):
-            cleaned = _clean_line(line, max_len=180)
-            if cleaned:
-                evidence_gaps.append(cleaned)
-        if len(evidence_gaps) >= 5:
-            break
-    if not evidence_gaps:
-        evidence_gaps = heuristic["evidence_gaps"]
-
-    return PdfAnalysisLLMResponse(
-        summary=summary,
-        key_points=key_points[:5],
-        page_insights=page_insights[:8],
-        evidence_gaps=evidence_gaps[:5],
-    )
-
-
-def _normalize_llm_response(
-    *,
-    llm_response: PdfAnalysisLLMResponse,
-    heuristic: dict[str, Any],
-    page_items: list[dict[str, Any]],
-) -> dict[str, Any]:
-    page_numbers = {item["page_number"] for item in page_items if isinstance(item.get("page_number"), int)}
-    normalized_page_insights: list[dict[str, Any]] = []
-    for item in llm_response.page_insights:
-        if item.page_number not in page_numbers:
-            continue
-        summary = _clean_line(item.summary, max_len=260)
-        if not summary:
-            continue
-        normalized_page_insights.append({"page_number": item.page_number, "summary": summary})
-        if len(normalized_page_insights) >= 8:
-            break
-
-    if not normalized_page_insights:
-        normalized_page_insights = heuristic["page_insights"]
-
-    key_points = [_clean_line(line, max_len=180) for line in llm_response.key_points]
-    key_points = [line for line in key_points if line][:5] or heuristic["key_points"]
-
-    evidence_gaps = [_clean_line(line, max_len=180) for line in llm_response.evidence_gaps]
-    evidence_gaps = [line for line in evidence_gaps if line][:5] or heuristic["evidence_gaps"]
-
-    summary = _clean_paragraph(llm_response.summary, max_len=900) or heuristic["summary"]
     return {
+        "provider": provider,
+        "attempted_provider": provider,
+        "model": model,
+        "attempted_model": model,
+        "engine": "heuristic",
+        "requested_pdf_analysis_provider": provider,
+        "requested_pdf_analysis_model": model,
+        "actual_pdf_analysis_provider": "heuristic",
+        "actual_pdf_analysis_model": "heuristic-summary-v1",
+        "pdf_analysis_engine": "heuristic",
+        "fallback_used": True,
+        "fallback_reason": "heuristic_only",
+        "processing_duration_ms": duration_ms,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "summary": summary,
         "key_points": key_points,
-        "page_insights": normalized_page_insights,
+        "page_insights": page_insights,
         "evidence_gaps": evidence_gaps,
     }
-
-
-def _build_heuristic_analysis(*, parsed: ParsedDocumentPayload, page_items: list[dict[str, Any]]) -> dict[str, Any]:
-    summary = (
-        f"�?{parsed.page_count}?�이지, ??{parsed.word_count}?�어가 추출?�었?�니?? "
-        "문서 ?�름?� ?�로?�된 ?�문??기�??�로 ?�리?�었?�며, ?�인???�스??범위 ?�에?�만 분석?�습?�다."
-    )
-
-    key_points = _extract_key_points(parsed.content_text)
-    if not key_points:
-        key_points = ["?�심 문장 추출 근거가 부족해 추�? ?�인???�요?�니??"]
-
-    page_insights: list[dict[str, Any]] = []
-    for item in page_items[:8]:
-        snippet = _clean_line(str(item.get("snippet") or ""), max_len=220)
-        if not snippet:
-            snippet = "추출 ?�스?��? 짧아 ?�심 ?�약 근거가 ?�한?�입?�다."
-        page_insights.append({"page_number": int(item["page_number"]), "summary": snippet})
-
-    evidence_gaps: list[str] = []
-    if parsed.page_count == 0:
-        evidence_gaps.append("?�이지 추출 결과가 ?�어 문서 구조�??�단?�기 ?�렵?�니??")
-    if parsed.needs_review:
-        evidence_gaps.append("?��? ?�이지?�서 추출 ?�뢰?��? ??�� ?�문 ?�인???�요?�니??")
-    if parsed.warnings:
-        evidence_gaps.append("?�싱 경고가 ?�어 ?��? 문맥???�락?�었?????�습?�다.")
-
-    return {
-        "summary": summary,
-        "key_points": key_points[:5],
-        "page_insights": page_insights,
-        "evidence_gaps": evidence_gaps[:5],
-    }
-
-
-def _extract_page_items(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
-    pages = _extract_page_items_from_masked_or_raw_artifact(parsed)
-    if pages:
-        return pages
-
-    pages = _extract_page_items_from_normalized_artifact(parsed)
-    if pages:
-        return pages
-
-    return _extract_page_items_from_content_text(parsed)
-
-
-def _extract_page_items_from_masked_or_raw_artifact(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
-    pages: list[dict[str, Any]] = []
-    candidates: list[dict[str, Any]] = []
-
-    masked_pages = parsed.masked_artifact.get("pages") if isinstance(parsed.masked_artifact, dict) else None
-    raw_pages = parsed.raw_artifact.get("pages") if isinstance(parsed.raw_artifact, dict) else None
-    if isinstance(masked_pages, list):
-        candidates.extend(item for item in masked_pages if isinstance(item, dict))
-    elif isinstance(raw_pages, list):
-        candidates.extend(item for item in raw_pages if isinstance(item, dict))
-
-    for item in candidates:
-        page_number = item.get("page_number")
-        if not isinstance(page_number, int) or page_number <= 0:
-            continue
-        text = str(item.get("masked_text") or item.get("text") or "").strip()
-        normalized_text = _normalize_page_text(text)
-        if not normalized_text:
-            continue
-        pages.append(
-            {
-                "page_number": page_number,
-                "text": normalized_text,
-                "snippet": normalized_text[:180],
-            }
-        )
-    return pages
-
-
-def _extract_page_items_from_normalized_artifact(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
-    metadata = parsed.metadata if isinstance(parsed.metadata, dict) else {}
-    normalized = metadata.get("normalized_artifact")
-    if not isinstance(normalized, dict):
-        return []
-
-    page_descriptors = normalized.get("pages")
-    elements = normalized.get("elements")
-    if not isinstance(page_descriptors, list) or not isinstance(elements, list):
-        return []
-
-    element_text_by_id: dict[str, str] = {}
-    element_texts_by_page: dict[int, list[str]] = {}
-    for element in elements:
-        if not isinstance(element, dict):
-            continue
-        page_number = element.get("page_number")
-        if not isinstance(page_number, int) or page_number <= 0:
-            continue
-        text = _text_from_normalized_element(element)
-        normalized_text = _normalize_page_text(text)
-        if not normalized_text:
-            continue
-        element_id = str(element.get("element_id") or "").strip()
-        if element_id:
-            element_text_by_id[element_id] = normalized_text
-        element_texts_by_page.setdefault(page_number, []).append(normalized_text)
-
-    pages: list[dict[str, Any]] = []
-    for descriptor in page_descriptors:
-        if not isinstance(descriptor, dict):
-            continue
-        page_number = descriptor.get("page_number")
-        if not isinstance(page_number, int) or page_number <= 0:
-            continue
-
-        fragments: list[str] = []
-        element_ids = descriptor.get("element_ids")
-        if isinstance(element_ids, list):
-            for raw_id in element_ids:
-                element_id = str(raw_id or "").strip()
-                if not element_id:
-                    continue
-                text = element_text_by_id.get(element_id)
-                if text:
-                    fragments.append(text)
-        if not fragments:
-            fragments.extend(element_texts_by_page.get(page_number, []))
-
-        merged = _normalize_page_text(" ".join(fragments))
-        if not merged:
-            continue
-        pages.append(
-            {
-                "page_number": page_number,
-                "text": merged,
-                "snippet": merged[:180],
-            }
-        )
-
-    return pages
-
-
-def _extract_page_items_from_content_text(parsed: ParsedDocumentPayload) -> list[dict[str, Any]]:
-    content_text = str(parsed.content_text or "").strip()
-    if not content_text:
-        return []
-
-    segments = [segment.strip() for segment in re.split(r"(?=\[[^\]\n]{1,40}\])", content_text) if segment.strip()]
-    if not segments:
-        segments = [content_text]
-
-    max_pages = max(int(parsed.page_count or 0), 1)
-    normalized_segments: list[str] = []
-    for segment in segments:
-        normalized = _normalize_page_text(segment)
-        if normalized:
-            normalized_segments.append(normalized)
-    if not normalized_segments:
-        return []
-
-    if len(normalized_segments) > max_pages:
-        normalized_segments = normalized_segments[:max_pages]
-
-    return [
-        {
-            "page_number": index + 1,
-            "text": text,
-            "snippet": text[:180],
-        }
-        for index, text in enumerate(normalized_segments)
-    ]
-
-
-def _text_from_normalized_element(element: dict[str, Any]) -> str:
-    for key in ("masked_text", "raw_text", "text", "content"):
-        value = element.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-
-    rows = element.get("table_rows")
-    if isinstance(rows, list):
-        cell_texts: list[str] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            cells = row.get("cells")
-            if not isinstance(cells, list):
-                continue
-            for cell in cells:
-                if not isinstance(cell, dict):
-                    continue
-                text = str(cell.get("text") or "").strip()
-                if text:
-                    cell_texts.append(text)
-        if cell_texts:
-            return " | ".join(cell_texts)
-    return ""
-
-
-def _normalize_page_text(value: str | None) -> str:
-    normalized = re.sub(r"\s+", " ", str(value or "")).strip()
-    if not normalized:
-        return ""
-    return normalized[:_MAX_PAGE_TEXT_CHARS].strip()
-
-
-def _extract_key_points(content_text: str) -> list[str]:
-    lines = [line.strip() for line in re.split(r"[\n\.!?]", content_text) if line.strip()]
-    dedup = OrderedDict()
-    for line in lines:
-        clean = _clean_line(line, max_len=180)
-        if not clean:
-            continue
-        dedup.setdefault(clean, None)
-        if len(dedup) >= 6:
-            break
-    return list(dedup.keys())[:5]
-
-
-def _clean_line(value: str | None, *, max_len: int) -> str:
-    if not value:
-        return ""
-    normalized = re.sub(r"\s+", " ", value).strip()
-    if len(normalized) <= max_len:
-        return normalized
-    return f"{normalized[: max_len - 1].rstrip()}??
-
-
-def _clean_paragraph(value: str | None, *, max_len: int) -> str:
-    if not value:
-        return ""
-    normalized = re.sub(r"\s+", " ", value).strip()
-    if len(normalized) <= max_len:
-        return normalized
-    return f"{normalized[: max_len - 1].rstrip()}??
-
-
-def _resolve_pdf_analysis_model_name() -> str:
-    settings = get_settings()
-    provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
-    if provider == "ollama":
-        return settings.pdf_analysis_ollama_model or settings.ollama_model
-    if provider == "gemini":
-        return "gemini-1.5-pro"
-    return provider or "unknown"
-
-
-def _utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def build_student_record_canonical_metadata(
     *,
     parsed: ParsedDocumentPayload,
-    pdf_analysis: dict[str, Any] | None,
+    pdf_analysis: dict[str, Any] | None = None,
     analysis_artifact: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    if parsed.source_extension.lower() != ".pdf":
+    pipeline_canonical = _extract_pipeline_canonical(analysis_artifact)
+    if not _looks_like_student_record(parsed, pipeline_canonical):
         return None
 
-    page_items = _extract_page_items(parsed)
-    compact_text = re.sub(r"\s+", " ", (parsed.content_text or "").strip())
-    pipeline_stages: list[dict[str, Any]] = []
+    text = _combined_text(parsed)
+    page_texts = _extract_page_texts(parsed)
+    section_classification = _classify_sections(text)
+    section_coverage = _build_section_coverage(section_classification)
+    coverage_score = float(section_coverage["coverage_score"])
 
-    file_validation_ok = parsed.page_count >= 0 and parsed.word_count >= 0
-    pipeline_stages.append(
-        _build_stage_result(
-            "file_validation",
-            mode="deterministic_extraction",
-            status="ok" if file_validation_ok else "failed",
-            details={
-                "source_extension": parsed.source_extension.lower(),
-                "page_count": parsed.page_count,
-                "word_count": parsed.word_count,
-            },
-        )
-    )
-    if not file_validation_ok:
-        return {
-            "schema_version": _CANONICAL_SCHEMA_VERSION,
-            "record_type": "korean_student_record_pdf",
-            "document_confidence": 0.0,
-            "timeline_signals": [],
-            "grades_subjects": [],
-            "subject_special_notes": [],
-            "extracurricular": [],
-            "career_signals": [],
-            "reading_activity": [],
-            "behavior_opinion": [],
-            "major_alignment_hints": [],
-            "weak_or_missing_sections": [],
-            "uncertainties": [
-                {
-                    "message": "문서 기본 검�??�계?�서 ?�류가 감�??�었?�니??",
-                    "related_field": "file_validation",
-                    "confidence_impact": 1.0,
-                    "evidence": [],
-                }
-            ],
-            "normalized_sections": [],
-            "section_coverage": {
-                "section_counts": {section: 0 for section in _NORMALIZED_SECTION_ORDER},
-                "found_sections": [],
-                "missing_sections": list(_NORMALIZED_SECTION_ORDER),
-                "coverage_score": 0.0,
-                "reanalysis_required": True,
-            },
-            "evidence_bank": [],
-            "quality_gates": {
-                "required_sections_found": False,
-                "missing_required_sections": list(_NORMALIZED_SECTION_ORDER),
-                "reanalysis_required": True,
-            },
-            "pipeline_stages": pipeline_stages,
-        }
+    timeline_signals = [{"signal": value} for value in _extract_timeline_signals(text)]
+    major_alignment_hints = [{"hint": value} for value in _extract_major_alignment_hints(text)]
+    weak_sections = [{"section": value} for value in section_coverage["missing_sections"]]
+    uncertainties = [{"message": value} for value in _build_uncertainties(parsed, pdf_analysis, section_coverage)]
 
-    raw_chars = sum(len(str(item.get("text") or "")) for item in page_items)
-    pipeline_stages.append(
-        _build_stage_result(
-            "raw_text_ocr_extraction",
-            mode="deterministic_extraction",
-            status="ok" if raw_chars > 0 else "degraded",
-            details={
-                "page_items": len(page_items),
-                "extracted_chars": raw_chars,
-                "parser_name": parsed.parser_name,
-            },
-        )
-    )
+    grades_subjects = _extract_grades_subjects(text, pipeline_canonical)
+    subject_special_notes = _extract_subject_special_notes(text, pipeline_canonical)
+    extracurricular = _extract_extracurricular(text, pipeline_canonical)
+    career_signals = _extract_career_signals(text, pipeline_canonical)
+    reading_activity = _extract_reading_activity(text, pipeline_canonical)
+    behavior_opinion = _extract_behavior_opinion(text, pipeline_canonical)
 
-    masked_pages = parsed.masked_artifact.get("pages") if isinstance(parsed.masked_artifact, dict) else None
-    mask_applied = bool(parsed.masking_status == "masked" or isinstance(masked_pages, list))
-    pipeline_stages.append(
-        _build_stage_result(
-            "masking_privacy_pass",
-            mode="deterministic_extraction",
-            status="ok" if mask_applied else "degraded",
-            details={
-                "masking_status": parsed.masking_status,
-                "masked_page_count": len(masked_pages) if isinstance(masked_pages, list) else 0,
-                "needs_review": bool(parsed.needs_review),
-            },
-        )
-    )
-
-    normalized_pages = _normalize_page_items(page_items)
-    pipeline_stages.append(
-        _build_stage_result(
-            "page_normalization",
-            mode="deterministic_extraction",
-            status="ok" if normalized_pages else "degraded",
-            details={
-                "normalized_pages": len(normalized_pages),
-                "normalized_characters": sum(int(item.get("char_count") or 0) for item in normalized_pages),
-            },
-        )
-    )
-
-    normalized_sections = _extract_normalized_sections(
-        normalized_pages=normalized_pages,
-        analysis_artifact=analysis_artifact,
-        pdf_analysis=pdf_analysis,
-    )
-    section_coverage = _section_coverage_from_normalized(normalized_sections)
-    evidence_bank = _build_evidence_bank(normalized_sections)
-    pipeline_stages.append(
-        _build_stage_result(
-            "normalized_section_extraction",
-            mode="deterministic_extraction",
-            status="ok" if normalized_sections else "degraded",
-            details={
-                "normalized_section_entries": len(normalized_sections),
-                "evidence_bank_entries": len(evidence_bank),
-                "coverage_score": section_coverage.get("coverage_score", 0.0),
-            },
-        )
-    )
-
-    section_classification = _classify_record_sections(normalized_pages)
-    present_sections = [
-        section
-        for section, payload in section_classification.items()
-        if payload.get("status") == "present"
-    ]
-    pipeline_stages.append(
-        _build_stage_result(
-            "section_classification",
-            mode="heuristic_inference",
-            status="ok" if section_classification else "degraded",
-            details={
-                "present_sections": present_sections,
-                "classified_section_count": len(section_classification),
-            },
-        )
-    )
-
-    timeline_signals = _extract_timeline_signals(normalized_pages)
-    grades_subjects = _extract_grade_subject_signals(normalized_pages)
-    subject_special_notes = _extract_section_items(
-        normalized_pages=normalized_pages,
-        section_key="subject_special_notes",
-        label_prefix="?�특 ?�호",
-    )
-    extracurricular = _extract_section_items(
-        normalized_pages=normalized_pages,
-        section_key="extracurricular",
-        label_prefix="창체 ?�호",
-    )
-    career_signals = _extract_section_items(
-        normalized_pages=normalized_pages,
-        section_key="career_signals",
-        label_prefix="진로 ?�호",
-    )
-    reading_activity = _extract_section_items(
-        normalized_pages=normalized_pages,
-        section_key="reading_activity",
-        label_prefix="?�서 ?�호",
-    )
-    behavior_opinion = _extract_section_items(
-        normalized_pages=normalized_pages,
-        section_key="behavior_opinion",
-        label_prefix="?�동?�성 ?�호",
-    )
-    major_alignment_hints = _extract_major_alignment_hints(normalized_pages)
-
-    entity_count = (
-        len(timeline_signals)
-        + len(grades_subjects)
-        + len(subject_special_notes)
-        + len(extracurricular)
-        + len(career_signals)
-        + len(reading_activity)
-        + len(behavior_opinion)
-        + len(major_alignment_hints)
-    )
-    pipeline_stages.append(
-        _build_stage_result(
-            "entity_extraction",
-            mode="heuristic_inference",
-            status="ok" if entity_count > 0 else "degraded",
-            details={
-                "entity_count": entity_count,
-                "timeline_signals": len(timeline_signals),
-                "grades_subjects": len(grades_subjects),
-                "major_alignment_hints": len(major_alignment_hints),
-            },
-        )
-    )
-
-    weak_or_missing_sections = _build_weak_or_missing_sections(
-        section_classification=section_classification,
-        normalized_pages=normalized_pages,
-    )
-    uncertainties = _build_canonical_uncertainties(
-        parsed=parsed,
-        pdf_analysis=pdf_analysis,
-        section_classification=section_classification,
-        weak_or_missing_sections=weak_or_missing_sections,
-        normalized_pages=normalized_pages,
-    )
-
-    if isinstance(analysis_artifact, dict):
-        _merge_analysis_artifact_into_canonical(
-            analysis_artifact=analysis_artifact,
-            normalized_pages=normalized_pages,
-            grades_subjects=grades_subjects,
-            subject_special_notes=subject_special_notes,
-            extracurricular=extracurricular,
-            reading_activity=reading_activity,
-            behavior_opinion=behavior_opinion,
-            uncertainties=uncertainties,
-        )
-
-    missing_required_sections = [
-        _NORMALIZED_SECTION_LABELS.get(section, section)
-        for section in section_coverage.get("missing_sections", [])
-    ]
-    if missing_required_sections:
-        uncertainties.append(
-            {
-                "message": (
-                    "?�수 ?�션 추출???�전?��? ?�아 ?�분?�이 ?�요?�니?? "
-                    + ", ".join(missing_required_sections)
-                ),
-                "related_field": "section_coverage",
-                "confidence_impact": 0.24,
-                "evidence": _scope_evidence(normalized_pages),
-            }
-        )
-    pipeline_stages.append(
-        _build_stage_result(
-            "section_coverage_check",
-            mode="deterministic_extraction",
-            status="failed" if missing_required_sections else "ok",
-            details={
-                "required_sections": list(_REQUIRED_NORMALIZED_SECTIONS),
-                "missing_required_sections": section_coverage.get("missing_sections", []),
-                "reanalysis_required": bool(section_coverage.get("reanalysis_required")),
-            },
-        )
-    )
-
-    pipeline_stages.append(
-        _build_stage_result(
-            "canonical_student_record_schema_generation",
-            mode="deterministic_extraction",
-            status="ok" if not missing_required_sections else "degraded",
-            details={
-                "schema_version": _CANONICAL_SCHEMA_VERSION,
-                "required_field_count": 12,
-            },
-        )
-    )
-
-    evidence_link_count = _count_linked_evidence(
-        timeline_signals=timeline_signals,
-        grades_subjects=grades_subjects,
-        subject_special_notes=subject_special_notes,
-        extracurricular=extracurricular,
-        career_signals=career_signals,
-        reading_activity=reading_activity,
-        behavior_opinion=behavior_opinion,
-        major_alignment_hints=major_alignment_hints,
-        weak_or_missing_sections=weak_or_missing_sections,
-        uncertainties=uncertainties,
-    )
-    evidence_link_count += len(evidence_bank)
-    pipeline_stages.append(
-        _build_stage_result(
-            "evidence_span_linking",
-            mode="deterministic_extraction",
-            status="ok" if evidence_link_count > 0 else "degraded",
-            details={
-                "linked_evidence_count": evidence_link_count,
-            },
-        )
-    )
-
-    document_confidence = _compute_document_confidence(
-        parsed=parsed,
-        pdf_analysis=pdf_analysis,
-        entity_count=entity_count,
-        weak_or_missing_sections=weak_or_missing_sections,
-        uncertainties=uncertainties,
-        normalized_pages=normalized_pages,
-    )
-    if section_coverage.get("reanalysis_required"):
-        document_confidence = round(min(document_confidence, 0.49), 3)
-    pipeline_stages.append(
-        _build_stage_result(
-            "uncertainty_confidence_scoring",
-            mode="heuristic_inference",
-            status="ok",
-            details={
-                "document_confidence": document_confidence,
-                "uncertainty_count": len(uncertainties),
-            },
-        )
+    confidence = round(
+        min(
+            0.95,
+            max(
+                0.35,
+                0.35
+                + coverage_score * 0.35
+                + min(len(major_alignment_hints), 3) * 0.05
+                + min(len(timeline_signals), 3) * 0.04
+                + (0.08 if pipeline_canonical else 0.0)
+                + (0.05 if isinstance(pdf_analysis, dict) else 0.0),
+            ),
+        ),
+        3,
     )
 
     return {
         "schema_version": _CANONICAL_SCHEMA_VERSION,
         "record_type": "korean_student_record_pdf",
-        "document_confidence": document_confidence,
+        "analysis_source": "pipeline" if pipeline_canonical else "heuristic",
+        "document_confidence": confidence,
         "timeline_signals": timeline_signals,
+        "major_alignment_hints": major_alignment_hints,
+        "weak_or_missing_sections": weak_sections,
+        "uncertainties": uncertainties,
         "grades_subjects": grades_subjects,
         "subject_special_notes": subject_special_notes,
         "extracurricular": extracurricular,
         "career_signals": career_signals,
         "reading_activity": reading_activity,
         "behavior_opinion": behavior_opinion,
-        "major_alignment_hints": major_alignment_hints,
-        "weak_or_missing_sections": weak_or_missing_sections,
-        "uncertainties": uncertainties,
-        "normalized_sections": normalized_sections,
-        "section_coverage": section_coverage,
-        "evidence_bank": evidence_bank,
-        "quality_gates": {
-            "required_sections_found": not bool(section_coverage.get("missing_sections")),
-            "missing_required_sections": section_coverage.get("missing_sections", []),
-            "reanalysis_required": bool(section_coverage.get("reanalysis_required")),
-        },
         "section_classification": section_classification,
-        "pipeline_stages": pipeline_stages,
-        "evidence_linked": evidence_link_count > 0,
+        "section_coverage": section_coverage,
+        "quality_gates": {
+            "missing_required_sections": list(section_coverage["missing_sections"]),
+            "reanalysis_required": bool(section_coverage["reanalysis_required"]),
+            "coverage_score": coverage_score,
+        },
+        "page_count": parsed.page_count,
+        "word_count": parsed.word_count,
+        "student_profile": _extract_student_profile(text, pipeline_canonical),
+        "source_pages": len(page_texts),
     }
-
-
-def _normalize_page_items(page_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    normalized: list[dict[str, Any]] = []
-    for page in page_items:
-        page_number = page.get("page_number")
-        text = str(page.get("text") or "").strip()
-        if not isinstance(page_number, int) or page_number <= 0 or not text:
-            continue
-        normalized_text = re.sub(r"\s+", " ", text).strip()
-        if not normalized_text:
-            continue
-        normalized.append(
-            {
-                "page_number": page_number,
-                "text": normalized_text,
-                "char_count": len(normalized_text),
-                "snippet": normalized_text[:180],
-            }
-        )
-    return normalized
-
-
-def _extract_normalized_sections(
-    *,
-    normalized_pages: list[dict[str, Any]],
-    analysis_artifact: dict[str, Any] | None,
-    pdf_analysis: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
-    entries: list[dict[str, Any]] = []
-    seen: set[tuple[int, str, str]] = set()
-
-    for page in normalized_pages:
-        page_number = int(page.get("page_number") or 0)
-        text = str(page.get("text") or "")
-        if page_number <= 0 or not text:
-            continue
-        lowered = text.lower()
-        for section_id in _NORMALIZED_SECTION_ORDER:
-            keywords = _NORMALIZED_SECTION_KEYWORDS.get(section_id, ())
-            hit_keywords = [keyword for keyword in keywords if keyword.lower() in lowered][:2]
-            if not hit_keywords:
-                continue
-            for hit_keyword in hit_keywords:
-                match_index = lowered.find(hit_keyword.lower())
-                start = max(0, match_index - 40)
-                end = min(len(text), match_index + len(hit_keyword) + 130)
-                quote = _clean_line(text[start:end], max_len=220)
-                if not quote:
-                    quote = _clean_line(text[:180], max_len=180)
-                key = (page_number, section_id, quote)
-                if key in seen:
-                    continue
-                seen.add(key)
-                entries.append(
-                    {
-                        "page": page_number,
-                        "section": section_id,
-                        "section_name": _NORMALIZED_SECTION_LABELS.get(section_id, section_id),
-                        "subsection": _infer_subsection_name(section_id=section_id, quote=quote, fallback=hit_keyword),
-                        "raw_quote": quote,
-                        "normalized_topic": _infer_activity_topic(quote=quote, section_id=section_id),
-                        "confidence": 0.92,
-                        "repair_source": "rule_based",
-                    }
-                )
-
-    missing = _missing_required_sections(entries)
-    if missing:
-        entries.extend(
-            _repair_missing_sections(
-                missing_sections=missing,
-                normalized_pages=normalized_pages,
-                analysis_artifact=analysis_artifact,
-                pdf_analysis=pdf_analysis,
-            )
-        )
-
-    deduped: list[dict[str, Any]] = []
-    seen_anchor: set[tuple[int, str]] = set()
-    for item in sorted(entries, key=lambda x: (int(x.get("page") or 0), str(x.get("section") or ""))):
-        page = int(item.get("page") or 0)
-        section = str(item.get("section") or "").strip()
-        if page <= 0 or not section:
-            continue
-        anchor = (page, section)
-        if anchor in seen_anchor and str(item.get("repair_source") or "") == "llm_repair":
-            continue
-        seen_anchor.add(anchor)
-        deduped.append(item)
-    return deduped
-
-
-def _repair_missing_sections(
-    *,
-    missing_sections: list[str],
-    normalized_pages: list[dict[str, Any]],
-    analysis_artifact: dict[str, Any] | None,
-    pdf_analysis: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
-    if not missing_sections:
-        return []
-
-    repaired: list[dict[str, Any]] = []
-    canonical_data = (
-        analysis_artifact.get("canonical_data")
-        if isinstance(analysis_artifact, dict) and isinstance(analysis_artifact.get("canonical_data"), dict)
-        else {}
-    )
-    key_points = pdf_analysis.get("key_points") if isinstance(pdf_analysis, dict) and isinstance(pdf_analysis.get("key_points"), list) else []
-    first_page = normalized_pages[0] if normalized_pages else {"page_number": 1, "text": ""}
-    fallback_quote = _clean_line(str(first_page.get("text") or ""), max_len=180) or "?�문 ?�분?�이 ?�요?�니??"
-
-    section_to_canonical_key: dict[str, str] = {
-        "student_info": "student_name",
-        "attendance": "attendance",
-        "awards": "awards",
-        "creative_activities": "extracurricular_narratives",
-        "volunteer": "extracurricular_narratives",
-        "grades_subjects": "grades",
-        "subject_special_notes": "subject_special_notes",
-        "reading": "reading_activities",
-        "behavior_general_comments": "behavior_opinion",
-    }
-
-    for section_id in missing_sections:
-        canonical_key = section_to_canonical_key.get(section_id, "")
-        canonical_value = canonical_data.get(canonical_key) if isinstance(canonical_data, dict) and canonical_key else None
-        llm_hint = next(
-            (
-                _clean_line(str(item), max_len=200)
-                for item in key_points
-                if isinstance(item, str)
-                and any(keyword in item for keyword in _NORMALIZED_SECTION_KEYWORDS.get(section_id, ()))
-            ),
-            "",
-        )
-        if canonical_value in (None, "", [], {}) and not llm_hint:
-            continue
-
-        if llm_hint:
-            quote = llm_hint
-        elif isinstance(canonical_value, dict):
-            quote = _clean_line(" ".join(str(value) for value in canonical_value.values()), max_len=200)
-        elif isinstance(canonical_value, list):
-            quote = _clean_line(" ".join(str(value) for value in canonical_value[:3]), max_len=200)
-        else:
-            quote = _clean_line(str(canonical_value), max_len=200)
-        quote = quote or fallback_quote
-
-        repaired.append(
-            {
-                "page": int(first_page.get("page_number") or 1),
-                "section": section_id,
-                "section_name": _NORMALIZED_SECTION_LABELS.get(section_id, section_id),
-                "subsection": "LLM-repair",
-                "raw_quote": quote,
-                "normalized_topic": _infer_activity_topic(quote=quote, section_id=section_id),
-                "confidence": 0.62,
-                "repair_source": "llm_repair",
-            }
-        )
-    return repaired
-
-
-def _build_evidence_bank(normalized_sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    evidence_bank: list[dict[str, Any]] = []
-    for index, item in enumerate(normalized_sections, start=1):
-        page = int(item.get("page") or 0)
-        section_id = str(item.get("section") or "").strip()
-        if page <= 0 or not section_id:
-            continue
-        quote = _clean_line(str(item.get("raw_quote") or ""), max_len=220)
-        if not quote:
-            continue
-        confidence = float(item.get("confidence") or 0.0)
-        major_relevance = _infer_major_relevance(quote)
-        process_elements = _infer_process_elements(quote)
-        evidence_bank.append(
-            {
-                "anchor_id": f"ev-{page:02d}-{section_id}-{index}",
-                "page": page,
-                "section": str(item.get("section_name") or section_id),
-                "normalized_section": section_id,
-                "theme": _infer_theme(quote),
-                "subtheme": _infer_subtheme(quote),
-                "quote": quote,
-                "evidence_type": "direct" if str(item.get("repair_source") or "") == "rule_based" else "indirect",
-                "major_relevance": major_relevance,
-                "process_elements": process_elements,
-                "confidence": round(max(0.0, min(1.0, confidence)), 3),
-            }
-        )
-    return evidence_bank
-
-
-def _section_coverage_from_normalized(normalized_sections: list[dict[str, Any]]) -> dict[str, Any]:
-    counts: dict[str, int] = defaultdict(int)
-    for item in normalized_sections:
-        section = str(item.get("section") or "").strip()
-        if section:
-            counts[section] += 1
-    found_sections = [section for section in _NORMALIZED_SECTION_ORDER if counts.get(section, 0) > 0]
-    missing_sections = [section for section in _NORMALIZED_SECTION_ORDER if counts.get(section, 0) <= 0]
-    coverage_score = round(len(found_sections) / max(len(_NORMALIZED_SECTION_ORDER), 1), 3)
-    return {
-        "section_counts": {section: int(counts.get(section, 0)) for section in _NORMALIZED_SECTION_ORDER},
-        "found_sections": found_sections,
-        "missing_sections": missing_sections,
-        "coverage_score": coverage_score,
-        "reanalysis_required": bool(missing_sections),
-    }
-
-
-def _missing_required_sections(normalized_sections: list[dict[str, Any]]) -> list[str]:
-    present = {str(item.get("section") or "").strip() for item in normalized_sections}
-    return [section for section in _REQUIRED_NORMALIZED_SECTIONS if section not in present]
-
-
-def _infer_subsection_name(*, section_id: str, quote: str, fallback: str) -> str:
-    if section_id == "creative_activities":
-        for candidate in ("?�율?�동", "?�아리활??, "진로?�동", "봉사?�동"):
-            if candidate in quote:
-                return candidate
-    if section_id == "subject_special_notes":
-        subject_match = re.search(r"(�?��|?�학|?�어|과학|물리|?�학|?�명과학|지구과???�회|??��|?�보)", quote)
-        if subject_match:
-            return f"{subject_match.group(1)} ?�특"
-    if section_id == "grades_subjects":
-        subject_match = re.search(r"(�?��|?�학|?�어|과학|물리|?�학|?�명과학|지구과???�회|??��|?�보)", quote)
-        if subject_match:
-            return f"{subject_match.group(1)} ?�취"
-    return fallback
-
-
-def _infer_activity_topic(*, quote: str, section_id: str) -> str:
-    if section_id in {"creative_activities", "volunteer"}:
-        for keyword, topic in (
-            ("지?��???, "지?��????�계"),
-            ("친환�?, "친환�?건축"),
-            ("?�난", "?�난 ?�??),
-            ("기후", "기후 ?�??),
-            ("목재", "건축 ?�료"),
-            ("구조", "구조 ?�계"),
-            ("공간", "공간 기획"),
-        ):
-            if keyword in quote:
-                return topic
-        return "창체 ?�동"
-    if section_id == "subject_special_notes":
-        return "교과 ?��? ?�구"
-    if section_id == "grades_subjects":
-        return "교과 ?�취"
-    if section_id == "reading":
-        return "?�서 기반 ?�장"
-    if section_id == "behavior_general_comments":
-        return "?�동?�성"
-    return _NORMALIZED_SECTION_LABELS.get(section_id, section_id)
-
-
-def _infer_major_relevance(quote: str) -> list[str]:
-    mapping: tuple[tuple[str, str], ...] = (
-        ("건축", "건축"),
-        ("공간", "공간"),
-        ("?�계", "?�계"),
-        ("?�료", "?�료"),
-        ("목재", "?�료"),
-        ("구조", "구조"),
-        ("기후", "?�경"),
-        ("?�경", "?�경"),
-        ("지?��???, "?�경"),
-        ("?�난", "?�난 ?�??),
-        ("?�시", "?�시"),
-        ("?�용??, "?�용??경험"),
-    )
-    relevance: list[str] = []
-    for keyword, label in mapping:
-        if keyword in quote and label not in relevance:
-            relevance.append(label)
-    return relevance[:4] or ["건축"]
-
-
-def _infer_process_elements(quote: str) -> dict[str, bool]:
-    return {
-        "motivation": any(keyword in quote for keyword in ("관??, "?�기", "문제?�식", "목표", "계기")),
-        "method": any(keyword in quote for keyword in ("?�험", "분석", "조사", "?�계", "모형", "측정")),
-        "finding": any(keyword in quote for keyword in ("결과", "?�인", "?�출", "비교", "변??, "?�과")),
-        "limitation": any(keyword in quote for keyword in ("?�계", "?�쉬?�", "?�약", "부�?)),
-        "extension": any(keyword in quote for keyword in ("?�화", "?�장", "?�속", "개선", "?�용")),
-    }
-
-
-def _infer_theme(quote: str) -> str:
-    for keyword, theme in (
-        ("지?��???, "지?��???건축"),
-        ("?�난", "?�난 ?�??건축"),
-        ("기후", "기후 ?�??건축"),
-        ("친환�?, "친환�?건축"),
-        ("목재", "건축 ?�료"),
-        ("구조", "구조 공학"),
-        ("공간", "공간 기획"),
-    ):
-        if keyword in quote:
-            return theme
-    return "건축 ?�구"
-
-
-def _infer_subtheme(quote: str) -> str:
-    for keyword, label in (
-        ("교차 ?�층 목재", "교차 ?�층 목재"),
-        ("CLT", "교차 ?�층 목재"),
-        ("?�진", "?�진 구조"),
-        ("?�소", "?�소 ?��?),
-        ("?�기", "?�시�??�기"),
-        ("채광", "채광 ?�계"),
-    ):
-        if keyword in quote:
-            return label
-    return "?�심 ?�동"
-
-
-def _build_stage_result(
-    stage_name: str,
-    *,
-    mode: str,
-    status: str,
-    details: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "stage": stage_name,
-        "mode": mode,
-        "status": status,
-        "details": details,
-    }
-
-
-def _classify_record_sections(normalized_pages: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    total_pages = max(len(normalized_pages), 1)
-    classification: dict[str, dict[str, Any]] = {}
-    for section, keywords in _SECTION_KEYWORDS.items():
-        matches: list[dict[str, Any]] = []
-        keyword_hits = 0
-        for page in normalized_pages:
-            text = str(page.get("text") or "")
-            page_hits = [keyword for keyword in keywords if keyword.lower() in text.lower()]
-            if not page_hits:
-                continue
-            keyword_hits += len(page_hits)
-            matches.append(
-                {
-                    "page_number": page["page_number"],
-                    "keywords": page_hits[:4],
-                    "excerpt": _clean_line(text, max_len=180),
-                }
-            )
-
-        density = round(min(1.0, len(matches) / total_pages), 3)
-        confidence = round(min(0.98, 0.35 + (density * 0.45) + min(keyword_hits, 6) * 0.04), 3)
-        if density == 0.0:
-            status = "missing"
-        elif density < 0.25:
-            status = "weak"
-        else:
-            status = "present"
-        classification[section] = {
-            "density": density,
-            "confidence": confidence,
-            "status": status,
-            "matches": matches[:6],
-        }
-    return classification
-
-
-def _extract_timeline_signals(normalized_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    patterns = (
-        re.compile(r"\b[1-3]?�년\s*[12]?�기\b"),
-        re.compile(r"\b[1-3]?�년\b"),
-        re.compile(r"\b[12]?�기\b"),
-        re.compile(r"\b20\d{2}\b"),
-    )
-    entries: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for page in normalized_pages:
-        text = str(page.get("text") or "")
-        for pattern in patterns:
-            for match in pattern.finditer(text):
-                signal = match.group(0).strip()
-                if not signal or signal in seen:
-                    continue
-                seen.add(signal)
-                entries.append(
-                    {
-                        "signal": signal,
-                        "confidence": 0.86,
-                        "source": "deterministic_pattern",
-                        "evidence": [
-                            _build_evidence(
-                                page_number=int(page["page_number"]),
-                                text=text,
-                                start=match.start(),
-                                end=match.end(),
-                            )
-                        ],
-                    }
-                )
-                if len(entries) >= _CANONICAL_MAX_ITEMS_PER_FIELD:
-                    return entries
-    return entries
-
-
-def _extract_grade_subject_signals(normalized_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    signals: list[dict[str, Any]] = []
-    seen_subjects: set[str] = set()
-    for subject in _SUBJECT_KEYWORDS:
-        evidence = _find_keyword_evidence(
-            normalized_pages=normalized_pages,
-            keyword=subject,
-            limit=_CANONICAL_MAX_EVIDENCE_PER_ITEM,
-        )
-        if not evidence or subject in seen_subjects:
-            continue
-        seen_subjects.add(subject)
-        signals.append(
-            {
-                "subject": subject,
-                "confidence": round(min(0.95, 0.58 + len(evidence) * 0.12), 3),
-                "source": "deterministic_keyword",
-                "evidence": evidence,
-            }
-        )
-        if len(signals) >= _CANONICAL_MAX_ITEMS_PER_FIELD:
-            break
-    return signals
-
-
-def _extract_section_items(
-    *,
-    normalized_pages: list[dict[str, Any]],
-    section_key: str,
-    label_prefix: str,
-) -> list[dict[str, Any]]:
-    keywords = _SECTION_KEYWORDS.get(section_key, ())
-    if not keywords:
-        return []
-    items: list[dict[str, Any]] = []
-    seen_labels: set[str] = set()
-    for keyword in keywords:
-        evidence = _find_keyword_evidence(
-            normalized_pages=normalized_pages,
-            keyword=keyword,
-            limit=_CANONICAL_MAX_EVIDENCE_PER_ITEM,
-        )
-        if not evidence:
-            continue
-        label = f"{label_prefix}:{keyword}"
-        if label in seen_labels:
-            continue
-        seen_labels.add(label)
-        items.append(
-            {
-                "label": label,
-                "confidence": round(min(0.92, 0.55 + len(evidence) * 0.1), 3),
-                "source": "deterministic_keyword",
-                "evidence": evidence,
-            }
-        )
-        if len(items) >= _CANONICAL_MAX_ITEMS_PER_FIELD:
-            break
-    return items
-
-
-def _extract_major_alignment_hints(normalized_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    major_keywords = ("?�공", "진로", "?�과", "?�망", "?�합", "?�계", "목표")
-    action_keywords = ("?�구", "?�험", "?�로?�트", "?�동", "보고??, "?�화")
-    hints: list[dict[str, Any]] = []
-    seen_labels: set[str] = set()
-    for page in normalized_pages:
-        text = str(page.get("text") or "")
-        lowered = text.lower()
-        if not any(keyword.lower() in lowered for keyword in major_keywords):
-            continue
-        if not any(keyword.lower() in lowered for keyword in action_keywords):
-            continue
-        signal = _clean_line(text, max_len=180)
-        if not signal or signal in seen_labels:
-            continue
-        seen_labels.add(signal)
-        evidence = _find_keyword_evidence(
-            normalized_pages=[page],
-            keyword="?�공" if "?�공" in text else "진로" if "진로" in text else "?�과",
-            limit=1,
-        )
-        if not evidence:
-            evidence = [
-                _build_evidence(
-                    page_number=int(page["page_number"]),
-                    text=text,
-                    start=0,
-                    end=min(len(text), 50),
-                )
-            ]
-        hints.append(
-            {
-                "hint": signal,
-                "confidence": 0.72,
-                "source": "heuristic_sentence_inference",
-                "evidence": evidence,
-            }
-        )
-        if len(hints) >= _CANONICAL_MAX_ITEMS_PER_FIELD:
-            break
-    return hints
-
-
-def _build_weak_or_missing_sections(
-    *,
-    section_classification: dict[str, dict[str, Any]],
-    normalized_pages: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    weak_sections: list[dict[str, Any]] = []
-    for section, payload in section_classification.items():
-        status = str(payload.get("status") or "")
-        if status not in {"weak", "missing"}:
-            continue
-        matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
-        evidence: list[dict[str, Any]] = []
-        for match in matches[:_CANONICAL_MAX_EVIDENCE_PER_ITEM]:
-            page_number = match.get("page_number")
-            excerpt = str(match.get("excerpt") or "").strip()
-            if not isinstance(page_number, int) or page_number <= 0:
-                continue
-            if not excerpt:
-                page = next((item for item in normalized_pages if item.get("page_number") == page_number), None)
-                if isinstance(page, dict):
-                    excerpt = str(page.get("snippet") or "")
-            evidence.append(
-                {
-                    "page_number": page_number,
-                    "excerpt": _clean_line(excerpt, max_len=220),
-                    "start_char": 0,
-                    "end_char": min(len(excerpt), 220),
-                }
-            )
-        if not evidence and normalized_pages:
-            page = normalized_pages[0]
-            fallback_excerpt = str(page.get("snippet") or "?�션 근거가 부족합?�다.")
-            evidence = [
-                {
-                    "page_number": int(page["page_number"]),
-                    "excerpt": _clean_line(fallback_excerpt, max_len=220),
-                    "start_char": 0,
-                    "end_char": min(len(fallback_excerpt), 220),
-                }
-            ]
-        weak_sections.append(
-            {
-                "section": section,
-                "status": status,
-                "density": round(float(payload.get("density") or 0.0), 3),
-                "confidence": round(float(payload.get("confidence") or 0.0), 3),
-                "evidence": evidence,
-            }
-        )
-    return weak_sections[:_CANONICAL_MAX_ITEMS_PER_FIELD]
-
-
-def _build_canonical_uncertainties(
-    *,
-    parsed: ParsedDocumentPayload,
-    pdf_analysis: dict[str, Any] | None,
-    section_classification: dict[str, dict[str, Any]],
-    weak_or_missing_sections: list[dict[str, Any]],
-    normalized_pages: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    uncertainties: list[dict[str, Any]] = []
-    if parsed.needs_review:
-        uncertainties.append(
-            {
-                "message": "?�싱 결과???�동 검???�요 ?�래그�? ?�습?�다.",
-                "related_field": "document_confidence",
-                "confidence_impact": 0.18,
-                "evidence": _scope_evidence(normalized_pages),
-            }
-        )
-    if parsed.parse_confidence < 0.6:
-        uncertainties.append(
-            {
-                "message": "문서 ?�싱 confidence가 ??�� ?��? 추론?� 보수?�으�??�석?�야 ?�니??",
-                "related_field": "document_confidence",
-                "confidence_impact": 0.16,
-                "evidence": _scope_evidence(normalized_pages),
-            }
-        )
-    if pdf_analysis and pdf_analysis.get("engine") == "fallback":
-        uncertainties.append(
-            {
-                "message": "PDF 분석??LLM ?�패 ???�리?�틱 fallback?�로 ?�성?�었?�니??",
-                "related_field": "pdf_analysis",
-                "confidence_impact": 0.12,
-                "evidence": _scope_evidence(normalized_pages),
-            }
-        )
-    for item in weak_or_missing_sections[:4]:
-        section = str(item.get("section") or "").strip()
-        status = str(item.get("status") or "").strip()
-        if not section:
-            continue
-        uncertainties.append(
-            {
-                "message": f"{section} ?�션??{status} ?�태�?분류?�었?�니??",
-                "related_field": section,
-                "confidence_impact": 0.08 if status == "weak" else 0.12,
-                "evidence": item.get("evidence", [])[:_CANONICAL_MAX_EVIDENCE_PER_ITEM],
-            }
-        )
-    for section, payload in section_classification.items():
-        if payload.get("status") != "present":
-            continue
-        if float(payload.get("confidence") or 0.0) >= 0.55:
-            continue
-        uncertainties.append(
-            {
-                "message": f"{section} 분류 confidence가 ??�� 추�? 검증이 ?�요?�니??",
-                "related_field": section,
-                "confidence_impact": 0.06,
-                "evidence": _scope_evidence(normalized_pages),
-            }
-        )
-
-    deduped: list[dict[str, Any]] = []
-    seen_messages: set[str] = set()
-    for item in uncertainties:
-        message = str(item.get("message") or "").strip()
-        if not message or message in seen_messages:
-            continue
-        seen_messages.add(message)
-        deduped.append(item)
-        if len(deduped) >= _CANONICAL_MAX_ITEMS_PER_FIELD:
-            break
-    return deduped
-
-
-def _merge_analysis_artifact_into_canonical(
-    *,
-    analysis_artifact: dict[str, Any],
-    normalized_pages: list[dict[str, Any]],
-    grades_subjects: list[dict[str, Any]],
-    subject_special_notes: list[dict[str, Any]],
-    extracurricular: list[dict[str, Any]],
-    reading_activity: list[dict[str, Any]],
-    behavior_opinion: list[dict[str, Any]],
-    uncertainties: list[dict[str, Any]],
-) -> None:
-    canonical_data = analysis_artifact.get("canonical_data")
-    if not isinstance(canonical_data, dict):
-        return
-
-    def _append_if_evidenced(
-        *,
-        target: list[dict[str, Any]],
-        label_key: str,
-        label_value: str,
-        source_text: str,
-        confidence: float,
-    ) -> None:
-        evidence = _find_keyword_evidence(
-            normalized_pages=normalized_pages,
-            keyword=source_text,
-            limit=_CANONICAL_MAX_EVIDENCE_PER_ITEM,
-        )
-        if not evidence:
-            evidence = _find_keyword_evidence(
-                normalized_pages=normalized_pages,
-                keyword=label_value,
-                limit=_CANONICAL_MAX_EVIDENCE_PER_ITEM,
-            )
-        if not evidence:
-            uncertainties.append(
-                {
-                    "message": f"analysis_artifact??'{label_value}' ??��?� ?�이지 근거 링크�?찾�? 못했?�니??",
-                    "related_field": label_value,
-                    "confidence_impact": 0.05,
-                    "evidence": _scope_evidence(normalized_pages),
-                }
-            )
-            return
-        target.append(
-            {
-                label_key: label_value,
-                "confidence": confidence,
-                "source": "analysis_artifact_bridge",
-                "evidence": evidence,
-            }
-        )
-
-    for grade in canonical_data.get("grades", [])[:4]:
-        if not isinstance(grade, dict):
-            continue
-        subject = str(grade.get("subject") or "").strip()
-        if not subject:
-            continue
-        _append_if_evidenced(
-            target=grades_subjects,
-            label_key="subject",
-            label_value=subject,
-            source_text=subject,
-            confidence=0.74,
-        )
-
-    subject_notes = canonical_data.get("subject_special_notes")
-    if isinstance(subject_notes, dict):
-        for subject, note in list(subject_notes.items())[:4]:
-            subject_text = str(subject or "").strip()
-            note_text = str(note or "").strip()
-            if not subject_text and not note_text:
-                continue
-            _append_if_evidenced(
-                target=subject_special_notes,
-                label_key="label",
-                label_value=f"?�특:{subject_text or '미상 과목'}",
-                source_text=note_text or subject_text,
-                confidence=0.71,
-            )
-
-    extracurricular_map = canonical_data.get("extracurricular_narratives")
-    if isinstance(extracurricular_map, dict):
-        for name, narrative in list(extracurricular_map.items())[:4]:
-            name_text = str(name or "").strip()
-            narrative_text = str(narrative or "").strip()
-            if not name_text and not narrative_text:
-                continue
-            _append_if_evidenced(
-                target=extracurricular,
-                label_key="label",
-                label_value=f"창체:{name_text or '미상 ?�역'}",
-                source_text=narrative_text or name_text,
-                confidence=0.69,
-            )
-
-    for reading_item in canonical_data.get("reading_activities", [])[:4]:
-        reading_text = str(reading_item or "").strip()
-        if not reading_text:
-            continue
-        _append_if_evidenced(
-            target=reading_activity,
-            label_key="label",
-            label_value="?�서?�동",
-            source_text=reading_text,
-            confidence=0.66,
-        )
-
-    behavior_text = str(canonical_data.get("behavior_opinion") or "").strip()
-    if behavior_text:
-        _append_if_evidenced(
-            target=behavior_opinion,
-            label_key="label",
-            label_value="?�동?�성/종합?�견",
-            source_text=behavior_text,
-            confidence=0.68,
-        )
-
-
-def _count_linked_evidence(**fields: list[dict[str, Any]]) -> int:
-    linked = 0
-    for items in fields.values():
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            evidence = item.get("evidence")
-            if isinstance(evidence, list):
-                linked += len(evidence)
-    return linked
-
-
-def _compute_document_confidence(
-    *,
-    parsed: ParsedDocumentPayload,
-    pdf_analysis: dict[str, Any] | None,
-    entity_count: int,
-    weak_or_missing_sections: list[dict[str, Any]],
-    uncertainties: list[dict[str, Any]],
-    normalized_pages: list[dict[str, Any]],
-) -> float:
-    base = 0.28
-    base += min(0.32, max(0.0, float(parsed.parse_confidence)) * 0.32)
-    base += min(0.16, len(normalized_pages) * 0.03)
-    base += min(0.16, entity_count * 0.012)
-    if pdf_analysis and pdf_analysis.get("engine") == "llm":
-        base += 0.04
-    if pdf_analysis and pdf_analysis.get("engine") == "fallback":
-        base -= 0.06
-    base -= min(0.2, len(weak_or_missing_sections) * 0.03)
-    base -= min(0.22, len(uncertainties) * 0.035)
-    if parsed.needs_review:
-        base -= 0.08
-    return round(max(0.05, min(0.98, base)), 3)
-
-
-def _find_keyword_evidence(
-    *,
-    normalized_pages: list[dict[str, Any]],
-    keyword: str,
-    limit: int,
-) -> list[dict[str, Any]]:
-    normalized_keyword = str(keyword or "").strip()
-    if not normalized_keyword:
-        return []
-    evidence: list[dict[str, Any]] = []
-    seen: set[tuple[int, int]] = set()
-    for page in normalized_pages:
-        text = str(page.get("text") or "")
-        if not text:
-            continue
-        lowered = text.lower()
-        lowered_keyword = normalized_keyword.lower()
-        start = lowered.find(lowered_keyword)
-        while start != -1:
-            key = (int(page["page_number"]), start)
-            if key not in seen:
-                seen.add(key)
-                end = start + len(normalized_keyword)
-                evidence.append(
-                    _build_evidence(
-                        page_number=int(page["page_number"]),
-                        text=text,
-                        start=start,
-                        end=end,
-                    )
-                )
-                if len(evidence) >= limit:
-                    return evidence
-            start = lowered.find(lowered_keyword, start + len(lowered_keyword))
-    return evidence
-
-
-def _build_evidence(*, page_number: int, text: str, start: int, end: int) -> dict[str, Any]:
-    excerpt_start = max(0, start - 45)
-    excerpt_end = min(len(text), end + 95)
-    excerpt = _clean_line(text[excerpt_start:excerpt_end], max_len=220)
-    return {
-        "page_number": page_number,
-        "excerpt": excerpt,
-        "start_char": max(0, start),
-        "end_char": min(len(text), max(end, start + 1)),
-    }
-
-
-def _scope_evidence(normalized_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    evidence: list[dict[str, Any]] = []
-    for page in normalized_pages[:2]:
-        snippet = str(page.get("snippet") or "").strip()
-        if not snippet:
-            continue
-        evidence.append(
-            {
-                "page_number": int(page["page_number"]),
-                "excerpt": _clean_line(snippet, max_len=220),
-                "start_char": 0,
-                "end_char": min(len(snippet), 220),
-            }
-        )
-    return evidence
 
 
 def build_student_record_structure_metadata(
     *,
     parsed: ParsedDocumentPayload,
-    pdf_analysis: dict[str, Any] | None,
+    pdf_analysis: dict[str, Any] | None = None,
     analysis_artifact: dict[str, Any] | None = None,
     canonical_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    if parsed.source_extension.lower() != ".pdf":
+    canonical = canonical_schema or build_student_record_canonical_metadata(
+        parsed=parsed,
+        pdf_analysis=pdf_analysis,
+        analysis_artifact=analysis_artifact,
+    )
+    if not isinstance(canonical, dict):
         return None
 
-    page_items = _extract_page_items(parsed)
-    page_count = max(parsed.page_count, len(page_items), 1)
-    full_text = (parsed.content_text or "").strip()
-    compact_text = re.sub(r"\s+", " ", full_text)
-    resolved_canonical = (
-        canonical_schema
-        if isinstance(canonical_schema, dict)
-        else build_student_record_canonical_metadata(
-            parsed=parsed,
-            pdf_analysis=pdf_analysis,
-            analysis_artifact=analysis_artifact,
-        )
-    )
-    canonical_section_density = _legacy_section_density_from_canonical(resolved_canonical)
-    normalized_sections = (
-        resolved_canonical.get("normalized_sections")
-        if isinstance(resolved_canonical, dict) and isinstance(resolved_canonical.get("normalized_sections"), list)
-        else []
-    )
-    section_coverage = (
-        resolved_canonical.get("section_coverage")
-        if isinstance(resolved_canonical, dict) and isinstance(resolved_canonical.get("section_coverage"), dict)
-        else _section_coverage_from_normalized(normalized_sections)
-    )
-
-    section_keywords: dict[str, tuple[str, ...]] = {
-        "?�특": ("?��??�력", "?�기?�항", "교과?�습발달?�황", "subject_special_notes"),
-        "창체": ("창의??체험?�동", "?�아�?, "봉사", "?�율?�동", "extracurricular"),
-        "진로": ("진로", "진학", "?�망?�과", "career"),
-        "?�동?�성": ("?�동?�성", "종합?�견", "behavior"),
-        "교과?�습발달?�황": ("교과?�습발달?�황", "?�취??, "과목", "grades"),
-        "?�서": ("?�서", "reading"),
-    }
-
-    section_hits: dict[str, int] = {}
-    for section, keywords in section_keywords.items():
-        hits = 0
-        for page in page_items:
-            text = str(page.get("text") or "").lower()
-            if any(keyword.lower() in text for keyword in keywords):
-                hits += 1
-        if hits == 0 and compact_text:
-            lowered = compact_text.lower()
-            if any(keyword.lower() in lowered for keyword in keywords):
-                hits = 1
-        section_hits[section] = hits
-
-    max_hits = max(section_hits.values()) if section_hits else 1
-    section_density = {
-        key: round(min(1.0, (value / max_hits) if max_hits else 0.0), 3)
-        for key, value in section_hits.items()
-    }
-    normalized_to_legacy = {
-        "student_info": "?�적?�항",
-        "attendance": "출결?�황",
-        "awards": "?�상경력",
-        "creative_activities": "창체",
-        "volunteer": "창체",
-        "grades_subjects": "교과?�습발달?�황",
-        "subject_special_notes": "?�특",
-        "reading": "?�서",
-        "behavior_general_comments": "?�동?�성",
-    }
-    coverage_counts = section_coverage.get("section_counts", {}) if isinstance(section_coverage, dict) else {}
-    if isinstance(coverage_counts, dict):
-        for section_id, count in coverage_counts.items():
-            legacy = normalized_to_legacy.get(str(section_id))
-            if not legacy:
-                continue
-            normalized_score = max(0.0, min(1.0, float(count) / max(page_count, 1)))
-            section_density[legacy] = max(section_density.get(legacy, 0.0), round(normalized_score, 3))
-    for section, density in canonical_section_density.items():
-        section_density[section] = max(section_density.get(section, 0.0), density)
-
-    weak_sections = [
-        section
-        for section, density in section_density.items()
-        if density <= 0.2
-    ]
-
-    timeline_patterns = (
-        r"\b[1-3]?�년\b",
-        r"\b[12]?�기\b",
-        r"\b20\d{2}\b",
-    )
-    timeline_signals = []
-    for pattern in timeline_patterns:
-        for match in re.findall(pattern, compact_text):
-            timeline_signals.append(str(match))
-    timeline_signals.extend(_extract_canonical_string_values(resolved_canonical, "timeline_signals", "signal"))
-    timeline_signals = _dedupe_list(timeline_signals, limit=10)
-
-    activity_clusters = _extract_cluster_hints(compact_text)
-    alignment_signals = _extract_alignment_hints(compact_text)
-    alignment_signals.extend(_extract_canonical_string_values(resolved_canonical, "major_alignment_hints", "hint"))
-    continuity_signals = _extract_keyword_sentences(
-        compact_text,
-        keywords=("?�화", "?�장", "?�속", "비교", "?�계", "지??),
-        limit=5,
-    )
-    process_reflection_signals = _extract_keyword_sentences(
-        compact_text,
-        keywords=("과정", "방법", "?�계", "개선", "?�찰", "?�드�?),
-        limit=5,
-    )
-
-    uncertain_items: list[str] = []
-    if parsed.needs_review:
-        uncertain_items.append("?�싱 ?�질 경고가 ?�어 ?��? ?�션 분류 ?�확?��? ??�� ???�습?�다.")
-    if page_count <= 1:
-        uncertain_items.append("?�이지 ?��? 매우 ?�어 ?�기/?�속??추정???�뢰?��? ??��?�다.")
-    if not compact_text:
-        uncertain_items.append("추출 ?�스?��? 부족해 구조 추정???�한?�었?�니??")
-    if pdf_analysis and pdf_analysis.get("engine") == "fallback":
-        uncertain_items.append("PDF ?�약??heuristic fallback?�로 ?�성?�었?�니??")
-
-    if isinstance(resolved_canonical, dict):
-        weak_sections.extend(_extract_canonical_string_values(resolved_canonical, "weak_or_missing_sections", "section"))
-        uncertain_items.extend(_extract_canonical_string_values(resolved_canonical, "uncertainties", "message"))
-        gates = resolved_canonical.get("quality_gates")
-        if isinstance(gates, dict):
-            for section_id in gates.get("missing_required_sections", []) if isinstance(gates.get("missing_required_sections"), list) else []:
-                label = _NORMALIZED_SECTION_LABELS.get(str(section_id), str(section_id))
-                if label:
-                    weak_sections.append(label)
-            if gates.get("reanalysis_required"):
-                uncertain_items.append("?�수 ?�션 추출 ?�락?�로 ?�분?�이 ?�요?�니??")
-
-    if isinstance(analysis_artifact, dict):
-        canonical_data = analysis_artifact.get("canonical_data")
-        if isinstance(canonical_data, dict):
-            if canonical_data.get("grades"):
-                section_density["교과?�습발달?�황"] = max(section_density.get("교과?�습발달?�황", 0.0), 0.7)
-            if canonical_data.get("extracurricular_narratives"):
-                section_density["창체"] = max(section_density.get("창체", 0.0), 0.6)
-            if canonical_data.get("reading_activities"):
-                section_density["?�서"] = max(section_density.get("?�서", 0.0), 0.5)
-            if canonical_data.get("behavior_opinion"):
-                section_density["?�동?�성"] = max(section_density.get("?�동?�성", 0.0), 0.5)
-
-        quality_report = analysis_artifact.get("quality_report")
-        if isinstance(quality_report, dict):
-            missing_sections = quality_report.get("missing_critical_sections")
-            if isinstance(missing_sections, list):
-                for item in missing_sections:
-                    text = _normalize_weak_section_label(str(item))
-                    if text:
-                        weak_sections.append(text)
-            score = quality_report.get("overall_score")
-            if isinstance(score, (int, float)) and float(score) < 0.6:
-                uncertain_items.append("고급 ?�이?�라???�질 ?�수가 ??�� ?�동 검?��? 권장?�니??")
-
-    contradiction_items: list[dict[str, Any]] = []
-    normalized_weak_sections = _dedupe_list([_normalize_weak_section_label(item) for item in weak_sections], limit=20)
-    final_weak_sections: list[str] = []
-    for section in normalized_weak_sections:
-        density = float(section_density.get(section, 0.0))
-        if density >= 0.95:
-            contradiction_items.append(
-                {
-                    "section": section,
-                    "density": round(density, 3),
-                    "reason": "weak_or_missing_conflicts_with_density",
-                }
-            )
-            continue
-        final_weak_sections.append(section)
-    if contradiction_items:
-        uncertain_items.append("?�션 밀?��? ?�락 ?�태 �?모순??감�????�동 조정?�습?�다.")
-
-    contradiction_check_passed = len(contradiction_items) == 0
-
-    return {
-        "major_sections": [
-            {
-                "section": key,
-                "density": value,
-                "confidence": "high" if value >= 0.6 else "medium" if value >= 0.3 else "low",
-            }
-            for key, value in section_density.items()
-        ],
-        "section_density": section_density,
-        "timeline_signals": timeline_signals,
-        "activity_clusters": activity_clusters,
-        "subject_major_alignment_signals": alignment_signals,
-        "weak_sections": _dedupe_list(final_weak_sections, limit=10),
-        "continuity_signals": continuity_signals,
-        "process_reflection_signals": process_reflection_signals,
-        "uncertain_items": _dedupe_list(uncertain_items, limit=8),
-        "coverage_check": {
-            "required_sections": list(_REQUIRED_NORMALIZED_SECTIONS),
-            "missing_required_sections": section_coverage.get("missing_sections", []) if isinstance(section_coverage, dict) else [],
-            "coverage_score": section_coverage.get("coverage_score", 0.0) if isinstance(section_coverage, dict) else 0.0,
-            "reanalysis_required": bool(section_coverage.get("reanalysis_required")) if isinstance(section_coverage, dict) else False,
-        },
-        "contradiction_check": {
-            "passed": contradiction_check_passed,
-            "items": contradiction_items,
-        },
-    }
-
-
-def _legacy_section_density_from_canonical(canonical_schema: dict[str, Any] | None) -> dict[str, float]:
-    if not isinstance(canonical_schema, dict):
-        return {}
-    section_classification = canonical_schema.get("section_classification")
+    section_classification = canonical.get("section_classification")
     if not isinstance(section_classification, dict):
-        return {}
+        section_classification = {}
 
-    legacy_map = {
-        "subject_special_notes": "?�특",
-        "extracurricular": "창체",
-        "career_signals": "진로",
-        "behavior_opinion": "?�동?�성",
-        "grades_subjects": "교과?�습발달?�황",
-        "reading_activity": "?�서",
-    }
-    density: dict[str, float] = {}
-    for canonical_key, legacy_key in legacy_map.items():
+    section_density: dict[str, float] = {}
+    section_status: dict[str, str] = {}
+    for canonical_key, legacy_label in _LEGACY_SECTION_LABELS.items():
         payload = section_classification.get(canonical_key)
         if not isinstance(payload, dict):
             continue
         try:
-            score = max(0.0, min(1.0, float(payload.get("density") or 0.0)))
+            density = max(0.0, min(1.0, float(payload.get("density") or 0.0)))
         except (TypeError, ValueError):
-            continue
-        density[legacy_key] = max(density.get(legacy_key, 0.0), round(score, 3))
-    return density
+            density = 0.0
+        section_density[legacy_label] = density
+        section_status[legacy_label] = str(payload.get("status") or "missing")
 
-
-def _extract_canonical_string_values(
-    canonical_schema: dict[str, Any] | None,
-    field: str,
-    key: str,
-) -> list[str]:
-    if not isinstance(canonical_schema, dict):
-        return []
-    raw_values = canonical_schema.get(field)
-    if not isinstance(raw_values, list):
-        return []
-    values: list[str] = []
-    for item in raw_values:
-        if isinstance(item, dict):
-            value = str(item.get(key) or "").strip()
-            if value:
-                values.append(value)
-    return values
-
-
-def _extract_cluster_hints(text: str) -> list[str]:
-    cluster_keywords: dict[str, tuple[str, ...]] = {
-        "?�구/?�험": ("?�구", "?�험", "가??, "검�?),
-        "?�이??분석": ("?�이??, "?�계", "분석", "지??),
-        "?�로?�트/?�안": ("?�로?�트", "?�계", "?�안", "기획"),
-        "공동�?리더??: ("?�업", "리더", "봉사", "공동�?),
+    return {
+        "schema_version": _CANONICAL_SCHEMA_VERSION,
+        "record_type": canonical.get("record_type") or "korean_student_record_pdf",
+        "major_alignment": _extract_value_list(canonical.get("major_alignment_hints"), "hint"),
+        "section_density": section_density,
+        "section_status": section_status,
+        "weak_sections": _extract_value_list(canonical.get("weak_or_missing_sections"), "section"),
+        "timeline_signals": _extract_value_list(canonical.get("timeline_signals"), "signal"),
+        "activity_clusters": _extract_value_list(canonical.get("extracurricular"), "label"),
+        "alignment_signals": _extract_value_list(canonical.get("major_alignment_hints"), "hint"),
+        "continuity_signals": _extract_value_list(canonical.get("career_signals"), "label"),
+        "process_signals": _extract_value_list(canonical.get("subject_special_notes"), "label"),
+        "uncertain_items": _extract_value_list(canonical.get("uncertainties"), "message"),
+        "coverage_check": canonical.get("section_coverage") or {},
+        "contradiction_check": {"passed": True, "items": []},
     }
-    found: list[str] = []
+
+
+def _extract_page_texts(parsed: ParsedDocumentPayload) -> list[str]:
+    page_texts: list[str] = []
+
+    for container in (
+        parsed.raw_artifact,
+        parsed.analysis_artifact,
+        parsed.metadata.get("raw_parse_artifact") if isinstance(parsed.metadata, dict) else None,
+        parsed.metadata,
+    ):
+        if not isinstance(container, dict):
+            continue
+        pages = container.get("pages") or container.get("normalized_pages")
+        if not isinstance(pages, list):
+            continue
+        for page in pages:
+            if not isinstance(page, dict):
+                continue
+            text = str(
+                page.get("masked_text")
+                or page.get("text")
+                or page.get("content_text")
+                or page.get("raw_text")
+                or ""
+            ).strip()
+            if text:
+                page_texts.append(text)
+        if page_texts:
+            return page_texts[: max(parsed.page_count, 1)]
+
+    content = (parsed.content_text or "").strip()
+    if not content:
+        return []
+
+    split_pages = [part.strip() for part in re.split(r"(?=\[Page \d+\])", content) if part.strip()]
+    if split_pages:
+        return split_pages[: max(parsed.page_count, 1)]
+    return [content]
+
+
+def _combined_text(parsed: ParsedDocumentPayload) -> str:
+    return "\n".join(_extract_page_texts(parsed)) or (parsed.content_text or "")
+
+
+def _build_pdf_summary(parsed: ParsedDocumentPayload, page_texts: list[str]) -> str:
+    if not page_texts:
+        return "PDF 텍스트가 충분히 추출되지 않아 문서 요약 근거가 제한적입니다."
+
+    first = _clip(_normalize_sentence(page_texts[0]), 180)
+    last = _clip(_normalize_sentence(page_texts[-1]), 180) if len(page_texts) > 1 else ""
+    page_note = f"{parsed.page_count}페이지 문서에서 핵심 흐름을 정리했습니다."
+
+    if last and last != first:
+        return f"{page_note} 첫 페이지는 {first} 마지막 페이지는 {last}"
+    return f"{page_note} 대표 요약은 {first}"
+
+
+def _extract_key_points(page_texts: list[str]) -> list[str]:
+    candidates: list[str] = []
+    for text in page_texts[:_MAX_PAGE_INSIGHTS]:
+        for sentence in _split_sentences(text):
+            cleaned = _clip(_normalize_sentence(sentence), 180)
+            if cleaned and len(cleaned) >= 20:
+                candidates.append(cleaned)
+            if len(candidates) >= 20:
+                break
+    return _dedupe(candidates, limit=_MAX_KEY_POINTS)
+
+
+def _build_page_insights(page_texts: list[str]) -> list[dict[str, Any]]:
+    insights: list[dict[str, Any]] = []
+    for index, text in enumerate(page_texts[:_MAX_PAGE_INSIGHTS], start=1):
+        summary = _clip(_normalize_sentence(text), 220)
+        if summary:
+            insights.append({"page_number": index, "summary": summary})
+    return insights
+
+
+def _build_evidence_gaps(parsed: ParsedDocumentPayload, page_texts: list[str]) -> list[str]:
+    gaps: list[str] = []
+    if not page_texts:
+        gaps.append("텍스트가 충분히 추출되지 않아 페이지별 근거 확인이 필요합니다.")
+    if parsed.needs_review:
+        gaps.append("문서 파싱 과정에서 검토 필요 플래그가 있어 핵심 섹션 재확인이 필요합니다.")
+    if parsed.page_count > len(page_texts):
+        gaps.append("일부 페이지에서 추출 텍스트가 비어 있어 PDF 원문 확인이 필요합니다.")
+    warnings = parsed.warnings if isinstance(parsed.warnings, list) else []
+    if warnings:
+        gaps.append("파싱 경고가 있어 누락된 문맥이 없는지 확인이 필요합니다.")
+    if not gaps:
+        gaps.append("학생부 주요 섹션별 근거가 충분한지 최종 검토가 필요합니다.")
+    return _dedupe(gaps, limit=_MAX_EVIDENCE_GAPS)
+
+
+def _looks_like_student_record(parsed: ParsedDocumentPayload, pipeline_canonical: dict[str, Any]) -> bool:
+    if pipeline_canonical:
+        return True
+    text = (parsed.content_text or "").strip()
+    if not text:
+        return False
+    hits = sum(1 for keywords in _SECTION_KEYWORDS.values() if any(keyword in text for keyword in keywords))
+    return parsed.source_extension.lower() == ".pdf" and hits >= 2
+
+
+def _extract_pipeline_canonical(analysis_artifact: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(analysis_artifact, dict):
+        return {}
+    for key in ("canonical_data", "student_record_canonical", "canonical"):
+        candidate = analysis_artifact.get(key)
+        if isinstance(candidate, dict):
+            return candidate
+    return {}
+
+
+def _classify_sections(text: str) -> dict[str, dict[str, Any]]:
+    section_classification: dict[str, dict[str, Any]] = {}
     lowered = text.lower()
-    for label, keywords in cluster_keywords.items():
-        if any(keyword.lower() in lowered for keyword in keywords):
-            found.append(label)
-    return _dedupe_list(found, limit=6)
+    total_length = max(len(lowered), 1)
+    for key, keywords in _SECTION_KEYWORDS.items():
+        matched = [keyword for keyword in keywords if keyword.lower() in lowered]
+        density = min(1.0, len(matched) / max(1, len(keywords)))
+        section_classification[key] = {
+            "label": _LEGACY_SECTION_LABELS.get(key, key),
+            "status": "present" if matched else "missing",
+            "density": round(density, 3),
+            "matched_keywords": matched[:6],
+            "count": len(matched),
+            "char_ratio": round(sum(lowered.count(keyword.lower()) for keyword in matched) / total_length, 4),
+        }
+    return section_classification
 
 
-def _extract_alignment_hints(text: str) -> list[str]:
-    patterns = (
-        "?�공",
-        "진로",
-        "?�과",
-        "관??분야",
-        "?�망",
-        "?�합",
-        "?�계",
-    )
-    hints = _extract_keyword_sentences(text, keywords=patterns, limit=6)
-    if not hints:
-        return ["?�공 ?�계 문장 ?�호가 ?�한?�입?�다. ?�심 과목�?목표 ?�공 ?�결??문장?�로 보강?�세??"]
-    return hints
-
-
-def _extract_keyword_sentences(text: str, *, keywords: tuple[str, ...], limit: int) -> list[str]:
-    if not text:
-        return []
-    sentences = re.split(r"(?<=[.!???)\s+|\n+", text)
-    collected: list[str] = []
-    for sentence in sentences:
-        normalized = sentence.strip()
-        if len(normalized) < 8:
-            continue
-        lowered = normalized.lower()
-        if any(keyword.lower() in lowered for keyword in keywords):
-            collected.append(normalized[:180])
-        if len(collected) >= limit:
-            break
-    return _dedupe_list(collected, limit=limit)
-
-
-def _dedupe_list(items: list[str], *, limit: int) -> list[str]:
-    seen: set[str] = set()
-    output: list[str] = []
-    for raw in items:
-        normalized = str(raw or "").strip()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        output.append(normalized)
-        if len(output) >= limit:
-            break
-    return output
-
-
-def _normalize_weak_section_label(value: str) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    alias_map = {
-        "grades_subjects": "교과?�습발달?�황",
-        "subject_special_notes": "?�특",
-        "creative_activities": "창체",
-        "extracurricular": "창체",
-        "volunteer": "창체",
-        "career_signals": "진로",
-        "reading": "?�서",
-        "reading_activity": "?�서",
-        "behavior_general_comments": "?�동?�성",
-        "behavior_opinion": "?�동?�성",
-        "awards": "?�상경력",
-        "attendance": "출결?�황",
-        "student_info": "?�적?�항",
-        "grades_and_notes": "교과?�습발달?�황",
+def _build_section_coverage(section_classification: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    section_counts = {
+        key: int(payload.get("count") or 0)
+        for key, payload in section_classification.items()
+        if isinstance(payload, dict)
     }
-    return alias_map.get(text, text)
+    missing_sections = [
+        _LEGACY_SECTION_LABELS.get(key, key)
+        for key, payload in section_classification.items()
+        if isinstance(payload, dict) and payload.get("status") != "present"
+    ]
+    present_count = sum(1 for payload in section_classification.values() if payload.get("status") == "present")
+    coverage_score = round(present_count / max(len(_SECTION_KEYWORDS), 1), 3)
+    return {
+        "section_counts": section_counts,
+        "missing_sections": missing_sections,
+        "coverage_score": coverage_score,
+        "reanalysis_required": coverage_score < 0.45,
+    }
+
+
+def _extract_timeline_signals(text: str) -> list[str]:
+    signals: list[str] = []
+    for pattern in _TIMELINE_PATTERNS:
+        signals.extend(match.group(0) for match in pattern.finditer(text))
+    return _dedupe([signal.replace(" ", "") for signal in signals], limit=6)
+
+
+def _extract_major_alignment_hints(text: str) -> list[str]:
+    sentences = _split_sentences(text)
+    hints = [sentence for sentence in sentences if any(keyword in sentence for keyword in _MAJOR_HINT_KEYWORDS)]
+    return _dedupe([_clip(sentence, 180) for sentence in hints], limit=6)
+
+
+def _build_uncertainties(
+    parsed: ParsedDocumentPayload,
+    pdf_analysis: dict[str, Any] | None,
+    section_coverage: dict[str, Any],
+) -> list[str]:
+    items: list[str] = []
+    if parsed.needs_review:
+        items.append("문서 파싱 품질 검토가 필요합니다.")
+    if isinstance(section_coverage.get("missing_sections"), list) and section_coverage["missing_sections"]:
+        items.append("일부 필수 학생부 섹션이 누락되어 추가 검토가 필요합니다.")
+    if isinstance(pdf_analysis, dict):
+        gaps = pdf_analysis.get("evidence_gaps")
+        if isinstance(gaps, list):
+            items.extend(str(item) for item in gaps[:2] if str(item).strip())
+    if not items:
+        items.append("현재 메타데이터는 휴리스틱 기반이므로 원문 대조가 권장됩니다.")
+    return _dedupe(items, limit=5)
+
+
+def _extract_grades_subjects(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    grades = pipeline_canonical.get("grades")
+    if isinstance(grades, list) and grades:
+        items: list[dict[str, Any]] = []
+        for entry in grades[:8]:
+            if not isinstance(entry, dict):
+                continue
+            subject = str(entry.get("subject") or "").strip()
+            if not subject:
+                continue
+            items.append({"subject": subject, "label": subject})
+        if items:
+            return items
+
+    subjects = re.findall(r"(국어|수학|영어|사회|역사|과학|물리|화학|생명과학|지구과학|정보|미술|음악|체육)", text)
+    return [{"subject": subject, "label": subject} for subject in _dedupe(subjects, limit=8)]
+
+
+def _extract_subject_special_notes(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    notes = pipeline_canonical.get("subject_special_notes")
+    if isinstance(notes, dict) and notes:
+        return [
+            {"label": f"{subject}: {_clip(str(note), 140)}"}
+            for subject, note in list(notes.items())[:8]
+            if str(subject).strip() and str(note).strip()
+        ]
+    return [{"label": item} for item in _extract_keyword_sentences(text, _SECTION_KEYWORDS["subject_special_notes"], limit=4)]
+
+
+def _extract_extracurricular(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    narratives = pipeline_canonical.get("extracurricular_narratives")
+    if isinstance(narratives, dict) and narratives:
+        return [
+            {"label": header, "detail": _clip(str(detail), 140)}
+            for header, detail in list(narratives.items())[:8]
+            if str(header).strip() and str(detail).strip()
+        ]
+    return [{"label": item} for item in _extract_keyword_sentences(text, _SECTION_KEYWORDS["creative_activities"], limit=4)]
+
+
+def _extract_career_signals(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    items = _extract_keyword_sentences(text, _CAREER_KEYWORDS, limit=4)
+    if not items and pipeline_canonical.get("behavior_opinion"):
+        items = [_clip(str(pipeline_canonical.get("behavior_opinion")), 160)]
+    return [{"label": item} for item in items]
+
+
+def _extract_reading_activity(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    reading = pipeline_canonical.get("reading_activities")
+    if isinstance(reading, list) and reading:
+        return [{"label": _clip(str(item), 140)} for item in reading[:6] if str(item).strip()]
+    return [{"label": item} for item in _extract_keyword_sentences(text, _SECTION_KEYWORDS["reading"], limit=4)]
+
+
+def _extract_behavior_opinion(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    opinion = pipeline_canonical.get("behavior_opinion")
+    if isinstance(opinion, str) and opinion.strip():
+        return [{"label": _clip(opinion, 160)}]
+    return [{"label": item} for item in _extract_keyword_sentences(text, _SECTION_KEYWORDS["behavior_general_comments"], limit=3)]
+
+
+def _extract_student_profile(text: str, pipeline_canonical: dict[str, Any]) -> dict[str, Any]:
+    profile: dict[str, Any] = {}
+    if isinstance(pipeline_canonical.get("student_name"), str) and pipeline_canonical["student_name"].strip():
+        profile["student_name"] = pipeline_canonical["student_name"].strip()
+    if isinstance(pipeline_canonical.get("school_name"), str) and pipeline_canonical["school_name"].strip():
+        profile["school_name"] = pipeline_canonical["school_name"].strip()
+
+    name_match = re.search(r"(?:학생명|성명)\s*[:：]?\s*([가-힣]{2,5})", text)
+    if name_match and "student_name" not in profile:
+        profile["student_name"] = name_match.group(1)
+
+    school_match = re.search(r"([가-힣A-Za-z0-9 ]+고등학교)", text)
+    if school_match and "school_name" not in profile:
+        profile["school_name"] = school_match.group(1).strip()
+    return profile
+
+
+def _extract_keyword_sentences(text: str, keywords: tuple[str, ...] | list[str], *, limit: int) -> list[str]:
+    sentences = _split_sentences(text)
+    matched = [sentence for sentence in sentences if any(keyword in sentence for keyword in keywords)]
+    return _dedupe([_clip(sentence, 160) for sentence in matched], limit=limit)
+
+
+def _extract_value_list(value: Any, key: str) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get(key) or "").strip()
+        if text:
+            items.append(text)
+    return _dedupe(items, limit=12)
+
+
+def _split_sentences(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", text or "").strip()
+    if not normalized:
+        return []
+    parts = re.split(r"(?<=[.!?]|다\.)\s+|\n+", normalized)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _normalize_sentence(text: str) -> str:
+    sentence = re.sub(r"\s+", " ", text or "").strip()
+    sentence = re.sub(r"^\[Page \d+\]\s*", "", sentence)
+    return sentence
+
+
+def _clip(text: str | None, max_len: int) -> str:
+    normalized = _normalize_sentence(text or "")
+    if len(normalized) <= max_len:
+        return normalized
+    return f"{normalized[: max_len - 3].rstrip()}..."
+
+
+def _dedupe(items: list[str], *, limit: int) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        normalized = " ".join(str(item).split()).strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(normalized)
+        if len(deduped) >= limit:
+            break
+    return deduped

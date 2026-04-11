@@ -1,3 +1,4 @@
+# -*- coding: latin-1 -*-
 from __future__ import annotations
 
 import json
@@ -14,12 +15,12 @@ from unifoli_api.schemas.workshop import (
 )
 
 DEFAULT_BLOCK_DEFINITIONS: tuple[tuple[str, str], ...] = (
-    ("title", "?�목"),
-    ("introduction_background", "?�입 / 배경"),
+    ("title", "??목"),
+    ("introduction_background", "??입 / 배경"),
     ("body_section_1", "본론 1"),
     ("body_section_2", "본론 2"),
     ("body_section_3", "본론 3"),
-    ("conclusion_reflection_next_step", "결론 / ?�찰 / ?�음 ?�계"),
+    ("conclusion_reflection_next_step", "결론 / ??찰 / ??음 ??계"),
 )
 
 _PATCH_PATTERN = re.compile(r"\[DRAFT_PATCH\]([\s\S]*?)\[/DRAFT_PATCH\]", re.IGNORECASE)
@@ -84,19 +85,19 @@ def build_coauthoring_system_context(
     if structured_draft is None:
         structured_draft = build_default_structured_draft(mode=mode, source="derived")
     lines = [
-        "[?�크??공동?�성 모드]",
-        f"- ?�재 모드: {mode}",
-        "- 기본 ?�션 구조: title, introduction/background, body1, body2, body3, conclusion/reflection/next step",
-        "- ?�션 ?�안?????�는 본문 ?�명 ?�에 [DRAFT_PATCH] JSON [/DRAFT_PATCH] 블록??추�??????�습?�다.",
-        "- DRAFT_PATCH JSON ?�식:",
+        "[??크??공동??성 모드]",
+        f"- ??재 모드: {mode}",
+        "- 기본 ??션 구조: title, introduction/background, body1, body2, body3, conclusion/reflection/next step",
+        "- ??션 ??안??????는 본문 ??명 ??에 [DRAFT_PATCH] JSON [/DRAFT_PATCH] 블록??추????????습??다.",
+        "- DRAFT_PATCH JSON ??식:",
         (
-            '  {"mode":"section_drafting","block_id":"body_section_1","heading":"?�택","content_markdown":"본문",'
-            '"rationale":"?????�션?��?","evidence_boundary_note":"근거 경계","requires_approval":true}'
+            '  {"mode":"section_drafting","block_id":"body_section_1","heading":"??택","content_markdown":"본문",'
+            '"rationale":"??????션????","evidence_boundary_note":"근거 경계","requires_approval":true}'
         ),
-        "- ?�인 ?�에???�생 ?�성 ?�용????��?��? 말고 ?�안?�로 ?��??�세??",
-        "- ?�생 ?�동/?�과�?추정 ?�성?��? 마세??",
+        "- ??인 ??에????생 ??성 ??용?????????? 말고 ??안??로 ??????세??",
+        "- ??생 ??동/??과???추정 ??성???? 마세??",
         "",
-        "[?�재 구조??초안 ?�태]",
+        "[??재 구조??초안 ??태]",
     ]
     for block in structured_draft.blocks:
         preview = (block.content_markdown or "").strip().replace("\n", " ")

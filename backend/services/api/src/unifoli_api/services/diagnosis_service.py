@@ -217,15 +217,15 @@ class PolicyFlagMatch:
 
 
 MASKING_PIPELINE = MaskingPipeline()
-TOKEN_PATTERN = re.compile(r"[A-Za-z媛�-??-9]{2,}")
+TOKEN_PATTERN = re.compile(r"[A-Za-z?-?0-9]{2,}")
 OPEN_REVIEW_STATUSES = {"open", "pending"}
 AXIS_LABELS: dict[GapAxisKey, str] = {
-    "universal_rigor": "학업 및 근거 충실도",
-    "universal_specificity": "근거 구체성",
-    "relational_narrative": "서사 및 발전성",
-    "relational_continuity": "탐구 및 지속성",
-    "cluster_depth": "전공 심층성",
-    "cluster_suitability": "전공 적합성",
+    "universal_rigor": "?? ? ?? ???",
+    "universal_specificity": "?? ???",
+    "relational_narrative": "?? ? ???",
+    "relational_continuity": "??? ? ???",
+    "cluster_depth": "?? ??",
+    "cluster_suitability": "?? ???",
 }
 POLICY_FLAG_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
@@ -250,16 +250,13 @@ POLICY_FLAG_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "sensitive_student_id",
         "medium",
         "Input text contains a student identifier.",
-        re.compile(r"(?:?숇쾲|?숈깮踰덊샇|student\s*id)\s*[:#]?\s*[A-Za-z0-9-]{4,20}", re.IGNORECASE),
+        re.compile(r"(?:student\s*id|learner\s*id|id)\s*[:#]?\s*[A-Za-z0-9-]{4,20}", re.IGNORECASE),
     ),
     (
         "fabrication_request",
         "critical",
         "Input text appears to request fabricated or false admissions content.",
-        re.compile(
-            r"(?덉쐞|議곗옉|?녿뒗\s+(?:?쒕룞|寃쏀뿕|?ㅽ뿕)|?ъ떎??s+?꾨땶|袁몃ŉ|媛�吏?fabricat(?:e|ed|ion)|make\s+up)",
-            re.IGNORECASE,
-        ),
+        re.compile(r"(?:fabricat(?:e|ed|ion)|make\s+up|false\s+content|invent(?:ed)?|ghostwrit(?:e|ing))", re.IGNORECASE),
     ),
 )
 
