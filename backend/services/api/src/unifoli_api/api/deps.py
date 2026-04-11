@@ -256,7 +256,7 @@ def get_current_user(
 ) -> User:
     from unifoli_api.core.config import get_settings
     settings = get_settings()
-    local_bypass_enabled = settings.app_env == "local"
+    local_bypass_enabled = settings.auth_allow_local_dev_bypass
 
     if not credentials:
         if local_bypass_enabled:
@@ -281,7 +281,7 @@ def get_current_user(
                 raise
             claims = _decode_firebase_claims(token)
     except HTTPException as exc:
-        if local_bypass_enabled:
+        if settings.auth_allow_local_dev_bypass:
             user = _get_or_create_local_dev_user(db)
             request.state.current_user_id = user.id
             request.state.tenant_user_id = user.id

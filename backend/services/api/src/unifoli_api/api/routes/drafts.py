@@ -115,7 +115,7 @@ def _build_system_instruction(
         snapshot = draft_snapshot_markdown.strip()
         if len(snapshot) > 5000:
             snapshot = f"{snapshot[:5000].rstrip()}..."
-        sections.append(f"[학생측 최신 초안 스냅샷\n{snapshot}")
+        sections.append(f"[학생측 최신 초안 스냅샷]\n{snapshot}")
     sections.append(base_instruction)
     return "\n\n".join(sections)
 
