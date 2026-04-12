@@ -483,11 +483,13 @@ def test_social_login_prepare_and_invalid_state_handling() -> None:
     original_ttl = settings.auth_social_state_ttl_seconds
     original_kakao_client_id = settings.kakao_client_id
     original_google_client_id = settings.google_client_id
+    original_google_client_secret = settings.google_client_secret
     settings.auth_social_login_enabled = True
     settings.auth_social_state_secret = "test-social-state-secret"
     settings.auth_social_state_ttl_seconds = 300
     settings.kakao_client_id = "test-kakao-client-id"
     settings.google_client_id = "test-google-client-id"
+    settings.google_client_secret = "test-google-client-secret"
 
     try:
         with TestClient(app) as client:
@@ -512,6 +514,7 @@ def test_social_login_prepare_and_invalid_state_handling() -> None:
         settings.auth_social_state_ttl_seconds = original_ttl
         settings.kakao_client_id = original_kakao_client_id
         settings.google_client_id = original_google_client_id
+        settings.google_client_secret = original_google_client_secret
 
 
 def test_expired_workshop_stream_token_is_rejected() -> None:

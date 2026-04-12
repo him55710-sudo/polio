@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import logging
 from typing import Literal
 
 import httpx
@@ -16,6 +17,7 @@ from unifoli_api.db.models.user import User
 from unifoli_api.schemas.user import UserProfileRead
 
 router = APIRouter()
+logger = logging.getLogger("unifoli.api.auth")
 
 
 class SocialProviderPrepareRequest(BaseModel):
@@ -56,6 +58,7 @@ def prepare_social_login(
 ) -> SocialProviderPrepareResponse:
     settings = get_settings()
     _ensure_social_login_enabled(settings)
+    _require_provider_config(settings, payload.provider)
     state_secret = settings.auth_social_state_secret
     if not state_secret:
         raise HTTPException(
@@ -126,20 +129,41 @@ async def social_login(payload: SocialLoginRequest, request: Request) -> SocialL
         ) from exc
 
     timeout = httpx.Timeout(10.0, connect=5.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        if payload.provider == "kakao":
-            uid, email, name = await _exchange_kakao_code(client, settings, payload.code)
-        elif payload.provider == "naver":
-            uid, email, name = await _exchange_naver_code(client, settings, payload.code)
-        else:
-            uid, email, name = await _exchange_google_code(client, settings, payload.code)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if payload.provider == "kakao":
+                uid, email, name = await _exchange_kakao_code(client, settings, payload.code)
+            elif payload.provider == "naver":
+                uid, email, name = await _exchange_naver_code(client, settings, payload.code)
+            else:
+                uid, email, name = await _exchange_google_code(client, settings, payload.code)
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "OAuth provider request failed during social login. provider=%s",
+            payload.provider,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{payload.provider.capitalize()} login provider request failed.",
+        ) from exc
 
-    app_access_token = _build_app_access_token(
-        settings=settings,
-        uid=uid,
-        email=email,
-        name=name,
-    )
+    try:
+        app_access_token = _build_app_access_token(
+            settings=settings,
+            uid=uid,
+            email=email,
+            name=name,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to build app access token during social login. provider=%s uid=%s",
+            payload.provider,
+            uid,
+        )
+        app_access_token = None
 
     firebase_custom_token: str | None = None
     try:
@@ -152,8 +176,18 @@ async def social_login(payload: SocialLoginRequest, request: Request) -> SocialL
                 email=email,
                 display_name=name,
             )
-        firebase_custom_token = auth_client.create_custom_token(firebase_user.uid).decode("utf-8")
+        raw_custom_token = auth_client.create_custom_token(firebase_user.uid)
+        if isinstance(raw_custom_token, (bytes, bytearray)):
+            firebase_custom_token = raw_custom_token.decode("utf-8")
+        else:
+            firebase_custom_token = str(raw_custom_token)
     except Exception:  # noqa: BLE001
+        logger.warning(
+            "Failed to create Firebase custom token during social login. provider=%s uid=%s",
+            payload.provider,
+            uid,
+            exc_info=True,
+        )
         firebase_custom_token = None
 
     if not firebase_custom_token and not app_access_token:
