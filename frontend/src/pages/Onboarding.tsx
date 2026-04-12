@@ -79,7 +79,7 @@ export function Onboarding() {
 
   const universitySuggestions = searchUniversities(univInput, { excludeNames: [currentUniv, ...goalList.map(g => g.university)] });
   const majorSuggestions = searchMajors(currentMajor, currentUniv || univInput, 20);
-  const logoPreviewName = (currentUniv || univInput).trim();
+  const logoPreviewName = (currentUniv || univInput || '').trim();
   const currentGoalValidation = validateGoalSelection(logoPreviewName, currentMajor);
   const canAddCurrentGoal = currentGoalValidation.valid && goalList.length < 6;
 
@@ -91,8 +91,8 @@ export function Onboarding() {
         return Math.random().toString(36).substring(2) + Date.now().toString(36);
       }
     };
-    const universityName = (currentUniv || univInput).trim();
-    const majorName = currentMajor.trim();
+    const universityName = (currentUniv || univInput || '').trim();
+    const majorName = (currentMajor || '').trim();
     if (!universityName || !majorName || goalList.length >= 6) return;
     if (!currentGoalValidation.valid) {
       toast.error(currentGoalValidation.message || '선택한 대학에 있는 학과만 추가할 수 있어요.');

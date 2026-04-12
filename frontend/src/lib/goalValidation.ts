@@ -11,8 +11,8 @@ interface GoalValidationResult {
 }
 
 export function coerceMajorForUniversity(universityName: string, majorName: string): string {
-  const normalizedUniversity = universityName.trim();
-  const normalizedMajor = majorName.trim();
+  const normalizedUniversity = (universityName || '').trim();
+  const normalizedMajor = (majorName || '').trim();
 
   if (!normalizedMajor) {
     return '';
@@ -22,8 +22,8 @@ export function coerceMajorForUniversity(universityName: string, majorName: stri
 }
 
 export function validateGoalSelection(universityName: string, majorName: string): GoalValidationResult {
-  const normalizedUniversity = universityName.trim();
-  const normalizedMajor = majorName.trim();
+  const normalizedUniversity = (universityName || '').trim();
+  const normalizedMajor = (majorName || '').trim();
 
   if (!normalizedUniversity) {
     return { valid: false, message: '대학교를 먼저 선택해 주세요.' };

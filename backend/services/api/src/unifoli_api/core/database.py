@@ -6,8 +6,8 @@ from unifoli_api.core.config import get_settings
 
 
 def utc_now() -> datetime:
-    """Returns an aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    """Returns a naive UTC datetime for internal database operations."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):

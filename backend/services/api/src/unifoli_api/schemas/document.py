@@ -87,6 +87,10 @@ def _sanitize_parse_metadata(value: object) -> dict[str, object]:
     if isinstance(pdf_analysis, dict):
         safe_pdf_analysis: dict[str, object] = {}
 
+        schema_version = str(pdf_analysis.get("schema_version") or "").strip()
+        if schema_version:
+            safe_pdf_analysis["schema_version"] = schema_version[:80]
+
         provider = str(pdf_analysis.get("provider") or "").strip()
         if provider:
             safe_pdf_analysis["provider"] = provider[:40]
@@ -106,6 +110,14 @@ def _sanitize_parse_metadata(value: object) -> dict[str, object]:
         engine = str(pdf_analysis.get("engine") or "").strip()
         if engine:
             safe_pdf_analysis["engine"] = engine[:20]
+
+        actual_provider_new = str(pdf_analysis.get("actual_provider") or "").strip()
+        if actual_provider_new:
+            safe_pdf_analysis["actual_provider"] = actual_provider_new[:40]
+
+        actual_model_new = str(pdf_analysis.get("actual_model") or "").strip()
+        if actual_model_new:
+            safe_pdf_analysis["actual_model"] = actual_model_new[:80]
 
         requested_provider = str(pdf_analysis.get("requested_pdf_analysis_provider") or "").strip()
         if requested_provider:
@@ -151,6 +163,18 @@ def _sanitize_parse_metadata(value: object) -> dict[str, object]:
         if summary:
             safe_pdf_analysis["summary"] = summary[:1000]
 
+        document_type = str(pdf_analysis.get("document_type") or "").strip()
+        if document_type:
+            safe_pdf_analysis["document_type"] = document_type[:80]
+
+        document_type_confidence = pdf_analysis.get("document_type_confidence")
+        if isinstance(document_type_confidence, (int, float)):
+            safe_pdf_analysis["document_type_confidence"] = max(0.0, min(1.0, float(document_type_confidence)))
+
+        likely_student_record = pdf_analysis.get("likely_student_record")
+        if isinstance(likely_student_record, bool):
+            safe_pdf_analysis["likely_student_record"] = likely_student_record
+
         failure_reason_raw = pdf_analysis.get("failure_reason")
         if failure_reason_raw is not None:
             safe_pdf_analysis["failure_reason"] = sanitize_public_error(
@@ -187,14 +211,69 @@ def _sanitize_parse_metadata(value: object) -> dict[str, object]:
                 summary_text = str(item.get("summary") or "").strip()
                 if not summary_text:
                     continue
-                normalized_page_insights.append(
-                    {
-                        "page_number": page_number,
-                        "summary": summary_text[:300],
-                    }
-                )
+                normalized_item: dict[str, object] = {
+                    "page_number": page_number,
+                    "summary": summary_text[:300],
+                }
+                section_candidates = item.get("section_candidates")
+                if isinstance(section_candidates, list):
+                    normalized_section_candidates = [
+                        str(candidate).strip()[:80]
+                        for candidate in section_candidates
+                        if str(candidate).strip()
+                    ]
+                    if normalized_section_candidates:
+                        normalized_item["section_candidates"] = normalized_section_candidates[:8]
+                evidence_notes = item.get("evidence_notes")
+                if isinstance(evidence_notes, list):
+                    normalized_evidence_notes = [
+                        str(note).strip()[:220]
+                        for note in evidence_notes
+                        if str(note).strip()
+                    ]
+                    if normalized_evidence_notes:
+                        normalized_item["evidence_notes"] = normalized_evidence_notes[:8]
+                normalized_page_insights.append(normalized_item)
             if normalized_page_insights:
                 safe_pdf_analysis["page_insights"] = normalized_page_insights
+
+        section_candidates = pdf_analysis.get("section_candidates")
+        if isinstance(section_candidates, dict):
+            normalized_candidates: dict[str, object] = {}
+            for label, payload in list(section_candidates.items())[:20]:
+                key = str(label).strip()
+                if not key or not isinstance(payload, dict):
+                    continue
+                confidence = payload.get("confidence")
+                pages = payload.get("pages")
+                if not isinstance(confidence, (int, float)) or not isinstance(pages, list):
+                    continue
+                normalized_pages = []
+                for page in pages[:20]:
+                    try:
+                        page_number = int(page)
+                    except (TypeError, ValueError):
+                        continue
+                    if page_number > 0:
+                        normalized_pages.append(page_number)
+                normalized_candidates[key[:80]] = {
+                    "confidence": max(0.0, min(1.0, float(confidence))),
+                    "pages": normalized_pages,
+                }
+            if normalized_candidates:
+                safe_pdf_analysis["section_candidates"] = normalized_candidates
+
+        ambiguity_notes = pdf_analysis.get("ambiguity_notes")
+        if isinstance(ambiguity_notes, list):
+            normalized_ambiguity = [str(item).strip()[:220] for item in ambiguity_notes if str(item).strip()]
+            if normalized_ambiguity:
+                safe_pdf_analysis["ambiguity_notes"] = normalized_ambiguity[:8]
+
+        extraction_limits = pdf_analysis.get("extraction_limits")
+        if isinstance(extraction_limits, list):
+            normalized_limits = [str(item).strip()[:220] for item in extraction_limits if str(item).strip()]
+            if normalized_limits:
+                safe_pdf_analysis["extraction_limits"] = normalized_limits[:8]
 
         if safe_pdf_analysis:
             safe["pdf_analysis"] = safe_pdf_analysis

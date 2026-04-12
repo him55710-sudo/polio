@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from threading import Event, Lock, Thread
 from typing import Any
 
 from unifoli_api.core.config import get_settings
+from unifoli_api.core.llm import LLMRequestError, PDFAnalysisLLMResolution, resolve_pdf_analysis_llm_resolution
 from unifoli_ingest.models import ParsedDocumentPayload
+from pydantic import BaseModel, Field
 
 _CANONICAL_SCHEMA_VERSION = "2026-04-12"
 _MAX_PAGE_INSIGHTS = 8
@@ -13,37 +20,170 @@ _MAX_KEY_POINTS = 5
 _MAX_EVIDENCE_GAPS = 5
 
 _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "student_info": ("인적사항", "학적사항", "학생명", "학교명", "주민등록번호"),
-    "attendance": ("출결상황", "결석", "지각", "조퇴", "결과", "미인정"),
-    "awards": ("수상경력", "수상명", "수여기관"),
-    "creative_activities": ("창의적 체험활동", "창체", "자율활동", "동아리활동"),
-    "volunteer": ("봉사활동", "봉사시간", "봉사"),
-    "grades_subjects": ("교과학습발달상황", "과목", "원점수", "성취도", "등급"),
-    "subject_special_notes": ("세부능력", "특기사항", "세특"),
-    "reading": ("독서활동상황", "독서", "도서명", "저자"),
-    "behavior_general_comments": ("행동특성 및 종합의견", "행동특성", "종합의견"),
+    "student_info": ("student", "name", "school", "id", "profile"),
+    "attendance": ("attendance", "absence", "late", "tardy", "present"),
+    "awards": ("award", "prize", "competition"),
+    "creative_activities": ("creative", "club", "activity", "project"),
+    "volunteer": ("volunteer", "service", "hours"),
+    "grades_subjects": ("grade", "subject", "score", "evaluation"),
+    "subject_special_notes": ("special note", "subject note", "comment"),
+    "reading": ("reading", "book", "library"),
+    "behavior_general_comments": ("behavior", "general comment", "attitude"),
 }
 
 _LEGACY_SECTION_LABELS: dict[str, str] = {
-    "student_info": "인적사항",
-    "attendance": "출결상황",
-    "awards": "수상경력",
-    "creative_activities": "창의적 체험활동",
-    "volunteer": "봉사활동",
-    "grades_subjects": "교과학습발달상황",
-    "subject_special_notes": "세특",
-    "reading": "독서",
-    "behavior_general_comments": "행동특성",
+    "student_info": "student_info",
+    "attendance": "attendance",
+    "awards": "awards",
+    "creative_activities": "creative_activities",
+    "volunteer": "volunteer",
+    "grades_subjects": "grades_subjects",
+    "subject_special_notes": "subject_special_notes",
+    "reading": "reading",
+    "behavior_general_comments": "behavior_general_comments",
 }
 
 _TIMELINE_PATTERNS = (
-    re.compile(r"[1-3]\s*학년\s*[1-2]\s*학기"),
-    re.compile(r"[1-3]\s*학년"),
-    re.compile(r"[1-2]\s*학기"),
+    re.compile(r"[1-3]\\s*year\\s*[1-2]\\s*term", re.IGNORECASE),
+    re.compile(r"[1-3]\\s*year", re.IGNORECASE),
+    re.compile(r"[1-2]\\s*term", re.IGNORECASE),
 )
 
-_MAJOR_HINT_KEYWORDS = ("전공", "진로", "학과", "관심", "목표", "희망", "진학")
-_CAREER_KEYWORDS = ("진로", "학과", "전공", "희망", "진학", "목표")
+_MAJOR_HINT_KEYWORDS = ("major", "career", "path", "goal", "admission", "future")
+_CAREER_KEYWORDS = ("career", "major", "future", "goal", "admission")
+
+_PDF_ANALYSIS_SCHEMA_VERSION = "2026-04-13-pdf-analysis-v2"
+_HEURISTIC_MODEL_NAME = "heuristic-summary-v1"
+_DEFAULT_BATCH_SIZE = 6
+_REDUCED_BATCH_SIZE = 3
+_MAX_PAGE_TEXT_CHARS = 1800
+_MAX_STAGE_A_NOTES = 8
+_MAX_AMBIGUITY_NOTES = 8
+_MAX_SECTION_CANDIDATES = 12
+_SUMMARY_CHAR_LIMIT = 900
+_EVIDENCE_NOTE_CHAR_LIMIT = 180
+
+_PDF_ANALYSIS_SYSTEM_INSTRUCTION = (
+    "You are a PDF analysis engine for masked student records. "
+    "Use only explicitly provided evidence. "
+    "Never infer facts that are not present in the provided input. "
+    "Return strict JSON matching the schema."
+)
+
+_PDF_ANALYSIS_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
+_PDF_ANALYSIS_BRIDGE_THREAD: Thread | None = None
+_PDF_ANALYSIS_BRIDGE_LOCK = Lock()
+_PDF_ANALYSIS_BRIDGE_READY = Event()
+
+logger = logging.getLogger("unifoli.pdf_analysis")
+
+
+@dataclass(frozen=True)
+class _MaskedPage:
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
+class _PipelineAttemptConfig:
+    batch_size: int
+    compact_synthesis_prompt: bool
+
+
+class _PipelineStageError(RuntimeError):
+    def __init__(self, stage: str, code: str, detail: str | None = None) -> None:
+        message = f"{stage}:{code}"
+        if detail:
+            message = f"{message}:{detail}"
+        super().__init__(message)
+        self.stage = stage
+        self.code = code
+        self.detail = detail
+
+
+class _SectionCandidate(BaseModel):
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    pages: list[int] = Field(default_factory=list)
+
+
+class _PageInsight(BaseModel):
+    page_number: int = Field(ge=1)
+    summary: str = ""
+    section_candidates: list[str] = Field(default_factory=list)
+    evidence_notes: list[str] = Field(default_factory=list)
+
+
+class _StageABatchOutput(BaseModel):
+    batch_summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    page_insights: list[_PageInsight] = Field(default_factory=list)
+    evidence_gaps: list[str] = Field(default_factory=list)
+    section_candidates: dict[str, _SectionCandidate] = Field(default_factory=dict)
+    ambiguity_notes: list[str] = Field(default_factory=list)
+    extraction_limits: list[str] = Field(default_factory=list)
+    document_type: str = "generic_pdf"
+    document_type_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    likely_student_record: bool = False
+
+
+class _StageBFinalOutput(BaseModel):
+    summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    page_insights: list[_PageInsight] = Field(default_factory=list)
+    evidence_gaps: list[str] = Field(default_factory=list)
+    document_type: str = "generic_pdf"
+    document_type_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    likely_student_record: bool = False
+    section_candidates: dict[str, _SectionCandidate] = Field(default_factory=dict)
+    ambiguity_notes: list[str] = Field(default_factory=list)
+    extraction_limits: list[str] = Field(default_factory=list)
+
+
+def _async_pdf_analysis_bridge_runner() -> None:
+    global _PDF_ANALYSIS_BRIDGE_LOOP
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    _PDF_ANALYSIS_BRIDGE_LOOP = loop
+    _PDF_ANALYSIS_BRIDGE_READY.set()
+    loop.run_forever()
+
+
+def _ensure_pdf_analysis_bridge_loop() -> asyncio.AbstractEventLoop:
+    global _PDF_ANALYSIS_BRIDGE_THREAD
+    with _PDF_ANALYSIS_BRIDGE_LOCK:
+        loop = _PDF_ANALYSIS_BRIDGE_LOOP
+        if loop is not None and loop.is_running():
+            return loop
+
+        _PDF_ANALYSIS_BRIDGE_READY.clear()
+        _PDF_ANALYSIS_BRIDGE_THREAD = Thread(
+            target=_async_pdf_analysis_bridge_runner,
+            daemon=True,
+            name="unifoli-pdf-analysis-loop",
+        )
+        _PDF_ANALYSIS_BRIDGE_THREAD.start()
+
+    if not _PDF_ANALYSIS_BRIDGE_READY.wait(timeout=5.0):
+        raise RuntimeError("Failed to initialize PDF analysis async bridge loop.")
+
+    loop = _PDF_ANALYSIS_BRIDGE_LOOP
+    if loop is None or not loop.is_running():
+        raise RuntimeError("PDF analysis async bridge loop is unavailable.")
+    return loop
+
+
+def _run_pdf_analysis_async(coro: Any) -> Any:
+    if not asyncio.iscoroutine(coro):
+        raise TypeError("_run_pdf_analysis_async expects a coroutine object.")
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    loop = _ensure_pdf_analysis_bridge_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()
 
 
 def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any] | None:
@@ -54,36 +194,834 @@ def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any]
         return None
 
     started_at = datetime.now(timezone.utc)
-    page_texts = _extract_page_texts(parsed)
-    summary = _build_pdf_summary(parsed, page_texts)
-    key_points = _extract_key_points(page_texts)
-    evidence_gaps = _build_evidence_gaps(parsed, page_texts)
-    page_insights = _build_page_insights(page_texts)
+    generated_at = datetime.now(timezone.utc)
+    attempted_provider, attempted_model = _resolve_requested_pdf_identity(settings)
+    masked_pages = _extract_masked_only_pages(parsed)
 
-    duration_ms = int(max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds() * 1000.0))
-    provider = str(getattr(settings, "pdf_analysis_llm_provider", "") or "heuristic").strip().lower()
-    model = str(getattr(settings, "pdf_analysis_llm_model", "") or "heuristic-summary-v1").strip()
+    resolution: PDFAnalysisLLMResolution | None = None
+    try:
+        resolution = resolve_pdf_analysis_llm_resolution()
+        llm_payload = _run_pdf_analysis_async(
+            _build_pdf_analysis_with_llm(
+                parsed=parsed,
+                masked_pages=masked_pages,
+                resolution=resolution,
+            )
+        )
+        return _compose_pdf_analysis_metadata(
+            llm_payload,
+            started_at=started_at,
+            generated_at=generated_at,
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider=resolution.actual_provider,
+            actual_model=resolution.actual_model,
+            engine="llm",
+            fallback_used=False,
+            fallback_reason=None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("PDF analysis LLM pipeline failed; switching to heuristic fallback: %s", exc)
+        return _build_pdf_analysis_heuristic_fallback(
+            parsed=parsed,
+            masked_pages=masked_pages,
+            started_at=started_at,
+            generated_at=generated_at,
+            attempted_provider=resolution.attempted_provider if resolution else attempted_provider,
+            attempted_model=resolution.attempted_model if resolution else attempted_model,
+            fallback_reason=_fallback_reason_from_exception(exc),
+        )
+
+
+def _resolve_requested_pdf_identity(settings: Any) -> tuple[str, str]:
+    provider = str(getattr(settings, "pdf_analysis_llm_provider", "") or "ollama").strip().lower()
+    if provider == "ollama":
+        model = str(
+            getattr(settings, "pdf_analysis_ollama_model", "")
+            or getattr(settings, "ollama_model", "")
+            or "gemma4"
+        ).strip()
+        return provider, model
+    if provider == "gemini":
+        model = str(getattr(settings, "pdf_analysis_gemini_model", "") or "").strip() or "gemini-2.0-flash"
+        return provider, model
+    return provider or "unknown", "unknown"
+
+
+def _extract_masked_only_pages(parsed: ParsedDocumentPayload) -> list[_MaskedPage]:
+    from_masked_artifact = _extract_pages_from_masked_artifact(parsed)
+    if from_masked_artifact:
+        return from_masked_artifact
+
+    from_content_text = _extract_pages_from_content_text(parsed.content_text, page_count=parsed.page_count)
+    if from_content_text:
+        return from_content_text
+
+    from_chunks = _extract_pages_from_chunks(parsed)
+    if from_chunks:
+        return from_chunks
+
+    return []
+
+
+def _extract_pages_from_masked_artifact(parsed: ParsedDocumentPayload) -> list[_MaskedPage]:
+    artifact = parsed.masked_artifact if isinstance(parsed.masked_artifact, dict) else {}
+    pages = artifact.get("pages")
+    if not isinstance(pages, list):
+        return []
+
+    numbered: list[tuple[int, str]] = []
+    fallback_counter = 1
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        text = str(page.get("masked_text") or "").strip()
+        if not text:
+            continue
+        try:
+            page_number = int(page.get("page_number") or fallback_counter)
+        except (TypeError, ValueError):
+            page_number = fallback_counter
+        page_number = max(1, page_number)
+        fallback_counter = page_number + 1
+        numbered.append((page_number, text))
+
+    if not numbered:
+        return []
+
+    numbered.sort(key=lambda item: item[0])
+    seen_pages: set[int] = set()
+    result: list[_MaskedPage] = []
+    for page_number, text in numbered:
+        if page_number in seen_pages:
+            continue
+        seen_pages.add(page_number)
+        result.append(_MaskedPage(page_number=page_number, text=text))
+    return result
+
+
+def _extract_pages_from_content_text(content_text: str, *, page_count: int) -> list[_MaskedPage]:
+    content = (content_text or "").strip()
+    if not content:
+        return []
+
+    page_marker = re.compile(r"\[Page\s+(\d+)\]", re.IGNORECASE)
+    marker_matches = list(page_marker.finditer(content))
+    if marker_matches:
+        pages: list[_MaskedPage] = []
+        for index, match in enumerate(marker_matches):
+            start = match.end()
+            end = marker_matches[index + 1].start() if index + 1 < len(marker_matches) else len(content)
+            page_number = int(match.group(1))
+            text = content[start:end].strip()
+            if text:
+                pages.append(_MaskedPage(page_number=max(1, page_number), text=text))
+        if pages:
+            pages.sort(key=lambda page: page.page_number)
+            return pages
+
+    max_pages = max(1, page_count)
+    parts = [part.strip() for part in re.split(r"\n{2,}|\f", content) if part.strip()]
+    if len(parts) >= 2:
+        return [_MaskedPage(page_number=index + 1, text=part) for index, part in enumerate(parts[:max_pages])]
+
+    return [_MaskedPage(page_number=1, text=content)]
+
+
+def _extract_pages_from_chunks(parsed: ParsedDocumentPayload) -> list[_MaskedPage]:
+    if not isinstance(parsed.chunks, list) or not parsed.chunks:
+        return []
+
+    bucket: dict[int, list[str]] = {}
+    fallback_index = 1
+    for chunk in parsed.chunks:
+        text = str(getattr(chunk, "content_text", "") or "").strip()
+        if not text:
+            continue
+        try:
+            page_number = int(getattr(chunk, "page_number", 0) or 0)
+        except (TypeError, ValueError):
+            page_number = 0
+        if page_number <= 0:
+            page_number = fallback_index
+            fallback_index += 1
+        bucket.setdefault(page_number, []).append(text)
+
+    if not bucket:
+        return []
+
+    pages: list[_MaskedPage] = []
+    for page_number in sorted(bucket):
+        joined = " ".join(part for part in bucket[page_number] if part).strip()
+        if joined:
+            pages.append(_MaskedPage(page_number=page_number, text=joined))
+    return pages
+
+
+async def _build_pdf_analysis_with_llm(
+    *,
+    parsed: ParsedDocumentPayload,
+    masked_pages: list[_MaskedPage],
+    resolution: PDFAnalysisLLMResolution,
+) -> dict[str, Any]:
+    if not masked_pages:
+        raise _PipelineStageError("input", "masked_input_unavailable")
+
+    unique_configs: list[_PipelineAttemptConfig] = []
+    for config in _pipeline_attempt_configs(total_pages=len(masked_pages)):
+        if config not in unique_configs:
+            unique_configs.append(config)
+
+    latest_error: _PipelineStageError | None = None
+    for config in unique_configs:
+        try:
+            stage_a = await _run_stage_a(
+                pages=masked_pages,
+                resolution=resolution,
+                batch_size=config.batch_size,
+            )
+            stage_b = await _run_stage_b(
+                stage_a_outputs=stage_a,
+                resolution=resolution,
+                compact_prompt=config.compact_synthesis_prompt,
+            )
+            return _normalize_llm_final_output(
+                parsed=parsed,
+                masked_pages=masked_pages,
+                stage_a_outputs=stage_a,
+                stage_b_output=stage_b,
+            )
+        except _PipelineStageError as exc:
+            latest_error = exc
+            continue
+
+    if latest_error is not None:
+        raise latest_error
+    raise _PipelineStageError("pipeline", "unknown_failure")
+
+
+def _pipeline_attempt_configs(*, total_pages: int) -> list[_PipelineAttemptConfig]:
+    initial_batch_size = max(1, min(_DEFAULT_BATCH_SIZE, total_pages or _DEFAULT_BATCH_SIZE))
+    reduced_batch_size = max(1, min(_REDUCED_BATCH_SIZE, initial_batch_size))
+    if total_pages >= 18:
+        initial_batch_size = min(initial_batch_size, 5)
+        reduced_batch_size = min(reduced_batch_size, 2)
+    return [
+        _PipelineAttemptConfig(batch_size=initial_batch_size, compact_synthesis_prompt=False),
+        _PipelineAttemptConfig(batch_size=reduced_batch_size, compact_synthesis_prompt=False),
+        _PipelineAttemptConfig(batch_size=reduced_batch_size, compact_synthesis_prompt=True),
+    ]
+
+
+async def _run_stage_a(
+    *,
+    pages: list[_MaskedPage],
+    resolution: PDFAnalysisLLMResolution,
+    batch_size: int,
+) -> list[dict[str, Any]]:
+    if batch_size <= 0:
+        raise _PipelineStageError("stage_a", "invalid_batch_size")
+
+    batches = [pages[index : index + batch_size] for index in range(0, len(pages), batch_size)]
+    stage_outputs: list[dict[str, Any]] = []
+    total_batches = max(1, len(batches))
+
+    for batch_index, batch in enumerate(batches, start=1):
+        prompt = _build_stage_a_prompt(batch=batch, batch_index=batch_index, total_batches=total_batches)
+        response = await _generate_stage_json(
+            resolution=resolution,
+            prompt=prompt,
+            response_model=_StageABatchOutput,
+            stage_name="stage_a",
+            temperature=0.2,
+        )
+        stage_outputs.append(
+            _normalize_stage_a_batch_output(
+                payload=response,
+                batch=batch,
+                batch_index=batch_index,
+            )
+        )
+    return stage_outputs
+
+
+async def _run_stage_b(
+    *,
+    stage_a_outputs: list[dict[str, Any]],
+    resolution: PDFAnalysisLLMResolution,
+    compact_prompt: bool,
+) -> _StageBFinalOutput:
+    prompt = _build_stage_b_prompt(stage_a_outputs=stage_a_outputs, compact_prompt=compact_prompt)
+    return await _generate_stage_json(
+        resolution=resolution,
+        prompt=prompt,
+        response_model=_StageBFinalOutput,
+        stage_name="stage_b",
+        temperature=0.16 if compact_prompt else 0.2,
+    )
+
+
+async def _generate_stage_json(
+    *,
+    resolution: PDFAnalysisLLMResolution,
+    prompt: str,
+    response_model: type[BaseModel],
+    stage_name: str,
+    temperature: float,
+) -> Any:
+    client = resolution.client
+    try:
+        return await client.generate_json(
+            prompt,
+            response_model=response_model,
+            system_instruction=_PDF_ANALYSIS_SYSTEM_INSTRUCTION,
+            temperature=temperature,
+        )
+    except Exception as first_exc:  # noqa: BLE001
+        retry_prompt = (
+            f"{prompt}\n\n"
+            "Retry mode:\n"
+            "- Repair schema violations.\n"
+            "- Lower creativity and return deterministic JSON only.\n"
+            "- Output JSON only.\n"
+        )
+        try:
+            return await client.generate_json(
+                retry_prompt,
+                response_model=response_model,
+                system_instruction=_PDF_ANALYSIS_SYSTEM_INSTRUCTION,
+                temperature=min(temperature, 0.08),
+            )
+        except Exception as second_exc:  # noqa: BLE001
+            code = _classify_llm_exception(second_exc)
+            if code == "unknown_failure":
+                code = _classify_llm_exception(first_exc)
+            raise _PipelineStageError(stage_name, code, type(second_exc).__name__) from second_exc
+
+
+def _classify_llm_exception(exc: Exception) -> str:
+    if isinstance(exc, LLMRequestError):
+        reason = str(getattr(exc, "limited_reason", "") or "").strip().lower()
+        if reason:
+            return reason
+        return "llm_request_error"
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return "timeout"
+    name = type(exc).__name__.strip().lower()
+    return name or "unknown_failure"
+
+
+def _build_stage_a_prompt(*, batch: list[_MaskedPage], batch_index: int, total_batches: int) -> str:
+    payload = {
+        "batch_index": batch_index,
+        "total_batches": total_batches,
+        "pages": [
+            {"page_number": page.page_number, "masked_text": _clip(page.text, _MAX_PAGE_TEXT_CHARS)}
+            for page in batch
+        ],
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+    return (
+        "Stage A task: compress masked PDF pages into evidence-grounded intermediate JSON.\n"
+        "Rules:\n"
+        "1. Use only the provided masked text.\n"
+        "2. Only include page-verifiable claims.\n"
+        "3. Do not infer missing facts.\n"
+        "4. Unknown or uncertain items must go to evidence_gaps or ambiguity_notes.\n"
+        "5. Section labels are confidence-based candidates only.\n"
+        "6. Output JSON only.\n\n"
+        f"Input payload:\n{payload_json}"
+    )
+
+
+def _build_stage_b_prompt(*, stage_a_outputs: list[dict[str, Any]], compact_prompt: bool) -> str:
+    payload = {"stage_a_outputs": stage_a_outputs}
+    payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+    if compact_prompt:
+        return (
+            "Stage B task: synthesize final document analysis strictly from Stage A outputs.\n"
+            "No new facts. Unknown info must stay in evidence_gaps or ambiguity_notes.\n"
+            "Output JSON only.\n\n"
+            f"Stage A payload:\n{payload_json}"
+        )
+    return (
+        "Stage B task: synthesize final JSON for the entire PDF using only Stage A outputs.\n"
+        "Rules:\n"
+        "1. Do not use any source outside Stage A output.\n"
+        "2. Keep claims evidence-grounded and page-verifiable.\n"
+        "3. If evidence is missing, use evidence_gaps or ambiguity_notes.\n"
+        "4. Section classification must remain candidate/confidence based.\n"
+        "5. Output JSON only.\n\n"
+        f"Stage A payload:\n{payload_json}"
+    )
+
+
+def _normalize_stage_a_batch_output(
+    *,
+    payload: _StageABatchOutput,
+    batch: list[_MaskedPage],
+    batch_index: int,
+) -> dict[str, Any]:
+    valid_pages = {page.page_number for page in batch}
+    normalized_page_insights: list[dict[str, Any]] = []
+    for item in payload.page_insights:
+        if item.page_number not in valid_pages:
+            continue
+        summary = _clip(item.summary, _SUMMARY_CHAR_LIMIT)
+        if not summary:
+            continue
+        normalized_page_insights.append(
+            {
+                "page_number": item.page_number,
+                "summary": summary,
+                "section_candidates": _dedupe(
+                    [str(value).strip() for value in item.section_candidates if str(value).strip()],
+                    limit=6,
+                ),
+                "evidence_notes": _dedupe(
+                    [_clip(str(note), _EVIDENCE_NOTE_CHAR_LIMIT) for note in item.evidence_notes if str(note).strip()],
+                    limit=6,
+                ),
+            }
+        )
+
+    section_candidates = _normalize_section_candidates(payload.section_candidates, page_cap=max(valid_pages or {1}))
+    return {
+        "batch_index": batch_index,
+        "batch_summary": _clip(payload.batch_summary, _SUMMARY_CHAR_LIMIT),
+        "key_points": _dedupe([_clip(item, 220) for item in payload.key_points], limit=_MAX_KEY_POINTS),
+        "page_insights": normalized_page_insights,
+        "evidence_gaps": _dedupe([_clip(item, 220) for item in payload.evidence_gaps], limit=_MAX_STAGE_A_NOTES),
+        "section_candidates": section_candidates,
+        "ambiguity_notes": _dedupe([_clip(item, 220) for item in payload.ambiguity_notes], limit=_MAX_AMBIGUITY_NOTES),
+        "extraction_limits": _dedupe(
+            [_clip(item, 220) for item in payload.extraction_limits],
+            limit=_MAX_STAGE_A_NOTES,
+        ),
+        "document_type": str(payload.document_type or "generic_pdf").strip() or "generic_pdf",
+        "document_type_confidence": max(0.0, min(1.0, float(payload.document_type_confidence))),
+        "likely_student_record": bool(payload.likely_student_record),
+    }
+
+
+def _normalize_llm_final_output(
+    *,
+    parsed: ParsedDocumentPayload,
+    masked_pages: list[_MaskedPage],
+    stage_a_outputs: list[dict[str, Any]],
+    stage_b_output: _StageBFinalOutput,
+) -> dict[str, Any]:
+    combined_stage_a_key_points: list[str] = []
+    combined_stage_a_gaps: list[str] = []
+    combined_ambiguity: list[str] = []
+    combined_limits: list[str] = []
+    for batch in stage_a_outputs:
+        combined_stage_a_key_points.extend(batch.get("key_points") or [])
+        combined_stage_a_gaps.extend(batch.get("evidence_gaps") or [])
+        combined_ambiguity.extend(batch.get("ambiguity_notes") or [])
+        combined_limits.extend(batch.get("extraction_limits") or [])
+
+    summary = _clip(stage_b_output.summary, _SUMMARY_CHAR_LIMIT)
+    if not summary:
+        summary = _build_pdf_summary(parsed, [page.text for page in masked_pages])
+
+    key_points = _dedupe(
+        [_clip(item, 220) for item in stage_b_output.key_points]
+        + [_clip(item, 220) for item in combined_stage_a_key_points],
+        limit=_MAX_KEY_POINTS,
+    )
+    if not key_points:
+        key_points = _extract_key_points([page.text for page in masked_pages])
+
+    page_insights = _normalize_page_insights(stage_b_output.page_insights, masked_pages)
+    if not page_insights:
+        page_insights = _fallback_page_insights_from_stage_a(stage_a_outputs, masked_pages)
+    if not page_insights:
+        page_insights = _build_page_insights_with_candidates(masked_pages)
+
+    evidence_gaps = _dedupe(
+        [_clip(item, 220) for item in stage_b_output.evidence_gaps] + [_clip(item, 220) for item in combined_stage_a_gaps],
+        limit=_MAX_EVIDENCE_GAPS,
+    )
+    if not evidence_gaps:
+        evidence_gaps = _build_evidence_gaps(parsed, [page.text for page in masked_pages])
+
+    section_candidates = _normalize_section_candidates(
+        stage_b_output.section_candidates,
+        page_cap=max((page.page_number for page in masked_pages), default=1),
+    )
+    if not section_candidates:
+        section_candidates = _infer_section_candidates(masked_pages)
+
+    ambiguity_notes = _dedupe(
+        [_clip(item, 220) for item in stage_b_output.ambiguity_notes] + [_clip(item, 220) for item in combined_ambiguity],
+        limit=_MAX_AMBIGUITY_NOTES,
+    )
+    extraction_limits = _dedupe(
+        [_clip(item, 220) for item in stage_b_output.extraction_limits] + [_clip(item, 220) for item in combined_limits],
+        limit=_MAX_STAGE_A_NOTES,
+    )
+
+    document_type, confidence, likely_student_record = _normalize_document_type(
+        document_type=stage_b_output.document_type,
+        confidence=stage_b_output.document_type_confidence,
+        likely_student_record=stage_b_output.likely_student_record,
+        section_candidates=section_candidates,
+    )
 
     return {
-        "provider": provider,
-        "attempted_provider": provider,
-        "model": model,
-        "attempted_model": model,
-        "engine": "heuristic",
-        "requested_pdf_analysis_provider": provider,
-        "requested_pdf_analysis_model": model,
-        "actual_pdf_analysis_provider": "heuristic",
-        "actual_pdf_analysis_model": "heuristic-summary-v1",
-        "pdf_analysis_engine": "heuristic",
-        "fallback_used": True,
-        "fallback_reason": "heuristic_only",
-        "processing_duration_ms": duration_ms,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "schema_version": _PDF_ANALYSIS_SCHEMA_VERSION,
         "summary": summary,
         "key_points": key_points,
         "page_insights": page_insights,
         "evidence_gaps": evidence_gaps,
+        "document_type": document_type,
+        "document_type_confidence": confidence,
+        "likely_student_record": likely_student_record,
+        "section_candidates": section_candidates,
+        "ambiguity_notes": ambiguity_notes,
+        "extraction_limits": extraction_limits,
     }
+
+
+def _normalize_page_insights(page_insights: list[_PageInsight], masked_pages: list[_MaskedPage]) -> list[dict[str, Any]]:
+    valid_pages = {page.page_number for page in masked_pages}
+    normalized: list[dict[str, Any]] = []
+    for item in page_insights:
+        if item.page_number not in valid_pages:
+            continue
+        summary = _clip(item.summary, _SUMMARY_CHAR_LIMIT)
+        if not summary:
+            continue
+        normalized.append(
+            {
+                "page_number": item.page_number,
+                "summary": summary,
+                "section_candidates": _dedupe(
+                    [str(value).strip() for value in item.section_candidates if str(value).strip()],
+                    limit=6,
+                ),
+                "evidence_notes": _dedupe(
+                    [_clip(str(note), _EVIDENCE_NOTE_CHAR_LIMIT) for note in item.evidence_notes if str(note).strip()],
+                    limit=6,
+                ),
+            }
+        )
+    normalized.sort(key=lambda item: int(item["page_number"]))
+    return normalized[:_MAX_PAGE_INSIGHTS]
+
+
+def _fallback_page_insights_from_stage_a(
+    stage_a_outputs: list[dict[str, Any]],
+    masked_pages: list[_MaskedPage],
+) -> list[dict[str, Any]]:
+    valid_pages = {page.page_number for page in masked_pages}
+    collected: list[dict[str, Any]] = []
+    for batch in stage_a_outputs:
+        for insight in batch.get("page_insights") or []:
+            if not isinstance(insight, dict):
+                continue
+            page_number = int(insight.get("page_number") or 0)
+            if page_number <= 0 or page_number not in valid_pages:
+                continue
+            summary = _clip(str(insight.get("summary") or ""), _SUMMARY_CHAR_LIMIT)
+            if not summary:
+                continue
+            collected.append(
+                {
+                    "page_number": page_number,
+                    "summary": summary,
+                    "section_candidates": _dedupe(
+                        [str(item).strip() for item in insight.get("section_candidates", []) if str(item).strip()],
+                        limit=6,
+                    ),
+                    "evidence_notes": _dedupe(
+                        [
+                            _clip(str(item), _EVIDENCE_NOTE_CHAR_LIMIT)
+                            for item in insight.get("evidence_notes", [])
+                            if str(item).strip()
+                        ],
+                        limit=6,
+                    ),
+                }
+            )
+    collected.sort(key=lambda item: int(item["page_number"]))
+    deduped: list[dict[str, Any]] = []
+    seen_pages: set[int] = set()
+    for item in collected:
+        page_number = int(item["page_number"])
+        if page_number in seen_pages:
+            continue
+        seen_pages.add(page_number)
+        deduped.append(item)
+        if len(deduped) >= _MAX_PAGE_INSIGHTS:
+            break
+    return deduped
+
+
+def _normalize_section_candidates(candidates: Any, *, page_cap: int) -> dict[str, dict[str, Any]]:
+    if not isinstance(candidates, dict):
+        return {}
+    normalized: dict[str, dict[str, Any]] = {}
+    for label, payload in list(candidates.items())[:_MAX_SECTION_CANDIDATES]:
+        key = str(label or "").strip()
+        if not key:
+            continue
+        confidence = 0.0
+        pages: list[int] = []
+        if isinstance(payload, _SectionCandidate):
+            confidence = float(payload.confidence)
+            pages = [int(page) for page in payload.pages]
+        elif isinstance(payload, dict):
+            try:
+                confidence = float(payload.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            raw_pages = payload.get("pages")
+            if isinstance(raw_pages, list):
+                for value in raw_pages:
+                    try:
+                        page_number = int(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if 1 <= page_number <= max(1, page_cap):
+                        pages.append(page_number)
+        pages = sorted({page for page in pages if 1 <= page <= max(1, page_cap)})
+        if not pages and confidence <= 0.0:
+            continue
+        normalized[key] = {
+            "confidence": round(max(0.0, min(1.0, confidence)), 3),
+            "pages": pages,
+        }
+    return normalized
+
+
+def _normalize_document_type(
+    *,
+    document_type: str,
+    confidence: float,
+    likely_student_record: bool,
+    section_candidates: dict[str, dict[str, Any]],
+) -> tuple[str, float, bool]:
+    normalized_type = str(document_type or "").strip() or "generic_pdf"
+    normalized_confidence = round(max(0.0, min(1.0, float(confidence))), 3)
+    inferred_likely = bool(likely_student_record)
+    if not inferred_likely:
+        inferred_likely = "student_info" in section_candidates and "grades_subjects" in section_candidates
+    if normalized_type == "generic_pdf" and inferred_likely:
+        normalized_type = "korean_student_record_pdf"
+    if normalized_confidence <= 0.0:
+        normalized_confidence = 0.65 if inferred_likely else 0.42
+    return normalized_type, normalized_confidence, inferred_likely
+
+
+def _build_pdf_analysis_heuristic_fallback(
+    *,
+    parsed: ParsedDocumentPayload,
+    masked_pages: list[_MaskedPage],
+    started_at: datetime,
+    generated_at: datetime,
+    attempted_provider: str,
+    attempted_model: str,
+    fallback_reason: str,
+) -> dict[str, Any]:
+    page_texts = [page.text for page in masked_pages]
+    section_candidates = _infer_section_candidates(masked_pages)
+    likely_student_record = "student_info" in section_candidates and "grades_subjects" in section_candidates
+    document_type = "korean_student_record_pdf" if likely_student_record else "generic_pdf"
+    document_type_confidence = round(0.67 if likely_student_record else 0.4, 3)
+
+    payload = {
+        "schema_version": _PDF_ANALYSIS_SCHEMA_VERSION,
+        "summary": _build_pdf_summary(parsed, page_texts),
+        "key_points": _extract_key_points(page_texts),
+        "page_insights": _build_page_insights_with_candidates(masked_pages),
+        "evidence_gaps": _build_evidence_gaps(parsed, page_texts),
+        "document_type": document_type,
+        "document_type_confidence": document_type_confidence,
+        "likely_student_record": likely_student_record,
+        "section_candidates": section_candidates,
+        "ambiguity_notes": ["LLM synthesis unavailable; using heuristic-only interpretation."],
+        "extraction_limits": ["Fallback mode uses deterministic heuristics with masked text only."],
+    }
+    if fallback_reason:
+        payload["extraction_limits"].append(f"fallback_reason={fallback_reason}")
+
+    return _compose_pdf_analysis_metadata(
+        payload,
+        started_at=started_at,
+        generated_at=generated_at,
+        attempted_provider=attempted_provider,
+        attempted_model=attempted_model,
+        actual_provider="heuristic",
+        actual_model=_HEURISTIC_MODEL_NAME,
+        engine="heuristic",
+        fallback_used=True,
+        fallback_reason=fallback_reason or "heuristic_only",
+    )
+
+
+def _compose_pdf_analysis_metadata(
+    payload: dict[str, Any],
+    *,
+    started_at: datetime,
+    generated_at: datetime,
+    attempted_provider: str,
+    attempted_model: str,
+    actual_provider: str,
+    actual_model: str,
+    engine: str,
+    fallback_used: bool,
+    fallback_reason: str | None,
+) -> dict[str, Any]:
+    duration_ms = int(max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds() * 1000.0))
+    metadata = {
+        "schema_version": str(payload.get("schema_version") or _PDF_ANALYSIS_SCHEMA_VERSION),
+        "provider": attempted_provider,
+        "attempted_provider": attempted_provider,
+        "model": attempted_model,
+        "attempted_model": attempted_model,
+        "actual_provider": actual_provider,
+        "actual_model": actual_model,
+        "engine": engine,
+        "requested_pdf_analysis_provider": attempted_provider,
+        "requested_pdf_analysis_model": attempted_model,
+        "actual_pdf_analysis_provider": actual_provider,
+        "actual_pdf_analysis_model": actual_model,
+        "pdf_analysis_engine": engine,
+        "fallback_used": fallback_used,
+        "fallback_reason": fallback_reason,
+        "processing_duration_ms": duration_ms,
+        "generated_at": generated_at.isoformat(),
+        "summary": _clip(str(payload.get("summary") or ""), _SUMMARY_CHAR_LIMIT),
+        "key_points": _dedupe(
+            [str(item).strip() for item in payload.get("key_points", []) if str(item).strip()],
+            limit=_MAX_KEY_POINTS,
+        ),
+        "page_insights": _normalize_legacy_page_insights(payload.get("page_insights")),
+        "evidence_gaps": _dedupe(
+            [str(item).strip() for item in payload.get("evidence_gaps", []) if str(item).strip()],
+            limit=_MAX_EVIDENCE_GAPS,
+        ),
+        "document_type": str(payload.get("document_type") or "generic_pdf").strip() or "generic_pdf",
+        "document_type_confidence": round(
+            max(0.0, min(1.0, float(payload.get("document_type_confidence") or 0.0))),
+            3,
+        ),
+        "likely_student_record": bool(payload.get("likely_student_record")),
+        "section_candidates": _normalize_section_candidates(payload.get("section_candidates"), page_cap=999),
+        "ambiguity_notes": _dedupe(
+            [_clip(str(item), 220) for item in payload.get("ambiguity_notes", []) if str(item).strip()],
+            limit=_MAX_AMBIGUITY_NOTES,
+        ),
+        "extraction_limits": _dedupe(
+            [_clip(str(item), 220) for item in payload.get("extraction_limits", []) if str(item).strip()],
+            limit=_MAX_STAGE_A_NOTES,
+        ),
+    }
+    if not metadata["summary"]:
+        metadata["summary"] = "Masked text was analyzed, but the summary could not be finalized."
+    if not metadata["key_points"]:
+        metadata["key_points"] = ["No stable key point could be extracted from the masked text."]
+    if not metadata["page_insights"]:
+        metadata["page_insights"] = [
+            {"page_number": 1, "summary": metadata["summary"], "section_candidates": [], "evidence_notes": []}
+        ]
+    if not metadata["evidence_gaps"]:
+        metadata["evidence_gaps"] = ["No explicit evidence gaps were reported."]
+    return metadata
+
+
+def _normalize_legacy_page_insights(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in value[:_MAX_PAGE_INSIGHTS]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            page_number = int(item.get("page_number") or 0)
+        except (TypeError, ValueError):
+            page_number = 0
+        if page_number <= 0:
+            continue
+        summary = _clip(str(item.get("summary") or ""), _SUMMARY_CHAR_LIMIT)
+        if not summary:
+            continue
+        normalized.append(
+            {
+                "page_number": page_number,
+                "summary": summary,
+                "section_candidates": _dedupe(
+                    [str(section).strip() for section in item.get("section_candidates", []) if str(section).strip()],
+                    limit=6,
+                ),
+                "evidence_notes": _dedupe(
+                    [_clip(str(note), _EVIDENCE_NOTE_CHAR_LIMIT) for note in item.get("evidence_notes", []) if str(note).strip()],
+                    limit=6,
+                ),
+            }
+        )
+    normalized.sort(key=lambda item: int(item["page_number"]))
+    return normalized
+
+
+def _build_page_insights_with_candidates(masked_pages: list[_MaskedPage]) -> list[dict[str, Any]]:
+    inferred_sections = _infer_section_candidates(masked_pages)
+    page_to_sections: dict[int, list[str]] = {}
+    for section, payload in inferred_sections.items():
+        for page_number in payload.get("pages", []):
+            page_to_sections.setdefault(int(page_number), []).append(section)
+
+    insights: list[dict[str, Any]] = []
+    for page in masked_pages[:_MAX_PAGE_INSIGHTS]:
+        summary = _clip(_normalize_sentence(page.text), 220)
+        if not summary:
+            continue
+        evidence_notes = _dedupe(_extract_key_points([page.text]), limit=3)
+        insights.append(
+            {
+                "page_number": page.page_number,
+                "summary": summary,
+                "section_candidates": _dedupe(page_to_sections.get(page.page_number, []), limit=6),
+                "evidence_notes": evidence_notes,
+            }
+        )
+    return insights
+
+
+def _infer_section_candidates(masked_pages: list[_MaskedPage]) -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
+    for section, keywords in _SECTION_KEYWORDS.items():
+        matched_pages: list[int] = []
+        match_score = 0.0
+        lowered_keywords = [keyword.lower() for keyword in keywords if keyword]
+        for page in masked_pages:
+            lowered_text = page.text.lower()
+            page_hits = sum(1 for keyword in lowered_keywords if keyword in lowered_text)
+            if page_hits <= 0:
+                continue
+            matched_pages.append(page.page_number)
+            match_score += page_hits / max(1, len(lowered_keywords))
+        if not matched_pages:
+            continue
+        confidence = min(0.99, 0.45 + (match_score / max(len(matched_pages), 1)) * 0.5)
+        results[section] = {
+            "confidence": round(confidence, 3),
+            "pages": sorted({int(page) for page in matched_pages}),
+        }
+    return results
+
+
+def _fallback_reason_from_exception(exc: Exception) -> str:
+    if isinstance(exc, _PipelineStageError):
+        stage = str(exc.stage or "pipeline").strip().lower()
+        code = str(exc.code or "unknown_failure").strip().lower()
+        return f"{stage}_{code}"
+    if isinstance(exc, LLMRequestError):
+        reason = str(getattr(exc, "limited_reason", "") or "").strip().lower()
+        return reason or "llm_request_error"
+    return f"pipeline_{type(exc).__name__.strip().lower() or 'unknown_failure'}"
 
 
 def build_student_record_canonical_metadata(
@@ -254,15 +1192,15 @@ def _combined_text(parsed: ParsedDocumentPayload) -> str:
 
 def _build_pdf_summary(parsed: ParsedDocumentPayload, page_texts: list[str]) -> str:
     if not page_texts:
-        return "PDF 텍스트가 충분히 추출되지 않아 문서 요약 근거가 제한적입니다."
+        return "PDF ?띿뒪?멸? 異⑸텇??異붿텧?섏? ?딆븘 臾몄꽌 ?붿빟 洹쇨굅媛 ?쒗븳?곸엯?덈떎."
 
     first = _clip(_normalize_sentence(page_texts[0]), 180)
     last = _clip(_normalize_sentence(page_texts[-1]), 180) if len(page_texts) > 1 else ""
-    page_note = f"{parsed.page_count}페이지 문서에서 핵심 흐름을 정리했습니다."
+    page_note = f"{parsed.page_count}?섏씠吏 臾몄꽌?먯꽌 ?듭떖 ?먮쫫???뺣━?덉뒿?덈떎."
 
     if last and last != first:
-        return f"{page_note} 첫 페이지는 {first} 마지막 페이지는 {last}"
-    return f"{page_note} 대표 요약은 {first}"
+        return f"{page_note} 泥??섏씠吏??{first} 留덉?留??섏씠吏??{last}"
+    return f"{page_note} ????붿빟? {first}"
 
 
 def _extract_key_points(page_texts: list[str]) -> list[str]:
@@ -289,16 +1227,16 @@ def _build_page_insights(page_texts: list[str]) -> list[dict[str, Any]]:
 def _build_evidence_gaps(parsed: ParsedDocumentPayload, page_texts: list[str]) -> list[str]:
     gaps: list[str] = []
     if not page_texts:
-        gaps.append("텍스트가 충분히 추출되지 않아 페이지별 근거 확인이 필요합니다.")
+        gaps.append("?띿뒪?멸? 異⑸텇??異붿텧?섏? ?딆븘 ?섏씠吏蹂?洹쇨굅 ?뺤씤???꾩슂?⑸땲??")
     if parsed.needs_review:
-        gaps.append("문서 파싱 과정에서 검토 필요 플래그가 있어 핵심 섹션 재확인이 필요합니다.")
+        gaps.append("臾몄꽌 ?뚯떛 怨쇱젙?먯꽌 寃???꾩슂 ?뚮옒洹멸? ?덉뼱 ?듭떖 ?뱀뀡 ?ы솗?몄씠 ?꾩슂?⑸땲??")
     if parsed.page_count > len(page_texts):
-        gaps.append("일부 페이지에서 추출 텍스트가 비어 있어 PDF 원문 확인이 필요합니다.")
+        gaps.append("?쇰? ?섏씠吏?먯꽌 異붿텧 ?띿뒪?멸? 鍮꾩뼱 ?덉뼱 PDF ?먮Ц ?뺤씤???꾩슂?⑸땲??")
     warnings = parsed.warnings if isinstance(parsed.warnings, list) else []
     if warnings:
-        gaps.append("파싱 경고가 있어 누락된 문맥이 없는지 확인이 필요합니다.")
+        gaps.append("?뚯떛 寃쎄퀬媛 ?덉뼱 ?꾨씫??臾몃㎘???녿뒗吏 ?뺤씤???꾩슂?⑸땲??")
     if not gaps:
-        gaps.append("학생부 주요 섹션별 근거가 충분한지 최종 검토가 필요합니다.")
+        gaps.append("?숈깮遺 二쇱슂 ?뱀뀡蹂?洹쇨굅媛 異⑸텇?쒖? 理쒖쥌 寃?좉? ?꾩슂?⑸땲??")
     return _dedupe(gaps, limit=_MAX_EVIDENCE_GAPS)
 
 
@@ -381,15 +1319,15 @@ def _build_uncertainties(
 ) -> list[str]:
     items: list[str] = []
     if parsed.needs_review:
-        items.append("문서 파싱 품질 검토가 필요합니다.")
+        items.append("臾몄꽌 ?뚯떛 ?덉쭏 寃?좉? ?꾩슂?⑸땲??")
     if isinstance(section_coverage.get("missing_sections"), list) and section_coverage["missing_sections"]:
-        items.append("일부 필수 학생부 섹션이 누락되어 추가 검토가 필요합니다.")
+        items.append("?쇰? ?꾩닔 ?숈깮遺 ?뱀뀡???꾨씫?섏뼱 異붽? 寃?좉? ?꾩슂?⑸땲??")
     if isinstance(pdf_analysis, dict):
         gaps = pdf_analysis.get("evidence_gaps")
         if isinstance(gaps, list):
             items.extend(str(item) for item in gaps[:2] if str(item).strip())
     if not items:
-        items.append("현재 메타데이터는 휴리스틱 기반이므로 원문 대조가 권장됩니다.")
+        items.append("?꾩옱 硫뷀??곗씠?곕뒗 ?대━?ㅽ떛 湲곕컲?대?濡??먮Ц ?議곌? 沅뚯옣?⑸땲??")
     return _dedupe(items, limit=5)
 
 
@@ -407,7 +1345,7 @@ def _extract_grades_subjects(text: str, pipeline_canonical: dict[str, Any]) -> l
         if items:
             return items
 
-    subjects = re.findall(r"(국어|수학|영어|사회|역사|과학|물리|화학|생명과학|지구과학|정보|미술|음악|체육)", text)
+    subjects = re.findall(r"(援?뼱|?섑븰|?곸뼱|?ы쉶|??궗|怨쇳븰|臾쇰━|?뷀븰|?앸챸怨쇳븰|吏援ш낵???뺣낫|誘몄닠|?뚯븙|泥댁쑁)", text)
     return [{"subject": subject, "label": subject} for subject in _dedupe(subjects, limit=8)]
 
 
@@ -461,11 +1399,11 @@ def _extract_student_profile(text: str, pipeline_canonical: dict[str, Any]) -> d
     if isinstance(pipeline_canonical.get("school_name"), str) and pipeline_canonical["school_name"].strip():
         profile["school_name"] = pipeline_canonical["school_name"].strip()
 
-    name_match = re.search(r"(?:학생명|성명)\s*[:：]?\s*([가-힣]{2,5})", text)
+    name_match = re.search(r"(?:?숈깮紐??깅챸)\s*[:竊??\s*([媛-??{2,5})", text)
     if name_match and "student_name" not in profile:
         profile["student_name"] = name_match.group(1)
 
-    school_match = re.search(r"([가-힣A-Za-z0-9 ]+고등학교)", text)
+    school_match = re.search(r"([媛-?쥱-Za-z0-9 ]+怨좊벑?숆탳)", text)
     if school_match and "school_name" not in profile:
         profile["school_name"] = school_match.group(1).strip()
     return profile
@@ -494,9 +1432,8 @@ def _split_sentences(text: str) -> list[str]:
     normalized = re.sub(r"\s+", " ", text or "").strip()
     if not normalized:
         return []
-    parts = re.split(r"(?<=[.!?]|다\.)\s+|\n+", normalized)
+    parts = re.split(r"(?<=[.!?])\s+|\n+", normalized)
     return [part.strip() for part in parts if part.strip()]
-
 
 def _normalize_sentence(text: str) -> str:
     sentence = re.sub(r"\s+", " ", text or "").strip()
@@ -526,3 +1463,5 @@ def _dedupe(items: list[str], *, limit: int) -> list[str]:
         if len(deduped) >= limit:
             break
     return deduped
+
+

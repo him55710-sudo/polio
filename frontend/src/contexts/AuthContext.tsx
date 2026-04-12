@@ -31,12 +31,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const GUEST_SESSION_KEY = 'uni_foli_guest_session';
 type SocialProvider = 'google' | 'kakao' | 'naver';
+
 const POPUP_FALLBACK_ERROR_CODES = new Set([
   'auth/popup-blocked',
   'auth/popup-closed-by-user',
   'auth/cancelled-popup-request',
   'auth/operation-not-supported-in-this-environment',
 ]);
+
 const GOOGLE_SOCIAL_REDIRECT_ERROR_CODES = new Set([
   'auth/configuration-not-found',
   'auth/operation-not-allowed',
@@ -44,10 +46,14 @@ const GOOGLE_SOCIAL_REDIRECT_ERROR_CODES = new Set([
   'auth/unauthorized-domain',
   'auth/invalid-api-key',
 ]);
+
 const SOCIAL_LOGIN_ERROR_MESSAGE_MAP: Record<string, string> = {
   'Social login is disabled.': '현재 백엔드에서 소셜 로그인이 비활성화되어 있어요. AUTH_SOCIAL_LOGIN_ENABLED=true로 설정해 주세요.',
   'Social login is not configured.': '소셜 로그인 보안 설정이 누락되었어요. AUTH_SOCIAL_STATE_SECRET을 설정해 주세요.',
   'Google login is not configured.': 'Google OAuth 설정이 누락되었어요. GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET을 확인해 주세요.',
+  'Google login provider request failed.': 'Google 인증 서버와 통신에 실패했어요. 잠시 후 다시 시도해 주세요.',
+  'Kakao login provider request failed.': '카카오 인증 서버와 통신에 실패했어요. 잠시 후 다시 시도해 주세요.',
+  'Naver login provider request failed.': '네이버 인증 서버와 통신에 실패했어요. 잠시 후 다시 시도해 주세요.',
 };
 
 function extractApiErrorMessage(error: unknown): string | null {
@@ -67,8 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const backendSessionAuthenticated = useAuthStore(state => state.isAuthenticated);
 
   useEffect(() => {
-    localStorage.removeItem(GUEST_SESSION_KEY);
-    setGuestSessionActive(false);
+    const hasExistingGuestSession = localStorage.getItem(GUEST_SESSION_KEY) === '1';
+    if (hasExistingGuestSession) {
+      setGuestSessionActive(true);
+    }
 
     if (!auth || !isFirebaseConfigured) {
       if (hasAppAccessToken()) {
@@ -92,7 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem(GUEST_SESSION_KEY);
         }
 
-        // Fetch backend profile and sync with zustand
         await useAuthStore.getState().fetchProfile();
         useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
       } else {
@@ -107,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
@@ -128,7 +136,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     const canUseFirebaseGoogle = Boolean(auth && isFirebaseConfigured && googleProvider);
     try {
-      // Prefer backend-managed OAuth so we can control the Google client used in production.
       await signInWithSocialRedirect('google');
       return;
     } catch (socialRedirectError) {
@@ -193,7 +200,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       const authError = error as Partial<AuthError>;
       if (authError.code === 'auth/operation-not-allowed' || authError.code === 'auth/admin-restricted-operation') {
-        throw new Error('현재 Firebase에서 익명 로그인이 꺼져 있어요. Firebase Console > Authentication > Sign-in method에서 Anonymous를 켜 주세요.');
+        throw new Error(
+          '현재 Firebase에서 익명 로그인이 꺼져 있어요. Firebase Console > Authentication > Sign-in method에서 Anonymous를 켜 주세요.',
+        );
       }
       if (authError.code === 'auth/invalid-api-key') {
         throw new Error('Firebase API 키가 올바르지 않아요. .env의 VITE_FIREBASE_API_KEY를 확인해 주세요.');
@@ -217,7 +226,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isAuthenticated = (Boolean(user) && !user?.isAnonymous) || backendSessionAuthenticated;
-  const isGuestSession = Boolean(user?.isAnonymous) || guestSessionActive || (guestModeAvailable && !isAuthenticated && !!localStorage.getItem(GUEST_SESSION_KEY));
+  const isGuestSession =
+    Boolean(user?.isAnonymous) ||
+    guestSessionActive ||
+    (guestModeAvailable && !isAuthenticated && !!localStorage.getItem(GUEST_SESSION_KEY));
   const isVerified = isAuthenticated;
 
   return (

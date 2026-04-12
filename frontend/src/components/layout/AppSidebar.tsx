@@ -84,9 +84,9 @@ export function AppSidebar({
       <div className="absolute -right-3 top-6 z-50 hidden md:block">
         <button 
           onClick={onToggle}
-          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm hover:bg-slate-50 transition-colors"
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d5e3ff] bg-white shadow-[0_8px_18px_rgba(24,66,170,0.14)] transition-colors hover:bg-[#f4f8ff]"
         >
-          {isOpen ? <ChevronLeft size={14} className="text-slate-600" /> : <ChevronRight size={14} className="text-slate-600" />}
+          {isOpen ? <ChevronLeft size={14} className="text-[#3056a4]" /> : <ChevronRight size={14} className="text-[#3056a4]" />}
         </button>
       </div>
 
@@ -109,18 +109,18 @@ export function AppSidebar({
                   <button
                     type="button"
                     onClick={() => handleSectionToggle(section.key)}
-                    className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
+                    className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[#eef5ff]"
                     aria-expanded={sectionOpen}
                   >
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2rem] text-slate-400">{section.label}</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2rem] text-[#6a83b1]">{section.label}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {sectionOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                      {sectionOpen ? <ChevronDown size={14} className="text-[#6a83b1]" /> : <ChevronRight size={14} className="text-[#6a83b1]" />}
                     </div>
                   </button>
                 ) : (
-                   <div className="h-px w-8 bg-slate-100 mx-auto my-4" />
+                   <div className="mx-auto my-4 h-px w-8 bg-[#dce8ff]" />
                 )}
 
                 <div className={cn('space-y-1', !sectionOpen && isOpen && 'hidden')}>
@@ -136,12 +136,12 @@ export function AppSidebar({
                         className={cn(
                           'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200',
                           active 
-                            ? 'bg-[#004aad] text-white shadow-md shadow-[#004aad]/10 font-semibold' 
-                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
+                            ? 'bg-[linear-gradient(135deg,#1d4fff_0%,#2da3ff_100%)] text-white shadow-[0_12px_24px_rgba(29,79,255,0.26)] font-semibold' 
+                            : 'text-slate-500 hover:bg-[#eef5ff] hover:text-slate-900',
                           !isOpen && 'justify-center px-0 h-10 w-10 mx-auto',
                         )}
                       >
-                        <Icon size={18} className={cn(active ? 'text-white' : 'text-slate-400 group-hover:text-slate-700')} />
+                        <Icon size={18} className={cn(active ? 'text-white' : 'text-slate-400 group-hover:text-[#3559a8]')} />
                         {isOpen && (
                           <div className="min-w-0 flex-1">
                             <p className="truncate">{item.label}</p>
@@ -156,7 +156,7 @@ export function AppSidebar({
           })}
         </nav>
 
-        <div className="mt-auto border-t border-slate-100 p-4">
+        <div className="mt-auto border-t border-[#dce8ff] p-4">
           <SidebarAccountBlock
             userName={userName}
             userPhotoUrl={userPhotoUrl}

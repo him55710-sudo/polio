@@ -8,9 +8,9 @@ export function readAppAccessToken(): string | null {
   return normalized.length ? normalized : null;
 }
 
-export function writeAppAccessToken(token: string): void {
-  if (typeof window === 'undefined') return;
-  const normalized = token.trim();
+export function writeAppAccessToken(token: string | null | undefined): void {
+  if (typeof window === 'undefined' || !token) return;
+  const normalized = String(token).trim();
   if (!normalized) return;
   window.localStorage.setItem(APP_ACCESS_TOKEN_KEY, normalized);
 }

@@ -43,20 +43,20 @@ export function AppTopbar({
       </Topbar>
 
       {visibleGoals.length ? (
-        <div className="border-b border-slate-200 bg-[#004aad]/5 px-3 py-2 md:hidden">
+        <div className="border-b border-[#d6e4ff] bg-[#eff5ff]/90 px-3 py-2 md:hidden">
           <div className="flex gap-2 overflow-x-auto pb-0.5">
             {visibleGoals.map((goal, index) => (
               <div
                 key={`${goal.university}-${goal.major ?? ''}-${index}`}
-                className="flex min-w-[148px] items-center gap-2 rounded-lg border border-[#004aad]/10 bg-white px-2 py-1.5 sm:min-w-[170px]"
+                className="flex min-w-[148px] items-center gap-2 rounded-xl border border-[#d6e4ff] bg-white/95 px-2 py-1.5 shadow-[0_8px_20px_rgba(24,66,170,0.08)] sm:min-w-[170px]"
               >
                 <UniversityLogo
                   universityName={goal.university}
                   className="h-7 w-7 rounded-md bg-slate-100 object-contain p-1"
-                  fallbackClassName="border border-[#004aad]/20"
+                  fallbackClassName="border border-[#d6e4ff]"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-[11px] font-black text-[#004aad]">{index + 1}순위</p>
+                  <p className="truncate text-[11px] font-black text-[#2550b7]">{index + 1}순위</p>
                   <p className="truncate text-xs font-black text-slate-800">{goal.university}</p>
                 </div>
               </div>
@@ -70,19 +70,19 @@ export function AppTopbar({
 
         <div className="flex items-center gap-3">
           {visibleGoals.length ? (
-            <div className="hidden max-w-[560px] items-center gap-2 overflow-x-auto rounded-2xl border border-[#004aad]/10 bg-[#004aad]/5 px-3 py-2 lg:flex">
+            <div className="hidden max-w-[560px] items-center gap-2 overflow-x-auto rounded-2xl border border-[#d6e4ff] bg-white/72 px-3 py-2 shadow-[0_8px_20px_rgba(24,66,170,0.08)] lg:flex">
               {visibleGoals.map((goal, index) => (
                 <div
                   key={`${goal.university}-${goal.major ?? ''}-${index}`}
-                  className="flex min-w-[180px] items-center gap-2 rounded-lg border border-blue-100 bg-white px-2 py-1.5"
+                  className="flex min-w-[180px] items-center gap-2 rounded-xl border border-[#d9e7ff] bg-white/95 px-2 py-1.5"
                 >
                   <UniversityLogo
                     universityName={goal.university}
                     className="h-7 w-7 rounded-md bg-slate-100 object-contain p-1"
-                    fallbackClassName="border border-blue-100"
+                    fallbackClassName="border border-[#d6e4ff]"
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-black text-[#004aad]">{index + 1}순위</p>
+                    <p className="truncate text-[11px] font-black text-[#2550b7]">{index + 1}순위</p>
                     <p className="truncate text-xs font-black text-slate-800">{goal.university}</p>
                   </div>
                 </div>
@@ -92,7 +92,7 @@ export function AppTopbar({
 
           <Link
             to="/"
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-2xl border border-[#d5e3ff] bg-white/95 px-3 py-2 text-sm font-bold text-[#35518d] shadow-[0_8px_18px_rgba(24,66,170,0.08)] hover:bg-[#f3f8ff]"
           >
             <ArrowLeft size={14} />
             공개 페이지

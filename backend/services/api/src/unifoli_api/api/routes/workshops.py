@@ -234,6 +234,19 @@ def _chunk_text(text: str, chunk_size: int = 80) -> list[str]:
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
 
 
+def _build_draft_snapshot_context(snapshot_markdown: str | None, *, max_chars: int = 5000) -> str:
+    if not snapshot_markdown or not snapshot_markdown.strip():
+        return ""
+    snapshot = snapshot_markdown.strip()
+    if len(snapshot) > max_chars:
+        snapshot = f"{snapshot[:max_chars].rstrip()}..."
+    return f"[유저 최신 초안 스냅샷]\n{snapshot}"
+
+
+def _build_user_message_prompt(message: str) -> str:
+    return f"[현재 사용자 메시지]\n{message.strip()}"
+
+
 def _build_workshop_fallback_text(*, user_message: str, reason: str, memory_summary: dict[str, object]) -> str:
     return build_conversational_fallback(
         user_message=user_message,
@@ -578,12 +591,7 @@ async def chat_stream_route(
         project_id=project.id if project else None,
     )
     base_instruction = get_prompt_registry().compose_prompt("chat.coaching-orchestration")
-    draft_snapshot_context = ""
-    if payload.draft_snapshot_markdown and payload.draft_snapshot_markdown.strip():
-        snapshot = payload.draft_snapshot_markdown.strip()
-        if len(snapshot) > 5000:
-            snapshot = f"{snapshot[:5000].rstrip()}..."
-        draft_snapshot_context = f"[?좎? 理쒖떊 珥덉븞 ?ㅻ깄??\n{snapshot}"
+    draft_snapshot_context = _build_draft_snapshot_context(payload.draft_snapshot_markdown)
     structured_draft = (
         payload.structured_draft
         or extract_structured_draft_from_evidence_map(
@@ -614,7 +622,7 @@ async def chat_stream_route(
         try:
             llm = get_llm_client(profile="standard")
             async for token in llm.stream_chat(
-                prompt=f"[?꾩옱 ?ъ슜??硫붿떆吏]\n{payload.message.strip()}",
+                prompt=_build_user_message_prompt(payload.message),
                 system_instruction=full_instruction,
                 temperature=get_llm_temperature(profile="standard"),
             ):

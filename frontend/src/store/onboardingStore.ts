@@ -242,10 +242,11 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         });
         
         if (project.interest_universities?.length) {
-          project.interest_universities.forEach((iu: string, idx: number) => {
+          project.interest_universities.forEach((iu: any, idx: number) => {
+            if (!iu || typeof iu !== 'string') return;
             const match = iu.match(/^(.+)\s\((.+)\)$/);
             if (match) {
-              projectGoals.push({ id: `interest-${idx}`, university: match[1].trim(), major: match[2].trim() });
+              projectGoals.push({ id: `interest-${idx}`, university: match[1]?.trim() || '', major: match[2]?.trim() || '' });
             } else {
               projectGoals.push({ id: `interest-${idx}`, university: iu.trim(), major: '' });
             }

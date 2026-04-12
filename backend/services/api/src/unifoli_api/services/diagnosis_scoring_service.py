@@ -4,17 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from unifoli_api.services.diagnosis_axis_schema import AdmissionAxisKey, POSITIVE_AXIS_LABELS, PositiveAxisKey
 from unifoli_api.services.student_record_feature_service import StudentRecordFeatures
 
-AdmissionAxisKey = Literal[
-    "universal_rigor",       # Layer 1: 학업 및 근거 엄밀성
-    "universal_specificity", # Layer 1: 근거 구체성
-    "relational_narrative",  # Layer 2: 서사적 발전성
-    "relational_continuity", # Layer 2: 탐구의 연속성
-    "cluster_depth",         # Layer 3: 전공 심층성
-    "cluster_suitability",   # Layer 3: 전공 적합성
-    "authenticity_risk",     # Risk Monitoring
-]
 RiskLevel = Literal["safe", "warning", "danger"]
 
 
@@ -59,16 +51,6 @@ class SemanticDiagnosisExtraction(BaseModel):
     summary_insight: str
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
-
-
-_POSITIVE_AXIS_LABELS: dict[str, str] = {
-    "universal_rigor": "학업 및 근거 엄밀성",
-    "universal_specificity": "근거 구체성",
-    "relational_narrative": "서사적 발전성",
-    "relational_continuity": "탐구의 연속성",
-    "cluster_depth": "전공 심층성",
-    "cluster_suitability": "전공 적합성",
-}
 
 
 class AdmissionAxisResult(BaseModel):
@@ -357,7 +339,7 @@ def _build_admission_axes(
 
 def _positive_axis(
     *,
-    key: AdmissionAxisKey,
+    key: PositiveAxisKey,
     score: int,
     rationale: str,
     hints: list[str],
@@ -373,7 +355,7 @@ def _positive_axis(
         severity = "high"
     return AdmissionAxisResult(
         key=key,
-        label=_POSITIVE_AXIS_LABELS[key],
+        label=POSITIVE_AXIS_LABELS[key],
         score=score,
         band=band,
         severity=severity,

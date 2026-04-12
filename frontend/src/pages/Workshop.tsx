@@ -326,7 +326,7 @@ function resolveGuidedSelectionFromText(text: string, suggestions: GuidedTopicSu
   if (!suggestions.length) {
     return null;
   }
-  const normalized = text.trim().toLowerCase();
+  const normalized = (text || '').trim().toLowerCase();
   if (!normalized) {
     return null;
   }
@@ -351,7 +351,7 @@ function resolveGuidedSelectionFromText(text: string, suggestions: GuidedTopicSu
 }
 
 function buildFoliFallback(message: string) {
-  const clean = message.toLowerCase().trim();
+  const clean = (message || '').toLowerCase().trim();
   const greetings = ['안녕', 'hi', 'hello', 'hey', 'good morning', 'good evening'];
 
   if (greetings.some(token => clean.includes(token))) {
@@ -774,7 +774,7 @@ export function Workshop() {
           const guidedStart = await api.post<GuidedChatStartResponse>('/api/v1/guided-chat/start', {
             project_id: projectId,
           });
-          const greeting = (guidedStart.greeting || GUIDED_CHAT_GREETING).trim();
+          const greeting = ((guidedStart?.greeting || GUIDED_CHAT_GREETING) ?? '').trim();
           const greetingMessage = guidedStart.evidence_gap_note ? `${greeting}\n\n${guidedStart.evidence_gap_note}` : greeting;
           const stateSummary = guidedStart.state_summary || {};
           const cachedStarter =
@@ -1119,7 +1119,7 @@ export function Workshop() {
   }, []);
 
   const handleSend = async (overriddenText?: string) => {
-    const text = (overriddenText ?? input).trim();
+    const text = (overriddenText ?? input ?? '').trim();
     if (!text || isTyping || isSelectingGuidedTopicId) return;
     if (!overriddenText) setInput('');
 

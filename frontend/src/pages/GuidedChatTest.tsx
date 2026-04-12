@@ -77,7 +77,7 @@ export function GuidedChatTest() {
   const suggestions = useMemo(() => suggestionsPayload?.suggestions ?? [], [suggestionsPayload?.suggestions]);
 
   const handleGenerateSuggestions = async () => {
-    const normalized = subject.trim();
+    const normalized = (subject || '').trim();
     if (!normalized) {
       toast.error('과목 또는 넓은 주제를 입력해 주세요.');
       return;

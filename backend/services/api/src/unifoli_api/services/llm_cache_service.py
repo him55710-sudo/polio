@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
+from unifoli_api.core.database import utc_now
 
 from unifoli_api.db.models.llm_cache_entry import LLMCacheEntry
 
@@ -16,14 +17,10 @@ from unifoli_api.db.models.llm_cache_entry import LLMCacheEntry
 WHITESPACE_RE = re.compile(r"\s+")
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _coerce_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+    if value.tzinfo is not None:
+        return value.replace(tzinfo=None)
+    return value
 
 
 @dataclass(frozen=True, slots=True)

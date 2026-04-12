@@ -12,7 +12,8 @@ interface UniversityLogoProps {
   textFallbackClassName?: string;
 }
 
-function normalizeUniversityName(name: string) {
+function normalizeUniversityName(name: string | null | undefined) {
+  if (!name) return '';
   return name
     .trim()
     .replace(/\(.*?\)/g, '')
@@ -107,8 +108,8 @@ function resolveUniversityDomain(universityName: string) {
   return null;
 }
 
-function buildUniversityLogoCandidates(universityName: string) {
-  const name = universityName.trim();
+function buildUniversityLogoCandidates(universityName: string | null | undefined) {
+  const name = (universityName || '').trim();
   if (!name) return [];
 
   const localFilename = resolveLocalLogoFilename(name);
@@ -129,8 +130,8 @@ function buildUniversityLogoCandidates(universityName: string) {
   return Array.from(new Set(candidates));
 }
 
-function getFallbackText(universityName: string) {
-  const trimmed = universityName.trim();
+function getFallbackText(universityName: string | null | undefined) {
+  const trimmed = (universityName || '').trim();
   if (!trimmed) return '';
   return trimmed.slice(0, 1);
 }

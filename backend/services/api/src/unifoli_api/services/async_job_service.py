@@ -11,7 +11,7 @@ from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session
 
 from unifoli_api.core.config import get_settings
-from unifoli_api.core.database import SessionLocal
+from unifoli_api.core.database import SessionLocal, utc_now
 from unifoli_api.core.security import sanitize_public_error
 from unifoli_api.db.models.async_job import AsyncJob
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
@@ -37,8 +37,6 @@ _ASYNC_BRIDGE_READY = Event()
 _ASYNC_BRIDGE_LOCK = Lock()
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def create_async_job(

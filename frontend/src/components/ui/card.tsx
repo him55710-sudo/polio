@@ -5,9 +5,9 @@ type CardTone = 'default' | 'muted' | 'strong';
 type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 
 const toneClasses: Record<CardTone, string> = {
-  default: 'border-slate-200 bg-white',
-  muted: 'border-slate-200 bg-slate-50/70',
-  strong: 'border-slate-300 bg-white shadow-sm',
+  default: 'border-[#d8e6ff] bg-white/92 backdrop-blur-sm',
+  muted: 'border-[#d8e6ff] bg-[#f6faff]',
+  strong: 'border-[#c4d8ff] bg-white shadow-[0_14px_28px_rgba(24,66,170,0.12)]',
 };
 
 const paddingClasses: Record<CardPadding, string> = {
@@ -25,7 +25,7 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 export function Card({ tone = 'default', padding = 'md', className, ...props }: CardProps) {
   return (
     <section
-      className={cn('rounded-3xl border shadow-sm', toneClasses[tone], paddingClasses[padding], className)}
+      className={cn('rounded-[1.75rem] border shadow-[0_10px_24px_rgba(24,66,170,0.09)]', toneClasses[tone], paddingClasses[padding], className)}
       {...props}
     />
   );

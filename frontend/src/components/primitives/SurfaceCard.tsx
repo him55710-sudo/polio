@@ -11,8 +11,8 @@ export function SurfaceCard({ elevated = false, className, children, ...props }:
     <Card
       {...props}
       className={cn(
-        'rounded-2xl border border-slate-200 bg-white',
-        elevated ? 'shadow-md' : 'shadow-sm',
+        'rounded-[1.6rem] border border-[#d7e5ff] bg-white/90 backdrop-blur-sm',
+        elevated ? 'shadow-[0_18px_34px_rgba(24,66,170,0.16)]' : 'shadow-[0_10px_24px_rgba(24,66,170,0.09)]',
         className,
       )}
     >

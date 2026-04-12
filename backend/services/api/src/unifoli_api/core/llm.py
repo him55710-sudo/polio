@@ -1,4 +1,3 @@
-# -*- coding: latin-1 -*-
 from __future__ import annotations
 
 import abc
@@ -51,6 +50,15 @@ class OllamaRuntimeProfile:
     num_predict: int
     num_thread: int | None
     temperature: float
+
+
+@dataclass(frozen=True)
+class PDFAnalysisLLMResolution:
+    attempted_provider: str
+    attempted_model: str
+    actual_provider: str
+    actual_model: str
+    client: LLMClient
 
 
 class LLMClient(abc.ABC):
@@ -217,7 +225,7 @@ class OllamaClient(LLMClient):
         content = response.choices[0].message.content
         if not content:
             raise LLMRequestError(
-                "LLM ??답??비어 ??어 ??한 모드?????환??니??",
+                "LLM 응답이 비어 있어 제한 모드로 전환합니다.",
                 limited_reason="empty_response",
                 provider="ollama",
                 profile=self.profile_name,
@@ -227,7 +235,7 @@ class OllamaClient(LLMClient):
             return response_model.model_validate_json(content)
         except Exception as exc:  # noqa: BLE001
             raise LLMRequestError(
-                "??답 ??식????석???? 못해 ??한 모드?????환??니??",
+                "응답 형식을 해석하지 못해 제한 모드로 전환합니다.",
                 limited_reason="invalid_json",
                 provider="ollama",
                 profile=self.profile_name,
@@ -339,6 +347,50 @@ def get_pdf_analysis_llm_client() -> LLMClient:
         return GeminiClient(api_key=gemini_api_key)
 
     raise RuntimeError(f"Unsupported PDF analysis LLM provider: {settings.pdf_analysis_llm_provider}")
+
+
+def resolve_pdf_analysis_llm_resolution() -> PDFAnalysisLLMResolution:
+    settings = get_settings()
+    attempted_provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
+    attempted_model = _resolve_pdf_analysis_requested_model(settings, attempted_provider)
+    client = get_pdf_analysis_llm_client()
+    actual_provider, actual_model = _describe_client_provider_model(
+        client,
+        requested_provider=attempted_provider,
+        requested_model=attempted_model,
+    )
+    return PDFAnalysisLLMResolution(
+        attempted_provider=attempted_provider,
+        attempted_model=attempted_model,
+        actual_provider=actual_provider,
+        actual_model=actual_model,
+        client=client,
+    )
+
+
+def _resolve_pdf_analysis_requested_model(settings: Any, provider: str) -> str:
+    if provider == "ollama":
+        return (settings.pdf_analysis_ollama_model or settings.ollama_model or "gemma4").strip()
+    if provider == "gemini":
+        configured = str(getattr(settings, "pdf_analysis_gemini_model", "") or "").strip()
+        if configured:
+            return configured
+        return "gemini-2.0-flash"
+    return "unknown"
+
+
+def _describe_client_provider_model(
+    client: LLMClient,
+    *,
+    requested_provider: str,
+    requested_model: str,
+) -> tuple[str, str]:
+    if isinstance(client, OllamaClient):
+        return "ollama", str(client.model or requested_model).strip() or requested_model
+    if isinstance(client, GeminiClient):
+        model = str(getattr(client, "model_name", "") or "").strip()
+        return "gemini", model or requested_model
+    return requested_provider, requested_model
 
 
 def _resolve_ollama_runtime_profile(profile: LLMProfile) -> OllamaRuntimeProfile:
@@ -463,11 +515,11 @@ def _to_ollama_request_error(
     _log_ollama_failure_once(reason, base_url=base_url, model=model, profile=profile, exc=exc)
 
     if reason in {"timeout", "unreachable"}:
-        message = "AI ??답??지??되????한 모드?????환??니??"
+        message = "AI 응답이 지연되어 제한 모드로 전환합니다."
     elif reason == "invalid_request":
-        message = "AI ??청 구성??맞?? ??아 ??한 모드?????환??니??"
+        message = "AI 요청 구성이 맞지 않아 제한 모드로 전환합니다."
     else:
-        message = "AI ??출 ?????류가 발생????한 모드?????환??니??"
+        message = "AI 호출 중 오류가 발생해 제한 모드로 전환합니다."
 
     return LLMRequestError(
         message,

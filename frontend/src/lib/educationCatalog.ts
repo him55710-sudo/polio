@@ -135,7 +135,7 @@ export function getMajorsForUniversity(name: string): string[] {
 export function isMajorInUniversity(universityName: string, majorName: string): boolean {
   const university = universityMap.get(universityName);
   if (!university) return false;
-  const normalizedMajor = majorName.trim();
+  const normalizedMajor = (majorName || '').trim();
   if (!normalizedMajor) return false;
   return university.majors.includes(normalizedMajor);
 }

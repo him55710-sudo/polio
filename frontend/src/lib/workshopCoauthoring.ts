@@ -163,7 +163,7 @@ export function markdownToStructuredDraft(
     const target = seed.blocks.find((item) => item.block_id === matchedId);
     if (!target) continue;
     target.heading = section.heading;
-    target.content_markdown = section.content.trim();
+    target.content_markdown = (section.content || '').trim();
   }
 
   return seed;
@@ -191,8 +191,8 @@ export function applyDraftPatch(
     if (block.block_id !== patch.block_id) return block;
 
     const nextHeading = patch.heading?.trim() ? patch.heading.trim() : block.heading;
-    const patchContent = patch.content_markdown.trim();
-    let nextContent = block.content_markdown;
+    const patchContent = (patch.content_markdown || '').trim();
+    let nextContent = block.content_markdown || '';
     if (!nextContent.trim()) {
       nextContent = patchContent;
     } else if (nextContent.includes(patchContent)) {
@@ -228,13 +228,13 @@ export function applyDraftPatch(
 }
 
 export function isPatchAcceptanceMessage(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
+  const normalized = (text || '').trim().toLowerCase();
   if (!normalized) return false;
   return /(반영|적용|좋아|진행|확정|그대로|ok|okay|yes|accept|approve|continue|계속)/i.test(normalized);
 }
 
 export function isSectionDraftIntent(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
+  const normalized = (text || '').trim().toLowerCase();
   if (!normalized) return false;
   return /(작성|써줘|draft|section|문단|본문|결론|도입|outline|개요)/i.test(normalized);
 }

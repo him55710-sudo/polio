@@ -11,7 +11,7 @@ export function Sidebar({ open, className, children }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-40 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out md:relative md:z-10',
+        'fixed inset-y-0 left-0 z-40 border-r border-[#d6e4ff] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(244,249,255,0.94)_100%)] shadow-[0_16px_32px_rgba(24,66,170,0.1)] transition-all duration-300 ease-in-out md:relative md:z-10',
         open 
           ? 'w-[280px] translate-x-0' 
           : 'w-[0px] -translate-x-full md:w-20 md:translate-x-0',

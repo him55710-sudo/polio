@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload, load_only
 
 from unifoli_api.core.config import get_settings
-from unifoli_api.core.database import SessionLocal
+from unifoli_api.core.database import SessionLocal, utc_now
 from unifoli_api.core.security import sanitize_public_error
 from unifoli_api.db.models.document_chunk import DocumentChunk
 from unifoli_api.db.models.draft import Draft
@@ -43,10 +42,14 @@ IN_PROGRESS_DOCUMENT_STATUSES = {
     DocumentProcessingStatus.RETRYING.value,
 }
 DOCUMENT_FAILURE_FALLBACK = "Document processing failed. Retry after checking the uploaded file."
+STUDENT_RECORD_KEYWORDS = (
+    "학교생활기록부",
+    "생활기록부",
+    "학생부",
+    "생기부",
+)
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def upload_supports_ingest(upload_asset: UploadAsset) -> bool:
@@ -88,6 +91,11 @@ def _map_document_status_to_upload_status(document_status: str) -> str:
         DocumentProcessingStatus.FAILED.value: UploadStatus.FAILED.value,
     }
     return mapping.get(document_status, UploadStatus.STORED.value)
+
+
+def _is_student_record_candidate(*, parser_name: str, content_text: str | None) -> bool:
+    text = content_text or ""
+    return parser_name == "neis" or any(keyword in text for keyword in STUDENT_RECORD_KEYWORDS)
 
 
 def mark_document_processing(
@@ -240,10 +248,9 @@ def ingest_upload_asset(
         }
 
         # --- STAGE 2: Advanced Semantic Pipeline (Optional) ---
-        is_student_record_candidate = (
-            parsed.parser_name == "neis" or 
-            "?교?활기록부" in (parsed.content_text or "") or 
-            "?활기록부" in (parsed.content_text or "")
+        is_student_record_candidate = _is_student_record_candidate(
+            parser_name=parsed.parser_name,
+            content_text=parsed.content_text,
         )
         if is_student_record_candidate and source_path.suffix.lower() == ".pdf":
             try:

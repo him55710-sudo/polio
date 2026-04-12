@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,11 @@ from unifoli_api.db.models.project import Project
 from unifoli_api.db.models.response_trace import ResponseTrace
 from unifoli_api.db.models.review_task import ReviewTask
 from unifoli_api.db.models.user import User
+from unifoli_api.services.diagnosis_axis_schema import (
+    POSITIVE_AXIS_LABELS,
+    PositiveAxisKey,
+    normalize_positive_axis_key,
+)
 from unifoli_api.services.diagnosis_scoring_service import (
     AdmissionAxisResult,
     DocumentQualitySummary,
@@ -60,14 +65,7 @@ class DiagnosisSummary(BaseModel):
     authenticity_note: str
 
 
-GapAxisKey = Literal[
-    "universal_rigor",
-    "universal_specificity",
-    "relational_narrative",
-    "relational_continuity",
-    "cluster_depth",
-    "cluster_suitability",
-]
+GapAxisKey = PositiveAxisKey
 AxisSeverity = Literal["strong", "watch", "weak"]
 DirectionComplexity = Literal["lighter", "balanced", "deeper"]
 
@@ -79,6 +77,16 @@ class GapAxis(BaseModel):
     severity: AxisSeverity
     rationale: str
     evidence_hint: str | None = None
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def _normalize_key(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = normalize_positive_axis_key(value)
+            if normalized is None:
+                raise ValueError("Unsupported gap axis key.")
+            return normalized
+        return value
 
 
 class TopicCandidate(BaseModel):
@@ -140,6 +148,26 @@ class RecommendedDirection(BaseModel):
     format_recommendations: list[FormatRecommendation] = Field(default_factory=list)
     template_candidates: list[TemplateCandidate] = Field(default_factory=list)
 
+    @field_validator("id", mode="before")
+    @classmethod
+    def _normalize_direction_id(cls, value: object) -> object:
+        if isinstance(value, str):
+            return normalize_positive_axis_key(value) or value
+        return value
+
+    @field_validator("related_axes", mode="before")
+    @classmethod
+    def _normalize_related_axes(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        normalized: list[object] = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(normalize_positive_axis_key(item) or item)
+            else:
+                normalized.append(item)
+        return normalized
+
 
 class RecommendedDefaultAction(BaseModel):
     direction_id: str
@@ -148,6 +176,13 @@ class RecommendedDefaultAction(BaseModel):
     export_format: Literal["pdf", "pptx", "hwpx"]
     template_id: str
     rationale: str
+
+    @field_validator("direction_id", mode="before")
+    @classmethod
+    def _normalize_direction_id(cls, value: object) -> object:
+        if isinstance(value, str):
+            return normalize_positive_axis_key(value) or value
+        return value
 
 
 class GuidedOutlineSection(BaseModel):
@@ -219,14 +254,7 @@ class PolicyFlagMatch:
 MASKING_PIPELINE = MaskingPipeline()
 TOKEN_PATTERN = re.compile(r"[A-Za-z?-?0-9]{2,}")
 OPEN_REVIEW_STATUSES = {"open", "pending"}
-AXIS_LABELS: dict[GapAxisKey, str] = {
-    "universal_rigor": "?? ? ?? ???",
-    "universal_specificity": "?? ???",
-    "relational_narrative": "?? ? ???",
-    "relational_continuity": "??? ? ???",
-    "cluster_depth": "?? ??",
-    "cluster_suitability": "?? ???",
-}
+AXIS_LABELS: dict[GapAxisKey, str] = dict(POSITIVE_AXIS_LABELS)
 POLICY_FLAG_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
         "sensitive_email",
@@ -353,7 +381,16 @@ def _infer_gap_axes(
     continuity_score = 40 + (inquiry_hits * 12) + (10 if word_count >= 220 else 0)
     evidence_score = 35 + min(word_count // 12, 25) + min(evidence_hits * 8, 20) + min(numeric_hits * 3, 12)
     process_score = 35 + (process_hits * 12) + (8 if "reflect" in lowered else 0)
-    
+    depth_score = (
+        38
+        + (concept_hits * 8)
+        + (overlap_hits * 12)
+        + min(inquiry_hits * 4, 12)
+        + (6 if word_count >= 220 else 0)
+    )
+    if target_major and overlap_hits == 0:
+        depth_score -= 10
+
     # Alignment score considering multiple targets
     target_count = (1 if target_university else 0) + len(interest_universities or [])
     alignment_score = 40 + (overlap_hits * 15) + (min(target_count * 4, 12))
@@ -368,7 +405,7 @@ def _infer_gap_axes(
 
     return [
         _score_axis(
-            key="conceptual_depth",
+            key="universal_rigor",
             score=conceptual_score,
             rationale=(
                 "The record already explains principles or reasons behind the activity."
@@ -378,17 +415,7 @@ def _infer_gap_axes(
             evidence_hint="Look for places where the record explains principles, reasons, or mechanisms.",
         ),
         _score_axis(
-            key="inquiry_continuity",
-            score=continuity_score,
-            rationale=(
-                "The current record shows a visible follow-up path or comparison thread."
-                if continuity_score >= 75
-                else "The record still needs a clearer next-step chain instead of isolated activity fragments."
-            ),
-            evidence_hint="Comparison, follow-up questions, or iteration traces make this axis stronger.",
-        ),
-        _score_axis(
-            key="evidence_density",
+            key="universal_specificity",
             score=evidence_score,
             rationale=(
                 "The record already contains enough concrete evidence anchors for grounded drafting."
@@ -398,7 +425,7 @@ def _infer_gap_axes(
             evidence_hint="Measured results, observed differences, or concrete source notes help here.",
         ),
         _score_axis(
-            key="process_explanation",
+            key="relational_narrative",
             score=process_score,
             rationale=(
                 "The student record explains method, limits, or reflection with usable detail."
@@ -408,7 +435,27 @@ def _infer_gap_axes(
             evidence_hint="Method steps, limit notes, and reflections are the key signals.",
         ),
         _score_axis(
-            key="subject_major_alignment",
+            key="relational_continuity",
+            score=continuity_score,
+            rationale=(
+                "The current record shows a visible follow-up path or comparison thread."
+                if continuity_score >= 75
+                else "The record still needs a clearer next-step chain instead of isolated activity fragments."
+            ),
+            evidence_hint="Comparison, follow-up questions, or iteration traces make this axis stronger.",
+        ),
+        _score_axis(
+            key="cluster_depth",
+            score=depth_score,
+            rationale=(
+                "The record already contains one or more major-linked deepening moves, not just broad topic mentions."
+                if depth_score >= 75
+                else "The next step should deepen one major-linked question with clearer conceptual depth."
+            ),
+            evidence_hint="Show one deeper major-linked hypothesis, method, or comparison thread.",
+        ),
+        _score_axis(
+            key="cluster_suitability",
             score=alignment_score,
             rationale=alignment_rationale,
             evidence_hint="Keep the major link explicit but grounded in what the student really did.",
@@ -559,27 +606,32 @@ def _normalize_guided_choice_constraints(result: DiagnosisResult) -> None:
 
 def _format_recommendations_for_axis(axis_key: GapAxisKey, complexity: DirectionComplexity) -> list[FormatRecommendation]:
     recommendations: dict[GapAxisKey, list[FormatRecommendation]] = {
-        "conceptual_depth": [
+        "universal_rigor": [
             FormatRecommendation(format="pdf", label="PDF report", rationale="Best for concept-first explanation and clean section flow.", recommended=True),
             FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Works well when the output needs to stay school-friendly."),
             FormatRecommendation(format="pptx", label="Presentation deck", rationale="Use only if the concept can be shown with very short slides.", caution="Slides can oversimplify nuanced explanations."),
         ],
-        "inquiry_continuity": [
-            FormatRecommendation(format="pptx", label="Presentation deck", rationale="Good for showing progression, comparison, or a step-by-step story.", recommended=True),
-            FormatRecommendation(format="pdf", label="PDF report", rationale="Good when the continuity needs more paragraph-based explanation."),
-            FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Safe for school submission, but keep the timeline concise."),
-        ],
-        "evidence_density": [
+        "universal_specificity": [
             FormatRecommendation(format="pdf", label="PDF report", rationale="Best for fitting evidence, method, and reflection in one place.", recommended=True),
             FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Useful when the teacher-facing export must stay conservative."),
             FormatRecommendation(format="pptx", label="Presentation deck", rationale="Use if the evidence can be shown in a few focused visuals.", caution="Dense evidence can feel too thin on slides."),
         ],
-        "process_explanation": [
+        "relational_narrative": [
             FormatRecommendation(format="pdf", label="PDF report", rationale="Best for method steps, limits, and reflection paragraphs.", recommended=True),
             FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Safe when the final format should resemble a school document."),
             FormatRecommendation(format="pptx", label="Presentation deck", rationale="Works only if the process can be broken into very clear steps."),
         ],
-        "subject_major_alignment": [
+        "relational_continuity": [
+            FormatRecommendation(format="pptx", label="Presentation deck", rationale="Good for showing progression, comparison, or a step-by-step story.", recommended=True),
+            FormatRecommendation(format="pdf", label="PDF report", rationale="Good when the continuity needs more paragraph-based explanation."),
+            FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Safe for school submission, but keep the timeline concise."),
+        ],
+        "cluster_depth": [
+            FormatRecommendation(format="pdf", label="PDF report", rationale="Best for a deeper major-linked argument with method and limits.", recommended=True),
+            FormatRecommendation(format="pptx", label="Presentation deck", rationale="Use when one deep question can be defended in a concise progression."),
+            FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Acceptable for school workflows, but keep depth claims conservative."),
+        ],
+        "cluster_suitability": [
             FormatRecommendation(format="hwpx", label="HWPX submission", rationale="Best for a conservative, record-friendly articulation of major fit.", recommended=True),
             FormatRecommendation(format="pdf", label="PDF report", rationale="Good when the alignment needs slightly more explanation."),
             FormatRecommendation(format="pptx", label="Presentation deck", rationale="Use when the major link is easier to show than to narrate."),
@@ -647,23 +699,27 @@ def _topic_candidates_for_axis(
     project_title: str,
 ) -> list[TopicCandidate]:
     topics: dict[GapAxisKey, list[tuple[str, str, str]]] = {
-        "conceptual_depth": [
+        "universal_rigor": [
             ("core_principle_reset", f"{major_label} core principle behind the current activity", "Reframe the activity around one principle, not just the applied result."),
             ("why_this_works", f"Why the observed result happens in {project_title or major_label}", "Turn a practical activity into a principle-driven explanation."),
         ],
-        "inquiry_continuity": [
-            ("followup_comparison", f"One follow-up comparison extending {project_title or 'the current record'}", "Build a visible second step so the inquiry no longer feels isolated."),
-            ("semester_thread", f"Semester progression question for {major_label}", "Create a narrative link from the first activity to the next evidence move."),
-        ],
-        "evidence_density": [
+        "universal_specificity": [
             ("measure_more_clearly", f"Add one clearer evidence set to {project_title or 'the current topic'}", "Keep the topic but strengthen it with a more explicit dataset or observation."),
             ("evidence_matrix", f"Evidence matrix for {major_label} inquiry", "Organize what is already observed and what still needs to be collected."),
         ],
-        "process_explanation": [
+        "relational_narrative": [
             ("method_limit_map", f"Method and limitation map for {project_title or 'the inquiry'}", "Explain exactly how the activity was done and what its limits were."),
             ("reflection_upgrade", f"Reflection-first rewrite for {major_label}", "Center the draft on what changed in the student's thinking and why."),
         ],
-        "subject_major_alignment": [
+        "relational_continuity": [
+            ("followup_comparison", f"One follow-up comparison extending {project_title or 'the current record'}", "Build a visible second step so the inquiry no longer feels isolated."),
+            ("semester_thread", f"Semester progression question for {major_label}", "Create a narrative link from the first activity to the next evidence move."),
+        ],
+        "cluster_depth": [
+            ("major_depth_probe", f"One deeper {major_label} question grounded in current evidence", "Move from broad relevance to one defensible major-depth probe."),
+            ("major_method_upgrade", f"Method deepening for {major_label} pathway", "Keep the current topic but deepen the method or comparison around major-specific terms."),
+        ],
+        "cluster_suitability": [
             ("major_link_frame", f"Grounded connection between current subject work and {major_label}", "Make the major link clearer without pretending the record is already specialized."),
             ("major_question_shift", f"{major_label} question shift based on the current record", "Keep the current evidence but change the inquiry question so it aligns better."),
         ],
@@ -684,13 +740,14 @@ def _topic_candidates_for_axis(
 
 
 def _direction_from_axis(*, axis: GapAxis, major_label: str, project_title: str) -> RecommendedDirection:
-    complexity: DirectionComplexity = "deeper" if axis.severity == "weak" else "lighter" if axis.key == "subject_major_alignment" else "balanced"
+    complexity: DirectionComplexity = "deeper" if axis.severity == "weak" else "lighter" if axis.key == "cluster_suitability" else "balanced"
     copy: dict[GapAxisKey, tuple[str, str]] = {
-        "conceptual_depth": ("Concept-driven reset", "Move the next output away from pure application and toward core principles or mechanisms."),
-        "inquiry_continuity": ("Follow-up continuity path", "Build a second-step question so the record shows progression instead of one isolated activity."),
-        "evidence_density": ("Evidence densification sprint", "Keep the topic narrow and add clearer observations, data, or citations before polishing claims."),
-        "process_explanation": ("Method-and-reflection clarification", "Use the next output to explain how the work happened and what its limits were."),
-        "subject_major_alignment": ("Major-alignment reframing", "Retune the topic so it sounds more like a believable bridge to the target direction."),
+        "universal_rigor": ("Concept-driven reset", "Move the next output away from pure application and toward core principles or mechanisms."),
+        "universal_specificity": ("Evidence densification sprint", "Keep the topic narrow and add clearer observations, data, or citations before polishing claims."),
+        "relational_narrative": ("Method-and-reflection clarification", "Use the next output to explain how the work happened and what its limits were."),
+        "relational_continuity": ("Follow-up continuity path", "Build a second-step question so the record shows progression instead of one isolated activity."),
+        "cluster_depth": ("Major-depth deepening", "Push one major-linked thread deeper with a tighter question and explicit method."),
+        "cluster_suitability": ("Major-alignment reframing", "Retune the topic so it sounds more like a believable bridge to the target direction."),
     }
     label, summary = copy[axis.key]
     format_recommendations = _format_recommendations_for_axis(axis.key, complexity)
@@ -873,6 +930,18 @@ def build_grounded_diagnosis_result(
     )
 
 
+def _has_complete_guided_contract(result: DiagnosisResult) -> bool:
+    expected_axes = set(AXIS_LABELS.keys())
+    actual_axes = {axis.key for axis in result.gap_axes}
+    return (
+        result.diagnosis_summary is not None
+        and len(result.gap_axes) == len(expected_axes)
+        and actual_axes == expected_axes
+        and bool(result.recommended_directions)
+        and result.recommended_default_action is not None
+    )
+
+
 def _hydrate_guided_fields(
     *,
     result: DiagnosisResult,
@@ -883,9 +952,10 @@ def _hydrate_guided_fields(
     career_direction: str | None,
     full_text: str,
 ) -> DiagnosisResult:
-    if result.gap_axes and result.recommended_directions and result.diagnosis_summary is not None:
-        _normalize_guided_choice_constraints(result)
+    _normalize_guided_choice_constraints(result)
+    if _has_complete_guided_contract(result):
         return result
+
     fallback = build_grounded_diagnosis_result(
         project_title=project_title,
         target_major=target_major,
@@ -897,7 +967,7 @@ def _hydrate_guided_fields(
     )
     if not result.diagnosis_summary:
         result.diagnosis_summary = fallback.diagnosis_summary
-    if not result.gap_axes:
+    if len(result.gap_axes) != len(AXIS_LABELS) or {axis.key for axis in result.gap_axes} != set(AXIS_LABELS.keys()):
         result.gap_axes = fallback.gap_axes
     if not result.recommended_directions:
         result.recommended_directions = fallback.recommended_directions
@@ -914,6 +984,8 @@ def _hydrate_guided_fields(
     if not result.recommended_focus:
         result.recommended_focus = fallback.recommended_focus
     _normalize_guided_choice_constraints(result)
+    if result.recommended_default_action is None:
+        result.recommended_default_action = fallback.recommended_default_action
     return result
 
 

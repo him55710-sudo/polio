@@ -261,7 +261,7 @@ export function Record() {
   const isBusy = isUploading || isStartingParse;
 
   const majorSuggestions = useMemo(
-    () => (targetMajor.trim().length >= 1 ? searchMajors(targetMajor, null, 10) : []),
+    () => ((targetMajor || '').trim().length >= 1 ? searchMajors(targetMajor, null, 10) : []),
     [targetMajor],
   );
 
@@ -655,7 +655,7 @@ export function Record() {
                 <SecondaryButton
                   size="lg"
                   variant="secondary"
-                  onClick={() => navigate(`/app/workshop/${document?.project_id}?major=${encodeURIComponent(targetMajor.trim())}`)}
+                  onClick={() => navigate(`/app/workshop/${document?.project_id}?major=${encodeURIComponent((targetMajor || '').trim())}`)}
                   disabled={!canContinue}
                 >
                   워크숍으로 이동

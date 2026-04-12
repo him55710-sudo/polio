@@ -1,207 +1,318 @@
 from __future__ import annotations
 
+import asyncio
+import json
+
 from unifoli_api.core.config import Settings
-from unifoli_api.core.llm import OllamaClient, get_pdf_analysis_llm_client
-from unifoli_api.services.pdf_analysis_service import (
-    build_pdf_analysis_metadata,
-    build_student_record_canonical_metadata,
-    build_student_record_structure_metadata,
-)
+from unifoli_api.core.llm import LLMRequestError, OllamaClient, PDFAnalysisLLMResolution, get_pdf_analysis_llm_client
+from unifoli_api.services.pdf_analysis_service import build_pdf_analysis_metadata
 from unifoli_ingest.models import ParsedChunkPayload, ParsedDocumentPayload
 
 
-class _FakePdfLLM:
+class _DeterministicPdfLLM:
+    def __init__(self, *, fail_mode: str | None = None):
+        self.fail_mode = fail_mode
+        self.invalid_json_triggered = False
+        self.calls: list[dict[str, object]] = []
+        self.stage_a_calls = 0
+        self.stage_b_calls = 0
+
     async def generate_json(self, prompt, response_model, system_instruction=None, temperature=0.2):  # noqa: ANN001
-        return response_model(
-            summary="ë¬¸ì„œ???µì‹¬ ?ë¦„???˜ì´ì§€ë³„ë¡œ ë¹„êµ??ëª…í™•?˜ê²Œ ?•ì¸?©ë‹ˆ??",
-            key_points=["?œë™ ?™ê¸°", "ê³¼ì • ê¸°ë¡", "ê²°ê³¼?€ ?±ì°°"],
-            page_insights=[
-                {"page_number": 1, "summary": "1?˜ì´ì§€?ëŠ” ?œë™ ë°°ê²½ê³?ëª©í‘œê°€ ?•ë¦¬?˜ì–´ ?ˆìŠµ?ˆë‹¤."},
-                {"page_number": 2, "summary": "2?˜ì´ì§€?ëŠ” ?˜í–‰ ê³¼ì •ê³?ê²°ê³¼ê°€ ?´ì–´ì§‘ë‹ˆ??"},
-            ],
-            evidence_gaps=["?¼ë? ?˜ì¹˜ ê·¼ê±°???ë¬¸ ?¬í™•?¸ì´ ?„ìš”?©ë‹ˆ??"],
+        model_fields = getattr(response_model, "model_fields", {})
+        is_stage_a = "batch_summary" in model_fields
+        stage = "stage_a" if is_stage_a else "stage_b"
+        self.calls.append({"stage": stage, "prompt": prompt, "temperature": float(temperature)})
+
+        if is_stage_a:
+            self.stage_a_calls += 1
+        else:
+            self.stage_b_calls += 1
+
+        if self.fail_mode == "timeout":
+            raise TimeoutError("forced timeout")
+        if self.fail_mode == "error":
+            raise RuntimeError("forced failure")
+        if self.fail_mode == "invalid_json_once" and not self.invalid_json_triggered:
+            self.invalid_json_triggered = True
+            raise LLMRequestError(
+                "invalid json",
+                limited_reason="invalid_json",
+                provider="ollama",
+                profile="render",
+            )
+
+        payload = _extract_json_payload(prompt)
+        if is_stage_a:
+            pages = payload.get("pages") if isinstance(payload, dict) else None
+            page_payloads = pages if isinstance(pages, list) else []
+            if not page_payloads:
+                page_payloads = [{"page_number": 1, "masked_text": "masked fallback"}]
+
+            page_insights = []
+            key_points = []
+            for page in page_payloads:
+                page_number = int(page.get("page_number") or 1)
+                masked_text = str(page.get("masked_text") or "").strip()
+                page_insights.append(
+                    {
+                        "page_number": page_number,
+                        "summary": (masked_text[:80] or f"page {page_number} insight"),
+                        "section_candidates": ["student_info"] if page_number == 1 else ["grades_subjects"],
+                        "evidence_notes": [f"evidence found on page {page_number}"],
+                    }
+                )
+                if masked_text:
+                    key_points.append(masked_text[:60])
+
+            return response_model.model_validate(
+                {
+                    "batch_summary": "masked batch summary",
+                    "key_points": key_points[:3],
+                    "page_insights": page_insights,
+                    "evidence_gaps": ["some table cells were partially parsed"],
+                    "section_candidates": {
+                        "student_info": {"confidence": 0.9, "pages": [1]},
+                        "grades_subjects": {"confidence": 0.76, "pages": [max(1, len(page_payloads))]},
+                    },
+                    "ambiguity_notes": ["section border between notes and behavior is unclear"],
+                    "extraction_limits": ["masked text quality differs by page"],
+                    "document_type": "korean_student_record_pdf",
+                    "document_type_confidence": 0.82,
+                    "likely_student_record": True,
+                }
+            )
+
+        return response_model.model_validate(
+            {
+                "summary": "overall summary from stage outputs",
+                "key_points": ["point-1", "point-2"],
+                "page_insights": [
+                    {
+                        "page_number": 1,
+                        "summary": "page 1 key facts",
+                        "section_candidates": ["student_info"],
+                        "evidence_notes": ["student field labels visible"],
+                    }
+                ],
+                "evidence_gaps": ["page 2 table structure is partially broken"],
+                "document_type": "korean_student_record_pdf",
+                "document_type_confidence": 0.88,
+                "likely_student_record": True,
+                "section_candidates": {
+                    "student_info": {"confidence": 0.93, "pages": [1]},
+                    "grades_subjects": {"confidence": 0.71, "pages": [2, 3]},
+                },
+                "ambiguity_notes": ["subject note and behavior note may overlap"],
+                "extraction_limits": ["a few pages had low text quality"],
+            }
         )
 
 
-class _TextFallbackPdfLLM:
-    async def generate_json(self, prompt, response_model, system_instruction=None, temperature=0.2):  # noqa: ANN001
-        raise RuntimeError("json schema response unsupported")
+def _extract_json_payload(prompt: str) -> dict[str, object]:
+    marker = "Input payload:\n"
+    if marker in prompt:
+        candidate = prompt.split(marker, 1)[1].strip()
+        return json.loads(candidate)
 
-    async def stream_chat(self, prompt, system_instruction=None, temperature=0.5):  # noqa: ANN001
-        yield (
-            "## PDF ?˜ì´ì§€ë³??µì‹¬ ?”ì•½\n"
-            "?„ì²´ ?”ì•½: ë¬¸ì„œ ?ë¦„???˜ì´ì§€ë³„ë¡œ ê²€? í–ˆ?µë‹ˆ??\n"
-            "1?˜ì´ì§€: ?œë™ ë°°ê²½ê³?ëª©í‘œê°€ ?•ë¦¬?˜ì–´ ?ˆìŠµ?ˆë‹¤.\n"
-            "2?˜ì´ì§€: ?˜í–‰ ê³¼ì •ê³?ê²°ê³¼ê°€ ?´ì–´ì§‘ë‹ˆ??\n"
-            "ê·¼ê±° ë¶€ì¡? ?¼ë? ?˜ì¹˜???ë¬¸ ?¬í™•?¸ì´ ?„ìš”?©ë‹ˆ??\n"
-        )
+    marker = "Stage A payload:\n"
+    if marker in prompt:
+        candidate = prompt.split(marker, 1)[1].strip()
+        return json.loads(candidate)
 
-
-class _FailingPdfLLM:
-    async def generate_json(self, prompt, response_model, system_instruction=None, temperature=0.2):  # noqa: ANN001
-        raise RuntimeError("forced llm failure")
-
-    async def stream_chat(self, prompt, system_instruction=None, temperature=0.5):  # noqa: ANN001
-        if False:
-            yield ""
-        raise RuntimeError("forced stream failure")
+    start = prompt.find("{")
+    if start < 0:
+        return {}
+    return json.loads(prompt[start:])
 
 
-def _build_sample_payload() -> ParsedDocumentPayload:
+def _build_payload(*, page_count: int = 3, raw_marker: str = "RAW_SECRET_TEXT") -> ParsedDocumentPayload:
+    masked_pages = [
+        {
+            "page_number": page_number,
+            "masked_text": (
+                f"Masked page {page_number} student info and grades with section evidence."
+                if page_number > 1
+                else "Masked page 1 student info section with school and student profile."
+            ),
+        }
+        for page_number in range(1, page_count + 1)
+    ]
+
     return ParsedDocumentPayload(
         parser_name="pymupdf",
         source_extension=".pdf",
-        page_count=2,
-        word_count=120,
-        content_text="1?˜ì´ì§€ ?œë™ ë°°ê²½ê³?ëª©í‘œ. 2?˜ì´ì§€ ?˜í–‰ ê³¼ì •ê³?ê²°ê³¼.",
-        content_markdown="## Page 1\n?œë™ ë°°ê²½ê³?ëª©í‘œ\n\n## Page 2\n?˜í–‰ ê³¼ì •ê³?ê²°ê³¼",
-        metadata={},
-        chunks=[
-            ParsedChunkPayload(
-                chunk_index=0,
-                page_number=1,
-                char_start=0,
-                char_end=30,
-                token_estimate=8,
-                content_text="?œë™ ë°°ê²½ê³?ëª©í‘œ",
-            )
-        ],
-        masked_artifact={
-            "pages": [
-                {"page_number": 1, "masked_text": "?œë™ ë°°ê²½ê³?ëª©í‘œê°€ ?ì„¸??ê¸°ë¡?˜ì–´ ?ˆìŠµ?ˆë‹¤."},
-                {"page_number": 2, "masked_text": "?˜í–‰ ê³¼ì •ê³?ê²°ê³¼, ?¤ìŒ ê³„íš???¬í•¨?˜ì–´ ?ˆìŠµ?ˆë‹¤."},
-            ]
-        },
-    )
-
-
-def _build_student_record_payload(*, parse_confidence: float = 0.82, needs_review: bool = False) -> ParsedDocumentPayload:
-    return ParsedDocumentPayload(
-        parser_name="neis",
-        source_extension=".pdf",
-        page_count=3,
-        word_count=540,
-        content_text=(
-            "2?™ë…„ 1?™ê¸° êµê³¼?™ìŠµë°œë‹¬?í™© ?˜í•™ ê³¼ëª©?ì„œ ?êµ¬ ?„ë¡œ?íŠ¸ë¥??˜í–‰?? "
-            "?¸ë??¥ë ¥ ë°??¹ê¸°?¬í•­??ë¬¸ì œ ?´ê²° ê³¼ì •ê³??¼ë“œë°±ì´ ê¸°ë¡?? "
-            "ì°½ì˜??ì²´í—˜?œë™ ?™ì•„ë¦¬ì? ë´‰ì‚¬?œë™, ì§„ë¡œ?œë™???´ì–´ì¡Œê³  ì§„ë¡œ ?¬ë§ ?™ê³¼?€ ?°ê³„?? "
-            "?…ì„œ ?œë™ê³??‰ë™?¹ì„± ë°?ì¢…í•©?˜ê²¬???¬í•¨??"
+        page_count=page_count,
+        word_count=1200,
+        content_text="\n\n".join(
+            f"[Page {page_number}] masked content page {page_number}" for page_number in range(1, page_count + 1)
         ),
         content_markdown="",
-        metadata={},
+        metadata={
+            "raw_parse_artifact": {
+                "pages": [{"page_number": 1, "text": raw_marker}],
+            }
+        },
         chunks=[
             ParsedChunkPayload(
                 chunk_index=0,
                 page_number=1,
                 char_start=0,
-                char_end=220,
-                token_estimate=80,
-                content_text="êµê³¼?™ìŠµë°œë‹¬?í™© ?˜í•™ ê³¼ëª© ?êµ¬ ?„ë¡œ?íŠ¸",
+                char_end=80,
+                token_estimate=20,
+                content_text="chunk-level masked content",
             )
         ],
-        raw_artifact={
-            "pages": [
-                {
-                    "page_number": 1,
-                    "text": "2?™ë…„ 1?™ê¸° êµê³¼?™ìŠµë°œë‹¬?í™© ?˜í•™ ê³¼ëª© ?êµ¬ ?„ë¡œ?íŠ¸ ?¸ë??¥ë ¥ ë°??¹ê¸°?¬í•­",
-                },
-                {
-                    "page_number": 2,
-                    "text": "ì°½ì˜??ì²´í—˜?œë™ ?™ì•„ë¦?ë´‰ì‚¬?œë™ ì§„ë¡œ?œë™ ?¬ë§ ?™ê³¼ ?°ê³„",
-                },
-                {
-                    "page_number": 3,
-                    "text": "?…ì„œ ?œë™ ?‰ë™?¹ì„± ë°?ì¢…í•©?˜ê²¬",
-                },
-            ]
-        },
-        masked_artifact={
-            "pages": [
-                {
-                    "page_number": 1,
-                    "masked_text": "2?™ë…„ 1?™ê¸° êµê³¼?™ìŠµë°œë‹¬?í™© ?˜í•™ ê³¼ëª© ?êµ¬ ?„ë¡œ?íŠ¸ ?¸ë??¥ë ¥ ë°??¹ê¸°?¬í•­",
-                },
-                {
-                    "page_number": 2,
-                    "masked_text": "ì°½ì˜??ì²´í—˜?œë™ ?™ì•„ë¦?ë´‰ì‚¬?œë™ ì§„ë¡œ?œë™ ?¬ë§ ?™ê³¼ ?°ê³„",
-                },
-                {
-                    "page_number": 3,
-                    "masked_text": "?…ì„œ ?œë™ ?‰ë™?¹ì„± ë°?ì¢…í•©?˜ê²¬",
-                },
-            ]
-        },
-        parse_confidence=parse_confidence,
-        needs_review=needs_review,
+        raw_artifact={"pages": [{"page_number": page_number, "text": raw_marker} for page_number in range(1, page_count + 1)]},
+        masked_artifact={"pages": masked_pages},
     )
 
 
-def test_pdf_analysis_uses_dedicated_model(monkeypatch) -> None:
+def _patch_settings(monkeypatch, **kwargs) -> Settings:
     settings = Settings(
         pdf_analysis_llm_enabled=True,
         pdf_analysis_llm_provider="ollama",
         pdf_analysis_ollama_model="gemma4-pdf",
         pdf_analysis_ollama_base_url="http://localhost:11434/v1",
+        **kwargs,
     )
     monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.get_settings", lambda: settings)
-    monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.get_pdf_analysis_llm_client", lambda: _FakePdfLLM())
+    return settings
 
-    metadata = build_pdf_analysis_metadata(_build_sample_payload())
+
+def _patch_resolution(monkeypatch, llm_client, *, attempted_model: str = "gemma4-pdf") -> None:  # noqa: ANN001
+    resolution = PDFAnalysisLLMResolution(
+        attempted_provider="ollama",
+        attempted_model=attempted_model,
+        actual_provider="ollama",
+        actual_model=attempted_model,
+        client=llm_client,
+    )
+    monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.resolve_pdf_analysis_llm_resolution", lambda: resolution)
+
+
+def test_pdf_analysis_llm_success_path(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(monkeypatch, fake_llm)
+
+    metadata = build_pdf_analysis_metadata(_build_payload())
 
     assert metadata is not None
+    assert metadata["schema_version"] == "2026-04-13-pdf-analysis-v2"
     assert metadata["engine"] == "llm"
-    assert metadata["model"] == "gemma4-pdf"
-    assert metadata["requested_pdf_analysis_provider"] == "ollama"
-    assert metadata["actual_pdf_analysis_provider"] == "ollama"
     assert metadata["fallback_used"] is False
-    assert isinstance(metadata["processing_duration_ms"], int)
+    assert metadata["fallback_reason"] is None
+    assert metadata["actual_provider"] == "ollama"
+    assert metadata["actual_model"] == "gemma4-pdf"
     assert metadata["summary"]
-    assert len(metadata["page_insights"]) >= 1
+    assert metadata["key_points"]
+    assert metadata["page_insights"]
+    assert metadata["evidence_gaps"]
 
 
-def test_pdf_analysis_falls_back_without_crashing(monkeypatch) -> None:
-    settings = Settings(
-        pdf_analysis_llm_enabled=True,
-        pdf_analysis_llm_provider="ollama",
-        pdf_analysis_ollama_model="gemma4-pdf",
-    )
-    monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.get_settings", lambda: settings)
-    monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.get_pdf_analysis_llm_client", lambda: _FailingPdfLLM())
+def test_pdf_analysis_invalid_json_retry_then_success(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM(fail_mode="invalid_json_once")
+    _patch_resolution(monkeypatch, fake_llm)
 
-    metadata = build_pdf_analysis_metadata(_build_sample_payload())
-
-    assert metadata is not None
-    assert metadata["engine"] == "fallback"
-    assert metadata["attempted_provider"] == "ollama"
-    assert metadata["attempted_model"] == "gemma4-pdf"
-    assert metadata["actual_pdf_analysis_provider"] == "heuristic"
-    assert metadata["fallback_used"] is True
-    assert metadata["failure_reason"]
-    assert metadata["summary"]
-    assert len(metadata["page_insights"]) >= 1
-
-
-def test_pdf_analysis_recovers_from_text_only_llm(monkeypatch) -> None:
-    settings = Settings(
-        pdf_analysis_llm_enabled=True,
-        pdf_analysis_llm_provider="ollama",
-        pdf_analysis_ollama_model="gemma4-pdf",
-    )
-    monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.get_settings", lambda: settings)
-    monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.get_pdf_analysis_llm_client", lambda: _TextFallbackPdfLLM())
-
-    metadata = build_pdf_analysis_metadata(_build_sample_payload())
+    metadata = build_pdf_analysis_metadata(_build_payload())
 
     assert metadata is not None
     assert metadata["engine"] == "llm"
+    assert metadata["fallback_used"] is False
+    assert fake_llm.invalid_json_triggered is True
+    assert fake_llm.stage_a_calls >= 2
+    temperatures = [float(call["temperature"]) for call in fake_llm.calls]
+    assert min(temperatures) <= 0.08
+
+
+def test_pdf_analysis_timeout_to_heuristic_fallback(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM(fail_mode="timeout")
+    _patch_resolution(monkeypatch, fake_llm)
+
+    metadata = build_pdf_analysis_metadata(_build_payload())
+
+    assert metadata is not None
+    assert metadata["engine"] == "heuristic"
+    assert metadata["fallback_used"] is True
+    assert metadata["fallback_reason"].startswith("stage_a_")
+    assert metadata["actual_provider"] == "heuristic"
+    assert metadata["actual_model"] == "heuristic-summary-v1"
+    assert metadata["actual_pdf_analysis_provider"] == "heuristic"
+    assert metadata["actual_pdf_analysis_model"] == "heuristic-summary-v1"
+
+
+def test_pdf_analysis_metadata_provider_model_fields(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(monkeypatch, fake_llm, attempted_model="gemma4-pdf")
+
+    metadata = build_pdf_analysis_metadata(_build_payload())
+
+    assert metadata is not None
     assert metadata["attempted_provider"] == "ollama"
     assert metadata["attempted_model"] == "gemma4-pdf"
-    assert metadata["recovered_from_text_fallback"] is True
-    assert metadata["fallback_used"] is True
-    assert metadata["fallback_reason"] == "recovered_from_text_fallback"
-    assert metadata["summary"]
-    assert len(metadata["page_insights"]) >= 1
-    assert metadata["page_insights"][0]["page_number"] == 1
+    assert metadata["actual_provider"] == "ollama"
+    assert metadata["actual_model"] == "gemma4-pdf"
+    assert metadata["requested_pdf_analysis_provider"] == "ollama"
+    assert metadata["requested_pdf_analysis_model"] == "gemma4-pdf"
+
+
+def test_pdf_analysis_oversized_pdf_uses_two_stage_batches(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(monkeypatch, fake_llm)
+
+    metadata = build_pdf_analysis_metadata(_build_payload(page_count=14))
+
+    assert metadata is not None
+    assert metadata["engine"] == "llm"
+    assert fake_llm.stage_a_calls >= 3
+    assert fake_llm.stage_b_calls >= 1
+
+
+def test_pdf_analysis_consumer_compatibility_fields(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(monkeypatch, fake_llm)
+
+    metadata = build_pdf_analysis_metadata(_build_payload())
+
+    assert metadata is not None
+    assert "summary" in metadata and isinstance(metadata["summary"], str)
+    assert "key_points" in metadata and isinstance(metadata["key_points"], list)
+    assert "page_insights" in metadata and isinstance(metadata["page_insights"], list)
+    assert "evidence_gaps" in metadata and isinstance(metadata["evidence_gaps"], list)
+
+
+def test_pdf_analysis_uses_masked_sources_not_raw(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(monkeypatch, fake_llm)
+
+    raw_marker = "RAW_SECRET_SHOULD_NEVER_APPEAR"
+    payload = _build_payload(page_count=2, raw_marker=raw_marker)
+    metadata = build_pdf_analysis_metadata(payload)
+
+    assert metadata is not None
+    joined_prompts = "\n".join(str(call["prompt"]) for call in fake_llm.calls)
+    assert raw_marker not in joined_prompts
+    assert "Masked page 1" in joined_prompts
+
+
+def test_pdf_analysis_sync_async_bridge_inside_running_loop(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(monkeypatch, fake_llm)
+
+    async def _run_inside_loop() -> dict[str, object] | None:
+        return build_pdf_analysis_metadata(_build_payload())
+
+    metadata = asyncio.run(_run_inside_loop())
+
+    assert metadata is not None
+    assert metadata["engine"] == "llm"
 
 
 def test_get_pdf_analysis_llm_client_uses_split_config(monkeypatch) -> None:
@@ -225,249 +336,3 @@ def test_get_pdf_analysis_llm_client_uses_split_config(monkeypatch) -> None:
     assert client.options["num_ctx"] == 1111
     assert client.options["num_predict"] == 222
     assert client.options["num_thread"] == 3
-
-
-def test_student_record_canonical_metadata_contains_required_fields_and_evidence() -> None:
-    parsed = _build_student_record_payload()
-    canonical = build_student_record_canonical_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "llm", "summary": "?”ì•½"},
-        analysis_artifact=None,
-    )
-
-    assert canonical is not None
-    for key in (
-        "record_type",
-        "document_confidence",
-        "timeline_signals",
-        "grades_subjects",
-        "subject_special_notes",
-        "extracurricular",
-        "career_signals",
-        "reading_activity",
-        "behavior_opinion",
-        "major_alignment_hints",
-        "weak_or_missing_sections",
-        "uncertainties",
-    ):
-        assert key in canonical
-
-    assert canonical["record_type"] == "korean_student_record_pdf"
-    assert canonical["pipeline_stages"]
-    assert canonical["document_confidence"] > 0.1
-    assert canonical["timeline_signals"]
-    assert canonical["grades_subjects"]
-    first_subject = canonical["grades_subjects"][0]
-    assert isinstance(first_subject.get("evidence"), list)
-    assert first_subject["evidence"]
-    assert first_subject["evidence"][0]["page_number"] >= 1
-
-
-def test_student_record_canonical_metadata_marks_uncertainty_without_guessing() -> None:
-    parsed = _build_student_record_payload(parse_confidence=0.32, needs_review=True)
-    canonical = build_student_record_canonical_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "fallback", "summary": "?´ë¦¬?¤í‹±"},
-        analysis_artifact=None,
-    )
-
-    assert canonical is not None
-    assert canonical["document_confidence"] < 0.8
-    assert canonical["uncertainties"]
-    uncertainty_messages = [str(item.get("message") or "") for item in canonical["uncertainties"]]
-    assert any("confidence" in message or "ê²€?? in message for message in uncertainty_messages)
-
-
-def test_student_record_structure_bridge_uses_canonical_schema() -> None:
-    parsed = _build_student_record_payload()
-    canonical = build_student_record_canonical_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "llm", "summary": "?”ì•½"},
-        analysis_artifact=None,
-    )
-    structure = build_student_record_structure_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "llm", "summary": "?”ì•½"},
-        canonical_schema=canonical,
-    )
-
-    assert structure is not None
-    assert structure["section_density"]["êµê³¼?™ìŠµë°œë‹¬?í™©"] > 0
-    assert structure["timeline_signals"]
-    assert "subject_major_alignment_signals" in structure
-
-
-def _build_full_section_payload() -> ParsedDocumentPayload:
-    pages = [
-        {"page_number": 1, "text": "?¸ì ?¬í•­ ?±ëª… ?ê¸¸???™êµëª??ŒìŠ¤?¸ê³ ?±í•™êµ?},
-        {"page_number": 2, "text": "ì¶œê²°?í™© ê²°ì„ ì§€ê°?ì¡°í‡´ ?†ìŒ"},
-        {"page_number": 3, "text": "?˜ìƒê²½ë ¥ ?˜ìƒëª?ê³¼í•™?êµ¬ë°œí‘œ?€???˜ì—¬ê¸°ê? êµë‚´"},
-        {"page_number": 4, "text": "ì°½ì˜??ì²´í—˜?œë™ ?™ì•„ë¦¬í™œ??ì§„ë¡œ?œë™ ì§€?ê???ê±´ì¶• ?êµ¬"},
-        {"page_number": 5, "text": "ë´‰ì‚¬?œë™ ì§€??‚¬???˜ê²½?•í™” ë´‰ì‚¬?œê°„ 20?œê°„"},
-        {"page_number": 6, "text": "êµê³¼?™ìŠµë°œë‹¬?í™© ê³¼ëª© ?˜í•™ ë¬¼ë¦¬ ?±ì·¨???°ìˆ˜"},
-        {"page_number": 7, "text": "?¸ë??¥ë ¥ ë°??¹ê¸°?¬í•­ ê±´ì¶• ?¬ë£Œ êµ¬ì¡° ë¶„ì„ ?„ë¡œ?íŠ¸ ?˜í–‰"},
-        {"page_number": 8, "text": "?…ì„œ?œë™?í™© ?‰ë™?¹ì„± ë°?ì¢…í•©?˜ê²¬ ?¬ìš©??ê²½í—˜ ê³µê°„ ?¸ë¬¸ ë³´ì™„"},
-        {"page_number": 9, "text": "êµê³¼?™ìŠµë°œë‹¬?í™© ê³¼ëª© ?ì–´ ê³¼í•™ ?±ì·¨???°ìˆ˜"},
-        {"page_number": 10, "text": "?¸ë??¥ë ¥ ë°??¹ê¸°?¬í•­ ê¸°í›„ ?€??ê±´ì¶• ?¤ê³„ ?•ì¥ ?œë™"},
-    ]
-    return ParsedDocumentPayload(
-        parser_name="neis",
-        source_extension=".pdf",
-        page_count=len(pages),
-        word_count=1500,
-        content_text=" ".join(page["text"] for page in pages),
-        content_markdown="",
-        metadata={},
-        chunks=[
-            ParsedChunkPayload(
-                chunk_index=0,
-                page_number=1,
-                char_start=0,
-                char_end=120,
-                token_estimate=40,
-                content_text=pages[0]["text"],
-            )
-        ],
-        raw_artifact={"pages": pages},
-        masked_artifact={"pages": [{"page_number": page["page_number"], "masked_text": page["text"]} for page in pages]},
-        parse_confidence=0.88,
-        needs_review=False,
-    )
-
-
-def _build_normalized_artifact_only_payload() -> ParsedDocumentPayload:
-    page_texts = [
-        "1. ?¸ì Â·?™ì ?¬í•­ ?™ìƒ?•ë³´ ?±ëª… ?ê¸¸??,
-        "2. ì¶?ê²?????ê²°ì„ ì§€ê°?ì¡°í‡´ ?†ìŒ",
-        "3. ????ê²???êµê³¼?°ìˆ˜???˜ì—¬ê¸°ê? êµë‚´",
-        "5. ì°½ì˜??ì²´í—˜?œë™?í™© ?ìœ¨?œë™ ?™ì•„ë¦¬í™œ??ì§„ë¡œ?œë™",
-        "ë´‰ì‚¬?œë™ ì§€??‚¬???˜ê²½?•í™” 20?œê°„",
-        "êµê³¼?™ìŠµë°œë‹¬?í™© ?˜í•™ ë¬¼ë¦¬ ?±ì·¨???°ìˆ˜",
-        "?¸ë??¥ë ¥ ë°??¹ê¸°?¬í•­ ê±´ì¶• ?¬ë£Œ êµ¬ì¡° ë¶„ì„ ?„ë¡œ?íŠ¸",
-        "?…ì„œ?œë™?í™© ?‰ë™?¹ì„± ë°?ì¢…í•©?˜ê²¬ ?¬ìš©??ê²½í—˜ ë³´ì™„",
-    ]
-
-    pages: list[dict[str, object]] = []
-    elements: list[dict[str, object]] = []
-    for idx, text in enumerate(page_texts, start=1):
-        element_id = f"page-{idx}-table-0"
-        pages.append({"page_number": idx, "width": 595.0, "height": 842.0, "element_ids": [element_id]})
-        elements.append(
-            {
-                "element_id": element_id,
-                "page_number": idx,
-                "element_type": "table",
-                "raw_text": text,
-                "table_rows": [
-                    {
-                        "row_index": 0,
-                        "cells": [
-                            {
-                                "cell_id": f"row-{idx}-0",
-                                "row_index": 0,
-                                "column_index": 0,
-                                "text": text,
-                            }
-                        ],
-                    }
-                ],
-            }
-        )
-
-    return ParsedDocumentPayload(
-        parser_name="neis",
-        source_extension=".pdf",
-        page_count=len(page_texts),
-        word_count=1500,
-        content_text=" ".join(page_texts),
-        content_markdown="",
-        metadata={
-            "normalized_artifact": {
-                "schema_version": "test",
-                "source_file": "sample.pdf",
-                "parser_name": "neis",
-                "page_count": len(page_texts),
-                "pages": pages,
-                "elements": elements,
-            }
-        },
-        chunks=[
-            ParsedChunkPayload(
-                chunk_index=0,
-                page_number=1,
-                char_start=0,
-                char_end=120,
-                token_estimate=40,
-                content_text=page_texts[0],
-            )
-        ],
-        raw_artifact={"pages": [{"page_number": idx + 1, "text": ""} for idx in range(len(page_texts))]},
-        masked_artifact={"pages": [{"page_number": idx + 1, "masked_text": ""} for idx in range(len(page_texts))]},
-        parse_confidence=0.88,
-        needs_review=False,
-    )
-
-
-def test_normalized_sections_and_evidence_bank_cover_required_sections() -> None:
-    parsed = _build_full_section_payload()
-    canonical = build_student_record_canonical_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "llm", "summary": "?”ì•½"},
-        analysis_artifact=None,
-    )
-
-    assert canonical is not None
-    coverage = canonical.get("section_coverage") or {}
-    assert coverage.get("missing_sections") == []
-    assert canonical.get("quality_gates", {}).get("reanalysis_required") is False
-
-    evidence_bank = canonical.get("evidence_bank") or []
-    assert len(evidence_bank) >= 10
-    unique_pages = {int(item.get("page") or 0) for item in evidence_bank}
-    assert len({page for page in unique_pages if page > 0}) >= 6
-    sample = evidence_bank[0]
-    for key in ("page", "section", "normalized_section", "quote", "major_relevance", "process_elements", "confidence"):
-        assert key in sample
-
-
-def test_normalized_artifact_fallback_extracts_pages_when_raw_masked_empty() -> None:
-    parsed = _build_normalized_artifact_only_payload()
-    canonical = build_student_record_canonical_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "fallback", "summary": "?”ì•½"},
-        analysis_artifact=None,
-    )
-
-    assert canonical is not None
-    coverage = canonical.get("section_coverage") or {}
-    missing = coverage.get("missing_sections") or []
-    assert "student_info" not in missing
-    assert "grades_subjects" not in missing
-    assert "subject_special_notes" not in missing
-    assert "behavior_general_comments" not in missing
-    assert canonical.get("evidence_bank")
-
-
-def test_structure_contradiction_guard_removes_conflicting_weak_sections() -> None:
-    parsed = _build_full_section_payload()
-    canonical = build_student_record_canonical_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "llm", "summary": "?”ì•½"},
-        analysis_artifact=None,
-    )
-    assert canonical is not None
-    canonical["weak_or_missing_sections"] = [
-        {"section": "êµê³¼?™ìŠµë°œë‹¬?í™©", "status": "missing", "evidence": []},
-    ]
-    canonical["section_classification"]["grades_subjects"]["density"] = 1.0
-
-    structure = build_student_record_structure_metadata(
-        parsed=parsed,
-        pdf_analysis={"engine": "llm", "summary": "?”ì•½"},
-        canonical_schema=canonical,
-    )
-
-    assert structure is not None
-    assert "êµê³¼?™ìŠµë°œë‹¬?í™©" not in structure["weak_sections"]
-    assert structure["contradiction_check"]["passed"] is False
-

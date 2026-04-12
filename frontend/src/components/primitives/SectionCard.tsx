@@ -58,7 +58,7 @@ export function SectionCard({
           aria-label={isCollapsed ? '섹션 펼치기' : '섹션 접기'}
           aria-expanded={!isCollapsed}
           onClick={handleToggleCollapsed}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#d6e4ff] bg-white text-[#476192] transition-colors hover:bg-[#f4f8ff] hover:text-[#23458f]"
         >
           {isCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
         </button>
@@ -67,14 +67,14 @@ export function SectionCard({
   );
 
   return (
-    <Card className={cn('flex flex-col rounded-3xl border border-slate-200 shadow-sm', className)} {...props}>
+    <Card className={cn('flex flex-col rounded-[1.75rem] border border-[#d6e4ff] bg-white/92 shadow-[0_12px_28px_rgba(24,66,170,0.1)]', className)} {...props}>
       {(title || description || eyebrow || actions || collapsible) ? (
         <header className="mb-4 flex shrink-0 flex-col gap-3 sm:mb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
-              {eyebrow ? <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{eyebrow}</p> : null}
+              {eyebrow ? <p className="text-xs font-black uppercase tracking-[0.18em] text-[#6980ad]">{eyebrow}</p> : null}
               {badge ? (
-                <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-black text-blue-600 ring-1 ring-inset ring-blue-500/10">
+                <span className="inline-flex items-center rounded-full bg-[#eaf2ff] px-2.5 py-0.5 text-[10px] font-black text-[#2350b8] ring-1 ring-inset ring-[#2350b8]/15">
                   {badge}
                 </span>
               ) : null}

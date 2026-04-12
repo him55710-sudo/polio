@@ -25,7 +25,7 @@ export function SidebarAccountBlock({
           <img src={userPhotoUrl} alt="프로필 이미지" className="h-9 w-9 rounded-full border border-slate-200 object-cover" />
         ) : (
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-black text-blue-700">
-            {userName.trim().slice(0, 1).toUpperCase()}
+            {(userName || '').trim().slice(0, 1).toUpperCase()}
           </div>
         )}
 

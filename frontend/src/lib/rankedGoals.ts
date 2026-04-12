@@ -6,16 +6,16 @@ export interface RankedGoal {
   major: string;
 }
 
-function parseInterestGoal(raw: string): RankedGoal {
-  const text = raw.trim();
+function parseInterestGoal(raw: string | null | undefined): RankedGoal {
+  const text = String(raw || '').trim();
   if (!text) return { university: '', major: '' };
 
   const match = text.match(/^(.+)\s\((.+)\)$/);
   if (!match) return { university: text, major: '' };
 
   return {
-    university: match[1].trim(),
-    major: match[2].trim(),
+    university: (match[1] || '').trim(),
+    major: (match[2] || '').trim(),
   };
 }
 
@@ -28,9 +28,9 @@ export function buildRankedGoals(
   const goals: RankedGoal[] = [];
   const seen = new Set<string>();
 
-  const pushGoal = (university: string, major: string) => {
-    const normalizedUniversity = university.trim();
-    const normalizedMajor = coerceMajorForUniversity(normalizedUniversity, major);
+  const pushGoal = (university: string | null | undefined, major: string | null | undefined) => {
+    const normalizedUniversity = String(university || '').trim();
+    const normalizedMajor = coerceMajorForUniversity(normalizedUniversity, major || '');
     if (!normalizedUniversity) return;
 
     const key = `${normalizedUniversity}__${normalizedMajor}`;
