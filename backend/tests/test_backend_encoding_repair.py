@@ -12,12 +12,13 @@ TARGET_FILES = {
     "llm": BACKEND_ROOT / "services/api/src/unifoli_api/core/llm.py",
     "workshops": BACKEND_ROOT / "services/api/src/unifoli_api/api/routes/workshops.py",
     "document_service": BACKEND_ROOT / "services/api/src/unifoli_api/services/document_service.py",
+    "pdf_analysis_service": BACKEND_ROOT / "services/api/src/unifoli_api/services/pdf_analysis_service.py",
 }
 EXPECTED_SNIPPETS = {
     "llm": (
         "LLM 응답이 비어 있어 제한 모드로 전환합니다.",
         "응답 형식을 해석하지 못해 제한 모드로 전환합니다.",
-        "AI 응답이 지연되어 제한 모드로 전환합니다.",
+        "AI 응답이 지연되어 안전 모드로 전환합니다.",
     ),
     "workshops": (
         "[유저 최신 초안 스냅샷]",
@@ -27,6 +28,12 @@ EXPECTED_SNIPPETS = {
         "학교생활기록부",
         "생활기록부",
         "생기부",
+    ),
+    "pdf_analysis_service": (
+        "PDF 텍스트를 충분히 추출하지 못해 문서 요약 근거가 제한적입니다.",
+        "페이지 문서에서 핵심 흐름을 정리했습니다.",
+        "학생명|성명",
+        "고등학교",
     ),
 }
 MOJIBAKE_MARKERS = (
@@ -71,4 +78,3 @@ def test_workshop_korean_prompt_snapshot() -> None:
 )
 def test_student_record_candidate_keyword_detection(parser_name: str, content_text: str, expected: bool) -> None:
     assert _is_student_record_candidate(parser_name=parser_name, content_text=content_text) is expected
-

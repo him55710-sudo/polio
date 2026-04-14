@@ -469,15 +469,15 @@ function buildFoliFallback(message: string) {
     return [
       '안녕하세요! 유니폴리 워크숍 도우미입니다.',
       '',
-      '?꾩옱 ?ㅼ떆媛?AI ?곌껐??遺덉븞?뺥븯吏留? 珥덉븞 援ъ“ ?뺣━? 臾몄옣 ?ㅻ벉湲곕뒗 怨꾩냽 ?꾩??쒕┫ ???덉뒿?덈떎.',
+      '지금은 AI 연결이 잠시 불안정해서, 초안 구조 정리와 다음 질문 안내를 중심으로 안전하게 이어갈게요.',
     ].join('\n');
   }
 
   return [
-    '吏湲덉? ?먮룞 洹쇨굅 ?곌껐???쇱떆?곸쑝濡??쒗븳???곹깭?낅땲??',
+    '현재 AI 응답이 잠시 지연되어 기본 안내 모드로 전환했어요.',
     '',
-    '?꾨옒 ?쒖꽌?濡?吏꾪뻾?섎㈃ ??붾? ?딄린吏 ?딄퀬 ?댁뼱媛????덉뒿?덈떎.',
-    '1. ?대쾲 湲?먯꽌 ?듭떖?쇰줈 ?ㅻ０ 吏덈Ц????臾몄옣?쇰줈 ?뺣━?⑸땲??',
+    '아래 순서대로 보내 주시면 초안 작성 흐름을 계속 이어갈 수 있어요.',
+    '1. 이번 글에서 다루려는 주제를 한 문장으로 적어 주세요.',
     '2. 업로드한 기록에서 연관 정보나 근거를 2~3개 적어봅니다.',
     '3. 도입-본론-결론 순서로 단락 뼈대를 먼저 잡습니다.',
   ].join('\n');
@@ -1082,7 +1082,7 @@ export function Workshop() {
       setIsSessionLoading(false);
       setGuidedPhase('freeform_coauthoring');
       setIsGuidedTopicSelected(true);
-      setMessages([{ id: 'demo-init', role: 'foli', content: '?곕え 紐⑤뱶?낅땲?? ?좊땲?대━?먭쾶 吏덈Ц?섎㈃ 珥덉븞 ?묒꽦???꾩??쒕┰?덈떎.' }]);
+      setMessages([{ id: 'demo-init', role: 'foli', content: '데모 모드입니다. 유니폴리에게 질문하면 초안 작성을 이어서 도와드릴게요.' }]);
     }
   }, [initialMajor, isProjectBacked, initWorkshop, questStart, documentContent]);
 
@@ -1149,7 +1149,7 @@ export function Workshop() {
             }
             setLatestDraftUpdatedAt(remoteUpdatedAt);
             setIsDraftOutOfSync(true);
-            toast('?ㅻⅨ ??뿉??珥덉븞??蹂寃쎈릺??理쒖떊 ?댁슜 蹂묓빀 ???ㅼ떆 ??ν뻽?듬땲??');
+            toast('다른 탭에서 초안이 변경되어 최신 내용을 병합한 뒤 다시 저장했습니다.');
             await attemptSave(mergedContent, remoteUpdatedAt, false);
             return;
           }
@@ -1725,11 +1725,11 @@ export function Workshop() {
         toast.error(resolveChatStreamToastMessage(error));
         const hint = resolveChatStreamFallbackHint(error);
         if (hint) {
-          fallbackContent = `${fallbackContent}\n\n李멸퀬: ${hint}`;
+          fallbackContent = `${fallbackContent}\n\n참고 안내: ${hint}`;
         }
       } else {
         console.error('AI reply stream failed with unexpected error:', error);
-        toast.error('梨꾪똿 ?묐떟 ?앹꽦???ㅽ뙣?덉뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??');
+        toast.error('채팅 응답 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
       setMessages(prev =>
         prev.map(message =>
@@ -1835,7 +1835,7 @@ export function Workshop() {
     setIsRendering(true);
     try {
       await api.post(`/api/v1/workshops/${workshopState.session.id}/render`);
-      toast.success('寃곌낵臾??앹꽦???붿껌?덉뒿?덈떎.');
+      toast.success('결과물 생성을 요청했습니다.');
     } catch (error) {
       console.error('Failed to render draft:', error);
       toast.error('생성 요청에 실패했습니다.');
@@ -1853,7 +1853,7 @@ export function Workshop() {
       createdAt: new Date().toISOString(),
       contentMarkdown: documentContent,
     });
-    toast.success('?뚰겕??珥덉븞????ν뻽?듬땲??');
+    toast.success('워크숍 초안을 저장했어요.');
     confetti({ particleCount: 80, spread: 62, origin: { y: 0.65 } });
   };
 
@@ -1903,26 +1903,26 @@ export function Workshop() {
     if (!chatMeta?.limited_mode) return null;
     if (limitedReason === 'evidence_gap') {
       return {
-        title: '洹쇨굅 蹂댁셿 紐⑤뱶媛 ?쒖꽦?붾릺?덉뒿?덈떎',
-        description: '?꾩옱 ?뺤씤 媛?ν븳 ?숈깮 湲곕줉???쒗븳?섏뼱 蹂댁닔?곸씤 ?쒖븞留??쒓났?⑸땲??',
+        title: '근거 보완 모드가 활성화되었습니다.',
+        description: '현재 확인 가능한 학생 기록만 우선 연결해, 보수적인 제안 중심으로 안내하고 있어요.',
       };
     }
     if (limitedReason === 'llm_unavailable') {
       return {
-        title: 'AI model connection is temporarily limited.',
-        description: 'Gemini/LLM connectivity is unstable, so the chat switched to a safer limited response.',
+        title: 'AI 연결이 일시적으로 제한되었습니다.',
+        description: 'Gemini/LLM 연결이 불안정해 더 안전한 제한 응답으로 전환했습니다.',
       };
     }
     if (limitedReason === 'llm_not_configured') {
       return {
-        title: 'Backend AI model is not configured.',
+        title: '백엔드 AI 모델이 아직 설정되지 않았습니다.',
         description:
-          'Set backend env vars (LLM_PROVIDER=gemini and GEMINI_API_KEY) or provide a reachable remote OLLAMA_BASE_URL.',
+          '백엔드 환경 변수(LLM_PROVIDER=gemini, GEMINI_API_KEY) 또는 원격 OLLAMA_BASE_URL을 설정해 주세요.',
       };
     }
     return {
-      title: '?쒗븳 紐⑤뱶媛 ?쒖꽦?붾릺?덉뒿?덈떎',
-      description: '紐⑤뜽 ?곌껐???쇱떆?곸쑝濡?遺덉븞?뺥븯???대쾲 ?묐떟? ?덉쟾??湲곕낯 ?덈궡濡??꾪솚?섏뿀?듬땲??',
+      title: '제한 모드가 활성화되었습니다.',
+      description: '모델 연결이 불안정할 때는 구조 정리와 다음 질문 안내 중심으로 응답합니다.',
     };
   }, [chatMeta?.limited_mode, limitedReason]);
   const guidedSetupComplete = isGuidedSetupComplete(guidedPhase) || isGuidedTopicSelected;
@@ -1956,7 +1956,7 @@ export function Workshop() {
           title="유니폴리 초안 작업"
           description="업로드된 기록 근거를 바탕으로 초안을 안정적으로 이어서 작성해보세요."
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <SecondaryButton
                 data-testid="workshop-advanced-toggle"
                 onClick={() => setAdvancedMode(prev => !prev)}
@@ -2019,13 +2019,13 @@ export function Workshop() {
             title="유니폴리 채팅"
             eyebrow="대화"
             className={cn(
-              'flex min-h-0 flex-col h-[calc(100dvh-15rem)] min-h-[520px] max-h-[800px]',
+              'flex min-h-0 flex-col min-h-[68dvh] max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-15rem)] lg:min-h-[520px] lg:max-h-[800px]',
               mobileView !== 'chat' && 'hidden lg:flex'
             )}
             bodyClassName="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0"
           >
             <div className="flex h-full flex-col">
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6 scroll-smooth">
+              <div className="flex-1 space-y-6 overflow-y-auto px-3 py-3 scroll-smooth sm:px-4 sm:py-4">
                 {workshopState?.render_requirements && (
                   <div className="mb-2 border-b border-slate-100 bg-slate-50/30 px-4 py-4">
                     <WorkshopProgress 
@@ -2044,7 +2044,7 @@ export function Workshop() {
                     >
                       <span className="inline-flex items-center gap-2">
                         <div className="h-1.5 w-1.5 rounded-full bg-[#004aad] shadow-sm shadow-[#004aad]/50" />
-                        理쒓렐 ?앷린遺 吏꾨떒 ?뺣낫
+                        최근 진단 요약
                       </span>
                       {showDiagnosis ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
@@ -2060,7 +2060,7 @@ export function Workshop() {
                             <p className="text-sm font-bold text-slate-900">{diagnosisHeadline}</p>
                             <div className="flex flex-wrap items-center gap-2">
                               {diagnosisRisk && <StatusBadge status={diagnosisRiskStatus}>{diagnosisRiskLabel}</StatusBadge>}
-                              <StatusBadge status="neutral">蹂댁셿 {diagnosisGapCount}</StatusBadge>
+                              <StatusBadge status="neutral">보완 {diagnosisGapCount}개</StatusBadge>
                             </div>
                           </SurfaceCard>
                         </motion.div>
@@ -2137,16 +2137,16 @@ export function Workshop() {
           </SectionCard>
 
           <SectionCard
-            title="珥덉븞 臾몄꽌"
-            description="?좊땲?대━媛 ?쒖븞???댁슜??諛뷀깢?쇰줈 援ъ꽦??臾몄꽌?낅땲?? ?먯쑀濡?쾶 ?섏젙?섍퀬 蹂닿컯??二쇱꽭??"
-            eyebrow="珥덉븞 ?묒꽦"
+            title="초안 문서"
+            description="유니폴리가 제안한 내용을 바탕으로 구성한 문서입니다. 자유롭게 수정하고 보강해 주세요."
+            eyebrow="초안 작성"
             className={cn(
-              'flex min-h-0 flex-col h-[calc(100dvh-15rem)] min-h-[520px] max-h-[800px]',
+              'flex min-h-0 flex-col min-h-[68dvh] max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-15rem)] lg:min-h-[520px] lg:max-h-[800px]',
               mobileView !== 'draft' && 'hidden lg:flex'
             )}
             bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
             actions={
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setShowDraftControls(prev => !prev)}
@@ -2161,7 +2161,7 @@ export function Workshop() {
                 </SecondaryButton>
                 <PrimaryButton size="sm" onClick={handleSaveDraft}>
                   <Save size={14} className="mr-1.5" />
-                  ???
+                  저장
                 </PrimaryButton>
                 <SecondaryButton size="sm" onClick={() => {
                   const blob = new Blob([documentContent], { type: 'text/markdown' });
@@ -2183,7 +2183,7 @@ export function Workshop() {
                   <WorkflowNotice
                     tone="warning"
                     title="초안 동기화 충돌이 감지되었습니다"
-                    description="?쒕쾭 理쒖떊蹂멸낵 ?먮룞 蹂묓빀 ???ㅼ떆 ??ν뻽?듬땲?? 蹂묓빀???댁슜??鍮좊Ⅴ寃??뺤씤??二쇱꽭??"
+                    description="서버 최신본과 자동 병합한 뒤 다시 저장했습니다. 병합된 내용을 빠르게 확인해 주세요."
                     className="mb-3"
                   />
               ) : null}
@@ -2248,8 +2248,8 @@ export function Workshop() {
                     }
                     description={
                       coauthoringTier === 'basic'
-                        ? 'AI ?쒖븞? ?뱀씤 ??諛섏쁺?⑸땲?? ?숈깮 ?묒꽦 ?댁슜? ?먮룞 ??뼱?곌린?섏? ?딆뒿?덈떎.'
-                        : '梨꾪똿 以??뱀뀡 ?쒖븞???ㅼ떆媛꾩쑝濡??곌껐?⑸땲?? ?뱀씤 ?꾩뿉???숈깮 ?묒꽦 臾몃떒??蹂댄샇?⑸땲??'
+                        ? 'AI 제안은 승인 후에만 반영됩니다. 학생이 작성한 내용은 자동으로 덮어쓰지 않습니다.'
+                        : '채팅 중 받은 제안을 실시간으로 초안에 연결합니다. 반영 전에도 학생이 작성한 문단은 보호합니다.'
                     }
                   />
                 </div>
@@ -2339,7 +2339,7 @@ export function Workshop() {
                     </div>
                   ) : (
                     <p className="text-sm font-bold text-slate-400">
-                      ?몃? ?쒓컖???붿냼媛 ?좏깮?섏뿀?쇰굹, ?꾩옱 ?섍꼍?먯꽌??誘몃━蹂닿린瑜??쒓났?????놁뒿?덈떎.
+                      아직 시각화 요소를 선택하지 않았거나, 현재 환경에서는 미리보기를 제공하지 않습니다.
                     </p>
                   )}
                 </div>

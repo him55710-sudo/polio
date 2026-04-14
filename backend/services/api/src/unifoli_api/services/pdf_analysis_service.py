@@ -1192,15 +1192,15 @@ def _combined_text(parsed: ParsedDocumentPayload) -> str:
 
 def _build_pdf_summary(parsed: ParsedDocumentPayload, page_texts: list[str]) -> str:
     if not page_texts:
-        return "PDF ?띿뒪?멸? 異⑸텇??異붿텧?섏? ?딆븘 臾몄꽌 ?붿빟 洹쇨굅媛 ?쒗븳?곸엯?덈떎."
+        return "PDF 텍스트를 충분히 추출하지 못해 문서 요약 근거가 제한적입니다."
 
     first = _clip(_normalize_sentence(page_texts[0]), 180)
     last = _clip(_normalize_sentence(page_texts[-1]), 180) if len(page_texts) > 1 else ""
-    page_note = f"{parsed.page_count}?섏씠吏 臾몄꽌?먯꽌 ?듭떖 ?먮쫫???뺣━?덉뒿?덈떎."
+    page_note = f"{parsed.page_count}페이지 문서에서 핵심 흐름을 정리했습니다."
 
     if last and last != first:
-        return f"{page_note} 泥??섏씠吏??{first} 留덉?留??섏씠吏??{last}"
-    return f"{page_note} ????붿빟? {first}"
+        return f"{page_note} 첫 페이지 요약은 {first} 마지막 페이지 요약은 {last}"
+    return f"{page_note} 요약: {first}"
 
 
 def _extract_key_points(page_texts: list[str]) -> list[str]:
@@ -1227,16 +1227,16 @@ def _build_page_insights(page_texts: list[str]) -> list[dict[str, Any]]:
 def _build_evidence_gaps(parsed: ParsedDocumentPayload, page_texts: list[str]) -> list[str]:
     gaps: list[str] = []
     if not page_texts:
-        gaps.append("?띿뒪?멸? 異⑸텇??異붿텧?섏? ?딆븘 ?섏씠吏蹂?洹쇨굅 ?뺤씤???꾩슂?⑸땲??")
+        gaps.append("텍스트를 충분히 추출하지 못해 페이지별 근거 확인이 필요합니다.")
     if parsed.needs_review:
-        gaps.append("臾몄꽌 ?뚯떛 怨쇱젙?먯꽌 寃???꾩슂 ?뚮옒洹멸? ?덉뼱 ?듭떖 ?뱀뀡 ?ы솗?몄씠 ?꾩슂?⑸땲??")
+        gaps.append("문서 품질이나 스캔 상태를 다시 확인해 추출 누락이 없는지 점검해 주세요.")
     if parsed.page_count > len(page_texts):
-        gaps.append("?쇰? ?섏씠吏?먯꽌 異붿텧 ?띿뒪?멸? 鍮꾩뼱 ?덉뼱 PDF ?먮Ц ?뺤씤???꾩슂?⑸땲??")
+        gaps.append("일부 페이지에서 추출 텍스트가 비어 있어 PDF 원문 확인이 필요합니다.")
     warnings = parsed.warnings if isinstance(parsed.warnings, list) else []
     if warnings:
-        gaps.append("?뚯떛 寃쎄퀬媛 ?덉뼱 ?꾨씫??臾몃㎘???녿뒗吏 ?뺤씤???꾩슂?⑸땲??")
+        gaps.append("추가 경고가 있어 표기나 문단 구조가 깨지지 않았는지 확인이 필요합니다.")
     if not gaps:
-        gaps.append("?숈깮遺 二쇱슂 ?뱀뀡蹂?洹쇨굅媛 異⑸텇?쒖? 理쒖쥌 寃?좉? ?꾩슂?⑸땲??")
+        gaps.append("학생부 주요 섹션별 근거가 충분한지 최종 검토가 필요합니다.")
     return _dedupe(gaps, limit=_MAX_EVIDENCE_GAPS)
 
 
@@ -1319,15 +1319,15 @@ def _build_uncertainties(
 ) -> list[str]:
     items: list[str] = []
     if parsed.needs_review:
-        items.append("臾몄꽌 ?뚯떛 ?덉쭏 寃?좉? ?꾩슂?⑸땲??")
+        items.append("문서 품질 재확인이 필요합니다.")
     if isinstance(section_coverage.get("missing_sections"), list) and section_coverage["missing_sections"]:
-        items.append("?쇰? ?꾩닔 ?숈깮遺 ?뱀뀡???꾨씫?섏뼱 異붽? 寃?좉? ?꾩슂?⑸땲??")
+        items.append("일부 핵심 학생부 섹션이 누락되어 추가 검토가 필요합니다.")
     if isinstance(pdf_analysis, dict):
         gaps = pdf_analysis.get("evidence_gaps")
         if isinstance(gaps, list):
             items.extend(str(item) for item in gaps[:2] if str(item).strip())
     if not items:
-        items.append("?꾩옱 硫뷀??곗씠?곕뒗 ?대━?ㅽ떛 湲곕컲?대?濡??먮Ц ?議곌? 沅뚯옣?⑸땲??")
+        items.append("현재 자동 분석 결과만으로는 세부 해석에 한계가 있어 원문 검토가 필요합니다.")
     return _dedupe(items, limit=5)
 
 
@@ -1345,7 +1345,7 @@ def _extract_grades_subjects(text: str, pipeline_canonical: dict[str, Any]) -> l
         if items:
             return items
 
-    subjects = re.findall(r"(援?뼱|?섑븰|?곸뼱|?ы쉶|??궗|怨쇳븰|臾쇰━|?뷀븰|?앸챸怨쇳븰|吏援ш낵???뺣낫|誘몄닠|?뚯븙|泥댁쑁)", text)
+    subjects = re.findall(r"(국어|수학|영어|사회|역사|과학|물리|화학|생명과학|지구과학|정보|미술|음악|체육)", text)
     return [{"subject": subject, "label": subject} for subject in _dedupe(subjects, limit=8)]
 
 
@@ -1399,11 +1399,11 @@ def _extract_student_profile(text: str, pipeline_canonical: dict[str, Any]) -> d
     if isinstance(pipeline_canonical.get("school_name"), str) and pipeline_canonical["school_name"].strip():
         profile["school_name"] = pipeline_canonical["school_name"].strip()
 
-    name_match = re.search(r"(?:?숈깮紐??깅챸)\s*[:竊??\s*([媛-??{2,5})", text)
+    name_match = re.search(r"(?:학생명|성명)\s*[:：]?\s*([가-힣]{2,5})", text)
     if name_match and "student_name" not in profile:
         profile["student_name"] = name_match.group(1)
 
-    school_match = re.search(r"([媛-?쥱-Za-z0-9 ]+怨좊벑?숆탳)", text)
+    school_match = re.search(r"([가-힣A-Za-z0-9 ]+고등학교)", text)
     if school_match and "school_name" not in profile:
         profile["school_name"] = school_match.group(1).strip()
     return profile
