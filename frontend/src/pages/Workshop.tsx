@@ -109,7 +109,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
         components={{
         h3: ({ children, ...props }) => {
           const text = React.Children.toArray(children).join('');
-          const isAISuggestion = !isUserMessage && (text.includes('[AI ?쒖븞 珥덉븞]') || text.includes('[AI Draft Suggestion]'));
+          const isAISuggestion = !isUserMessage && (text.includes('[AI 제안 초안]') || text.includes('[AI Draft Suggestion]'));
 
           if (isAISuggestion) {
             return (
@@ -285,27 +285,27 @@ interface StreamFoliReplyResult {
 }
 
 const QUALITY_META_MAP: Record<QualityLevel, { label: string; status: 'success' | 'active' | 'warning' }> = {
-  low: { label: '鍮좊Ⅸ ?묐떟', status: 'success' },
-  mid: { label: '洹좏삎 紐⑤뱶', status: 'active' },
-  high: { label: '?ы솕 紐⑤뱶', status: 'warning' },
+  low: { label: '빠른 응답', status: 'success' },
+  mid: { label: '균형 모드', status: 'active' },
+  high: { label: '심화 모드', status: 'warning' },
 };
 
-const GUIDED_CHAT_GREETING = '?덈뀞?섏꽭???대뼡 二쇱젣濡?蹂닿퀬?쒕? ?⑤낵源뚯슂?';
+const GUIDED_CHAT_GREETING = '안녕하세요! 어떤 주제로 보고서를 완성해볼까요?';
 const DIAGNOSIS_RISK_LABEL_MAP: Record<string, string> = {
-  safe: '洹쇨굅 異⑸텇',
-  warning: '蹂댁셿 ?꾩슂',
-  danger: '吏묒쨷 蹂댁셿 ?꾩슂',
+  safe: '근거 충분',
+  warning: '보완 필요',
+  danger: '집중 보완 필요',
 };
 
 function formatDiagnosisRiskLabel(value: string | undefined): string {
   const key = String(value || '').trim().toLowerCase();
-  return DIAGNOSIS_RISK_LABEL_MAP[key] || '蹂댁셿 ?꾩슂';
+  return DIAGNOSIS_RISK_LABEL_MAP[key] || '보완 필요';
 }
 
 function formatDraftAttributionLabel(attribution: WorkshopDraftAttribution): string {
-  if (attribution === 'student-authored') return '?숈깮 ?묒꽦';
-  if (attribution === 'ai-inserted-after-approval') return '?뱀씤 ??AI 諛섏쁺';
-  return 'AI ?쒖븞';
+  if (attribution === 'student-authored') return '학생 작성';
+  if (attribution === 'ai-inserted-after-approval') return '승인 후 AI 반영';
+  return 'AI 제안';
 }
 
 function normalizeGuidedSuggestions(response: GuidedTopicSuggestionResponse): GuidedTopicSuggestion[] {
@@ -315,37 +315,37 @@ function normalizeGuidedSuggestions(response: GuidedTopicSuggestionResponse): Gu
 function formatGuidedSuggestionMessage(response: GuidedTopicSuggestionResponse) {
   const suggestions = normalizeGuidedSuggestions(response);
   const lines = [
-    `???. '${response.subject}' ???? ?? ??? ??? ?? 3??? ?????.`,
+    `좋아요. '${response.subject}'를 바탕으로 학생 기록 흐름에 맞는 주제 3가지를 준비했어요.`,
     '',
     ...suggestions.flatMap((item, index) => {
       const chunk = [
         `${index + 1}. **${item.title}**`,
-        `- ? ???: ${item.why_fit_student}`,
-        `- ?? ??: ${item.link_to_record_flow}`,
+        `- 추천 이유: ${item.why_fit_student}`,
+        `- 기록 연결: ${item.link_to_record_flow}`,
       ];
       if (item.link_to_target_major_or_university) {
-        chunk.push(`- ?? ??: ${item.link_to_target_major_or_university}`);
+        chunk.push(`- 진로 연계: ${item.link_to_target_major_or_university}`);
       }
       if (item.caution_note) {
-        chunk.push(`- ??: ${item.caution_note}`);
+        chunk.push(`- 주의: ${item.caution_note}`);
       }
       return chunk;
     }),
   ];
   if (response.evidence_gap_note) {
-    lines.push('', `??: ${response.evidence_gap_note}`);
+    lines.push('', `참고: ${response.evidence_gap_note}`);
   }
-  lines.push('', '? ??? ?? ??? ??? ??? ?????.');
+  lines.push('', '이 중에서 가장 마음이 가는 주제를 골라주세요.');
   return lines.join('\n');
 }
 
 function formatGuidedSelectionMessage(response: GuidedTopicSelectionResponse) {
   const lines = [
-    `??? ??? **${response.selected_title}** ???.`,
+    `선택한 주제는 **${response.selected_title}**입니다.`,
     '',
     response.guidance_message,
     '',
-    '??? ?? ??? ???? ?? ?? ??? ?????.',
+    '이제 진행하고 싶은 보고서 분량을 고르면 바로 개요를 잡아드릴게요.',
   ];
   return lines.join('\n');
 }
@@ -354,12 +354,12 @@ function formatGuidedPageRangeMessage(response: GuidedPageRangeSelectionResponse
   const lines = [
     response.assistant_message,
     '',
-    `??? ??: **${response.selected_page_range_label}**`,
+    `선택한 분량: **${response.selected_page_range_label}**`,
   ];
   if (response.selected_page_range_note) {
-    lines.push(`- ??: ${response.selected_page_range_note}`);
+    lines.push(`- 참고: ${response.selected_page_range_note}`);
   }
-  lines.push('', '?? ?? ???? ??? ???.');
+  lines.push('', '다음으로 구성 스타일을 골라주세요.');
   return lines.join('\n');
 }
 
@@ -367,9 +367,9 @@ function formatGuidedStructureMessage(response: GuidedStructureSelectionResponse
   return [
     response.assistant_message,
     '',
-    `??? ??: **${response.selected_structure_label}**`,
+    `선택한 구성: **${response.selected_structure_label}**`,
     '',
-    '???? ??? ???? ?? ??? ?? ??? ? ???.',
+    '가이드가 거의 끝났습니다. 다음으로 무엇을 하고 싶은지 알려주세요.',
   ].join('\n');
 }
 
@@ -379,9 +379,9 @@ function formatAssistantMessageWithEvidenceNote(
 ) {
   const base = (assistantMessage || '').trim();
   const note = (evidenceGapNote || '').trim();
-  if (base && note) return `${base}\n\n??: ${note}`;
+  if (base && note) return `${base}\n\n참고: ${note}`;
   if (base) return base;
-  if (note) return `??: ${note}`;
+  if (note) return `참고: ${note}`;
   return GUIDED_CHAT_GREETING;
 }
 
@@ -463,11 +463,11 @@ function resolveGuidedSelectionFromText(text: string, suggestions: GuidedTopicSu
 
 function buildFoliFallback(message: string) {
   const clean = (message || '').toLowerCase().trim();
-  const greetings = ['?덈뀞', 'hi', 'hello', 'hey', 'good morning', 'good evening'];
+  const greetings = ['안녕', 'hi', 'hello', 'hey', 'good morning', 'good evening'];
 
   if (greetings.some(token => clean.includes(token))) {
     return [
-      '?덈뀞?섏꽭?? ?좊땲?대━ ?뚰겕???꾩슦誘몄엯?덈떎.',
+      '안녕하세요! 유니폴리 워크숍 도우미입니다.',
       '',
       '?꾩옱 ?ㅼ떆媛?AI ?곌껐??遺덉븞?뺥븯吏留? 珥덉븞 援ъ“ ?뺣━? 臾몄옣 ?ㅻ벉湲곕뒗 怨꾩냽 ?꾩??쒕┫ ???덉뒿?덈떎.',
     ].join('\n');
@@ -478,8 +478,8 @@ function buildFoliFallback(message: string) {
     '',
     '?꾨옒 ?쒖꽌?濡?吏꾪뻾?섎㈃ ??붾? ?딄린吏 ?딄퀬 ?댁뼱媛????덉뒿?덈떎.',
     '1. ?대쾲 湲?먯꽌 ?듭떖?쇰줈 ?ㅻ０ 吏덈Ц????臾몄옣?쇰줈 ?뺣━?⑸땲??',
-    '2. ?낅줈?쒗븳 湲곕줉?먯꽌 ?대? ?뺣낫??洹쇨굅瑜?2~3媛??곸뼱遊낅땲??',
-    '3. ?꾩엯-蹂몃줎-寃곕줎 ?쒖꽌濡??⑤씫 堉덈?瑜?癒쇱? ?≪뒿?덈떎.',
+    '2. 업로드한 기록에서 연관 정보나 근거를 2~3개 적어봅니다.',
+    '3. 도입-본론-결론 순서로 단락 뼈대를 먼저 잡습니다.',
   ].join('\n');
 }
 
@@ -857,7 +857,7 @@ export function Workshop() {
 
   const questStart = useMemo(() => readQuestStart(), []);
   const initialMajor = useMemo(
-    () => ((location.state as { major?: string } | null)?.major || '誘몄젙'),
+    () => ((location.state as { major?: string } | null)?.major || '미정'),
     [location.state],
   );
   const isProjectBacked = Boolean(projectId && projectId !== 'demo');
@@ -1052,10 +1052,10 @@ export function Workshop() {
         .catch(() => {});
     } catch (error) {
       console.error('Workshop init failed:', error);
-      toast.error('?뚰겕?띿쓣 遺덈윭?ㅼ? 紐삵뻽?듬땲?? 濡쒖뺄 紐⑤뱶濡??꾪솚?⑸땲??');
+      toast.error('워크숍을 불러오지 못했습니다. 로컬 모드로 전환합니다.');
       setGuidedPhase('freeform_coauthoring');
       setIsGuidedTopicSelected(true);
-      setMessages([{ id: 'fallback', role: 'foli', content: '?몄뀡 ?곌껐???ㅽ뙣?덉뒿?덈떎. 濡쒖뺄?먯꽌 珥덉븞 ?묒꽦??吏꾪뻾?섏떎 ???덉뒿?덈떎.' }]);
+      setMessages([{ id: 'fallback', role: 'foli', content: '세션 연결에 실패했습니다. 로컬에서 초안 작성을 진행하실 수 있습니다.' }]);
     } finally {
       setIsSessionLoading(false);
     }
@@ -1069,7 +1069,7 @@ export function Workshop() {
     if (!documentContent) {
       const seed =
         questStart?.document_seed_markdown ||
-        `# [?곌뎄 珥덉븞] ${questStart?.title || '??二쇱젣'}\n\n## 諛곌꼍 諛?臾몄젣?섏떇\n\n## ?듭떖 ?먭뎄 ?댁슜 1\n\n## ?듭떖 ?먭뎄 ?댁슜 2\n\n## ?듭떖 ?먭뎄 ?댁슜 3\n\n## 寃곕줎 諛??ㅼ쓬 ?④퀎`;
+        `# [탐구 초안] ${questStart?.title || '새 주제'}\n\n## 배경 및 문제의식\n\n## 핵심 탐구 내용 1\n\n## 핵심 탐구 내용 2\n\n## 핵심 탐구 내용 3\n\n## 결론 및 다음 단계`;
       const derived = markdownToStructuredDraft(seed, 'planning');
       setStructuredDraft(derived);
       setWorkshopMode(derived.mode);
@@ -1446,7 +1446,7 @@ export function Workshop() {
       if (applied) {
         setPendingDraftPatch(null);
         if (approved) {
-          toast.success('?뱀씤???뱀뀡 ?쒖븞???곗륫 援ъ“ 珥덉븞??諛섏쁺?덉뒿?덈떎.');
+          toast.success('승인된 섹션 제안이 우측 구조 초안에 반영되었습니다.');
         }
       } else if (blockedReason === 'student_content_protected') {
         toast('학생이 직접 작성한 섹션은 자동 덮어쓰기를 막고 있어요. 내용을 확인한 뒤 수동으로 반영해 주세요.');
@@ -1673,13 +1673,13 @@ export function Workshop() {
           workshop_id: workshopState?.session.id ?? null,
         });
         if (streamLimitedReason === 'llm_unavailable') {
-          toast.error('AI 紐⑤뜽 ?곌껐??遺덉븞?뺥븯???쒗븳 紐⑤뱶 ?덈궡濡??꾪솚?섏뿀?댁슂.');
+          toast.error('AI 모델 연결이 불안정하여 제한 모드 안내로 전환되었어요.');
         }
       }
 
       const extracted = extractPatchTagFromRaw(raw);
       const resolvedPatch = streamedPatch || extracted.patch;
-      const responseContent = extracted.cleaned || raw || accumulated || '?묐떟???앹꽦?섏? 紐삵뻽?듬땲??';
+      const responseContent = extracted.cleaned || raw || accumulated || '답변을 생성하지 못했습니다.';
       const shouldAutoApplyPatch =
         resolvedPatch !== null &&
         coauthoringTier !== 'basic' &&
@@ -1838,7 +1838,7 @@ export function Workshop() {
       toast.success('寃곌낵臾??앹꽦???붿껌?덉뒿?덈떎.');
     } catch (error) {
       console.error('Failed to render draft:', error);
-      toast.error('?앹꽦 ?붿껌???ㅽ뙣?덉뒿?덈떎.');
+      toast.error('생성 요청에 실패했습니다.');
     } finally {
       setIsRendering(false);
     }
@@ -1865,10 +1865,10 @@ export function Workshop() {
         { approval_status: status }
       );
       setWorkshopState(response.data);
-      toast.success('?곹깭瑜??낅뜲?댄듃?덉뒿?덈떎.');
+      toast.success('상태를 업데이트했습니다.');
     } catch (error) {
       console.error('Failed to update visual status:', error);
-      toast.error('?곹깭 ?낅뜲?댄듃 ?ㅽ뙣');
+      toast.error('상태 업데이트 실패');
     }
   };
 
@@ -1879,10 +1879,10 @@ export function Workshop() {
         `/api/v1/workshops/${workshopState.session.id}/artifacts/${workshopState.latest_artifact.id}/visuals/${visualId}/replace`
       );
       setWorkshopState(response.data);
-      toast.success('?덈줈???쒓컖 ?먮즺瑜??앹꽦?덉뒿?덈떎.');
+      toast.success('새로운 시각 자료를 생성했습니다.');
     } catch (error) {
       console.error('Failed to replace visual:', error);
-      toast.error('?쒓컖 ?먮즺 ?앹꽦 ?ㅽ뙣');
+      toast.error('시각 자료 생성 실패');
     }
   };
 
@@ -1911,6 +1911,13 @@ export function Workshop() {
       return {
         title: 'AI model connection is temporarily limited.',
         description: 'Gemini/LLM connectivity is unstable, so the chat switched to a safer limited response.',
+      };
+    }
+    if (limitedReason === 'llm_not_configured') {
+      return {
+        title: 'Backend AI model is not configured.',
+        description:
+          'Set backend env vars (LLM_PROVIDER=gemini and GEMINI_API_KEY) or provide a reachable remote OLLAMA_BASE_URL.',
       };
     }
     return {
@@ -1953,17 +1960,17 @@ export function Workshop() {
               <SecondaryButton
                 data-testid="workshop-advanced-toggle"
                 onClick={() => setAdvancedMode(prev => !prev)}
-                aria-label={advancedMode ? '怨좉툒 紐⑤뱶 ?꾧린' : '怨좉툒 紐⑤뱶 耳쒓린'}
+                aria-label={advancedMode ? '고급 모드 끄기' : '고급 모드 켜기'}
               >
                 {advancedMode ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                {advancedMode ? '怨좉툒 紐⑤뱶' : '湲곕낯 紐⑤뱶'}
+                {advancedMode ? '고급 모드' : '기본 모드'}
               </SecondaryButton>
               <SecondaryButton
                 onClick={handleGenerateDraft}
                 disabled={!workshopState || isRendering || !workshopState.render_requirements?.can_render}
               >
                 {isRendering ? <Loader2 size={16} className="animate-spin" /> : <Presentation size={14} />}
-                誘몃━蹂닿린 ?앹꽦
+                미리보기 생성
               </SecondaryButton>
             </div>
           }
@@ -1992,7 +1999,7 @@ export function Workshop() {
                 mobileView === 'chat' ? 'bg-[#004aad] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
               )}
             >
-              梨꾪똿
+              채팅
             </button>
             <button
               type="button"
@@ -2002,7 +2009,7 @@ export function Workshop() {
                 mobileView === 'draft' ? 'bg-[#004aad] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
               )}
             >
-              臾몄꽌
+              문서
             </button>
           </div>
         </div>
@@ -2146,11 +2153,11 @@ export function Workshop() {
                   className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
                 >
                   {showDraftControls ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  珥덉븞 ?듭뀡
+                  초안 옵션
                 </button>
                 <SecondaryButton size="sm" onClick={handleOpenProfessionalEditor}>
                   <PenSquare size={14} className="mr-1.5" />
-                  ?꾨Ц ?몄쭛湲?
+                  전문 편집기
                 </SecondaryButton>
                 <PrimaryButton size="sm" onClick={handleSaveDraft}>
                   <Save size={14} className="mr-1.5" />
@@ -2166,7 +2173,7 @@ export function Workshop() {
                   URL.revokeObjectURL(url);
                 }}>
                   <Download size={14} className="mr-1.5" />
-                  留덊겕?ㅼ슫
+                  마크다운
                 </SecondaryButton>
               </div>
             }
@@ -2192,15 +2199,15 @@ export function Workshop() {
                   ) : null}
                   {pendingDraftPatch.evidence_boundary_note ? (
                     <p className="mt-1 text-xs font-semibold text-amber-700">
-                      洹쇨굅 寃쎄퀎: {pendingDraftPatch.evidence_boundary_note}
+                      근거 경계: {pendingDraftPatch.evidence_boundary_note}
                     </p>
                   ) : null}
                   <div className="mt-2 flex items-center gap-2">
                     <PrimaryButton size="sm" onClick={() => applyPatchToDraft(pendingDraftPatch, true, false)}>
-                      珥덉븞??諛섏쁺
+                      초안에 반영
                     </PrimaryButton>
                     <SecondaryButton size="sm" onClick={() => setPendingDraftPatch(null)}>
-                      ?쒖븞?쇰줈 ?좎?
+                      제안으로 유지
                     </SecondaryButton>
                   </div>
                 </SurfaceCard>
@@ -2234,10 +2241,10 @@ export function Workshop() {
                     tone={coauthoringTier === 'pro' ? 'success' : coauthoringTier === 'plus' ? 'info' : 'warning'}
                     title={
                       coauthoringTier === 'pro'
-                        ? '怨좉툒 怨듬룞?묒꽦'
+                        ? '고급 공동작성'
                         : coauthoringTier === 'plus'
-                          ? '?뺤옣 怨듬룞?묒꽦'
-                          : '湲곕낯 怨듬룞?묒꽦'
+                          ? '확장 공동작성'
+                          : '기본 공동작성'
                     }
                     description={
                       coauthoringTier === 'basic'
@@ -2248,7 +2255,7 @@ export function Workshop() {
                 </div>
               ) : (
                 <p className={cn('text-xs font-semibold text-slate-500', advancedMode && 'lg:w-1/2')}>
-                  珥덉븞 ?듭뀡???④꺼???덉뒿?덈떎. 紐⑤뱶/?④퀎 議곗젙???꾩슂???뚮쭔 ?쇱퀜???ъ슜?섏꽭??
+                  초안 옵션이 숨겨져 있습니다. 모드/단계 조정이 필요할 때만 펼쳐서 사용하세요.
                 </p>
               )}
 
@@ -2288,7 +2295,7 @@ export function Workshop() {
                         <input
                           value={block.content_markdown}
                           onChange={(event) => updateDraftBlock(definition.id, event.target.value)}
-                          placeholder="?쒕ぉ"
+                          placeholder="제목"
                           className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
                         />
                       ) : (
@@ -2312,7 +2319,7 @@ export function Workshop() {
                     className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
                   >
                     {showAdvancedTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    怨좉툒 ?꾧뎄
+                    고급 도구
                   </button>
 
                   {showAdvancedTools ? (
@@ -2344,7 +2351,6 @@ export function Workshop() {
     </div>
   );
 }
-
 
 
 

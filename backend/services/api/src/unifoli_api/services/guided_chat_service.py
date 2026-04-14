@@ -661,6 +661,10 @@ async def _try_llm_topic_suggestions(
         return response, None
     except LLMRequestError as exc:
         return None, exc.limited_reason
+    except RuntimeError as exc:
+        if "No valid LLM client" in str(exc):
+            return None, "llm_not_configured"
+        return None, "llm_unavailable"
     except Exception:
         return None, "llm_unavailable"
 

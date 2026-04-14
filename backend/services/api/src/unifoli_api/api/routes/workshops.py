@@ -631,6 +631,14 @@ async def chat_stream_route(
         except LLMRequestError as exc:
             limited_mode = True
             limited_reason = exc.limited_reason
+        except RuntimeError as exc:
+            logger.warning("Workshop chat stream could not initialize LLM client: %s", repr(exc))
+            limited_mode = True
+            limited_reason = (
+                "llm_not_configured"
+                if "No valid LLM client" in str(exc)
+                else "llm_unavailable"
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Workshop chat stream switched to fallback: %s", repr(exc))
             limited_mode = True
