@@ -208,17 +208,18 @@ def build_pdf_analysis_metadata(parsed: ParsedDocumentPayload) -> dict[str, Any]
                 resolution=resolution,
             )
         )
+        actual_provider, actual_model, fallback_used, fallback_reason = _resolve_pdf_analysis_runtime_outcome(resolution)
         return _compose_pdf_analysis_metadata(
             llm_payload,
             started_at=started_at,
             generated_at=generated_at,
             attempted_provider=resolution.attempted_provider,
             attempted_model=resolution.attempted_model,
-            actual_provider=resolution.actual_provider,
-            actual_model=resolution.actual_model,
+            actual_provider=actual_provider,
+            actual_model=actual_model,
             engine="llm",
-            fallback_used=False,
-            fallback_reason=None,
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("PDF analysis LLM pipeline failed; switching to heuristic fallback: %s", exc)
@@ -861,6 +862,33 @@ def _build_pdf_analysis_heuristic_fallback(
     )
 
 
+def _resolve_pdf_analysis_runtime_outcome(
+    resolution: PDFAnalysisLLMResolution,
+) -> tuple[str, str, bool, str | None]:
+    client = resolution.client
+    actual_provider = (
+        str(getattr(client, "last_provider_used", "") or "").strip()
+        if client is not None
+        else ""
+    ) or resolution.actual_provider
+    actual_model = (
+        str(getattr(client, "last_model_used", "") or "").strip()
+        if client is not None
+        else ""
+    ) or resolution.actual_model
+    fallback_used = bool(
+        getattr(client, "last_fallback_used", resolution.fallback_used)
+        if client is not None
+        else resolution.fallback_used
+    )
+    fallback_reason = (
+        str(getattr(client, "last_fallback_reason", "") or "").strip()
+        if client is not None
+        else ""
+    ) or resolution.fallback_reason
+    return actual_provider, actual_model, fallback_used, fallback_reason
+
+
 def _compose_pdf_analysis_metadata(
     payload: dict[str, Any],
     *,
@@ -1344,6 +1372,22 @@ def _extract_grades_subjects(text: str, pipeline_canonical: dict[str, Any]) -> l
             items.append({"subject": subject, "label": subject})
         if items:
             return items
+    return _dedupe(items, limit=5)
+
+
+def _extract_grades_subjects(text: str, pipeline_canonical: dict[str, Any]) -> list[dict[str, Any]]:
+    grades = pipeline_canonical.get("grades")
+    if isinstance(grades, list) and grades:
+        items: list[dict[str, Any]] = []
+        for entry in grades[:8]:
+            if not isinstance(entry, dict):
+                continue
+            subject = str(entry.get("subject") or "").strip()
+            if not subject:
+                continue
+            items.append({"subject": subject, "label": subject})
+        if items:
+            return items
 
     subjects = re.findall(r"(국어|수학|영어|사회|역사|과학|물리|화학|생명과학|지구과학|정보|미술|음악|체육)", text)
     return [{"subject": subject, "label": subject} for subject in _dedupe(subjects, limit=8)]
@@ -1404,16 +1448,6 @@ def _extract_student_profile(text: str, pipeline_canonical: dict[str, Any]) -> d
         profile["student_name"] = name_match.group(1)
 
     school_match = re.search(r"([가-힣A-Za-z0-9 ]+고등학교)", text)
-    if school_match and "school_name" not in profile:
-        profile["school_name"] = school_match.group(1).strip()
-    return profile
-
-
-def _extract_keyword_sentences(text: str, keywords: tuple[str, ...] | list[str], *, limit: int) -> list[str]:
-    sentences = _split_sentences(text)
-    matched = [sentence for sentence in sentences if any(keyword in sentence for keyword in keywords)]
-    return _dedupe([_clip(sentence, 160) for sentence in matched], limit=limit)
-
 
 def _extract_value_list(value: Any, key: str) -> list[str]:
     if not isinstance(value, list):

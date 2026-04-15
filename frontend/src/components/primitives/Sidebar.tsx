@@ -11,15 +11,15 @@ export function Sidebar({ open, className, children }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-40 border-r border-[#d6e4ff] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(244,249,255,0.94)_100%)] shadow-[0_16px_32px_rgba(24,66,170,0.1)] transition-all duration-300 ease-in-out md:relative md:z-10',
-        open 
-          ? 'w-[280px] translate-x-0' 
+        'fixed inset-y-0 left-0 z-40 border-r border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(246,248,255,0.95)_54%,rgba(241,247,255,0.94)_100%)] shadow-[0_22px_48px_rgba(42,64,132,0.12)] backdrop-blur-2xl transition-all duration-300 ease-in-out md:relative md:z-10',
+        open
+          ? 'w-[292px] translate-x-0'
           : 'w-[0px] -translate-x-full md:w-20 md:translate-x-0',
         className,
       )}
     >
       <div className={cn(
-        "h-full overflow-hidden transition-opacity duration-200",
+        'h-full overflow-hidden transition-opacity duration-200',
         !open && "md:opacity-100 opacity-0"
       )}>
         {children}

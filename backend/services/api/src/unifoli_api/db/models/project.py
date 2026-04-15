@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from unifoli_api.core.database import Base
@@ -35,6 +35,9 @@ def utc_now() -> datetime:
 
 class Project(Base):
     __tablename__ = "projects"
+    __table_args__ = (
+        Index("ix_projects_owner_updated_at", "owner_user_id", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     owner_user_id: Mapped[str | None] = mapped_column(

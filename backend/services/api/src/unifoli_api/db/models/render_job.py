@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from unifoli_api.core.database import Base
@@ -16,10 +16,14 @@ def utc_now() -> datetime:
 
 class RenderJob(Base):
     __tablename__ = "render_jobs"
+    __table_args__ = (
+        Index("ix_render_jobs_project_created_at", "project_id", "created_at"),
+        Index("ix_render_jobs_status_created_at", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    draft_id: Mapped[str] = mapped_column(ForeignKey("drafts.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    draft_id: Mapped[str] = mapped_column(ForeignKey("drafts.id", ondelete="CASCADE"), index=True)
     render_format: Mapped[str] = mapped_column(String(16))
     template_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     include_provenance_appendix: Mapped[bool] = mapped_column(Boolean, default=False)

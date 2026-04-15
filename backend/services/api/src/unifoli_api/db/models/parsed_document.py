@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from unifoli_api.core.database import Base
@@ -18,10 +18,12 @@ class ParsedDocument(Base):
     __tablename__ = "parsed_documents"
     __table_args__ = (
         UniqueConstraint("upload_asset_id", name="uq_parsed_documents_upload_asset_id"),
+        Index("ix_parsed_documents_project_updated_at", "project_id", "updated_at"),
+        Index("ix_parsed_documents_status_updated_at", "status", "updated_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     upload_asset_id: Mapped[str] = mapped_column(ForeignKey("upload_assets.id", ondelete="CASCADE"))
     parser_name: Mapped[str] = mapped_column(String(80), default="pending")
     source_extension: Mapped[str] = mapped_column(String(16), default=".pdf")
@@ -34,6 +36,9 @@ class ParsedDocument(Base):
     content_text: Mapped[str] = mapped_column(Text(), default="")
     content_markdown: Mapped[str] = mapped_column(Text(), default="")
     parse_metadata: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    latest_async_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    latest_async_job_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    latest_async_job_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
     parse_started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     parse_completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
@@ -89,18 +94,3 @@ class ParsedDocument(Base):
             DocumentProcessingStatus.FAILED.value,
             DocumentProcessingStatus.PARTIAL.value,
         }
-
-    @property
-    def latest_async_job_id(self) -> str | None:
-        value = (self.parse_metadata or {}).get("latest_async_job_id")
-        return str(value) if value else None
-
-    @property
-    def latest_async_job_status(self) -> str | None:
-        value = (self.parse_metadata or {}).get("latest_async_job_status")
-        return str(value) if value else None
-
-    @property
-    def latest_async_job_error(self) -> str | None:
-        value = (self.parse_metadata or {}).get("latest_async_job_error")
-        return str(value) if value else None

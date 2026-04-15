@@ -22,7 +22,7 @@ class ResearchChunk(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    document_id: Mapped[str] = mapped_column(ForeignKey("research_documents.id", ondelete="CASCADE"))
+    document_id: Mapped[str] = mapped_column(ForeignKey("research_documents.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     provenance_type: Mapped[str] = mapped_column(String(32), default=EvidenceProvenance.EXTERNAL_RESEARCH.value)
     chunk_index: Mapped[int] = mapped_column(Integer)

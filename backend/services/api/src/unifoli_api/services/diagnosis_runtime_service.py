@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from unifoli_api.core.config import get_settings
-from unifoli_api.core.llm import GeminiClient, OllamaClient, get_llm_client
+from unifoli_api.core.llm import get_last_llm_invocation, resolve_llm_runtime
 from unifoli_api.core.security import sanitize_public_error
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
 from unifoli_api.db.models.project import Project
@@ -201,48 +201,18 @@ def get_run_with_relations(db: Session, run_id: str) -> DiagnosisRun | None:
 
 
 def _diagnosis_llm_strategy() -> dict[str, Any]:
-    settings = get_settings()
-    requested_provider = (settings.llm_provider or "gemini").strip().lower()
-    requested_model = (
-        (settings.ollama_standard_model or settings.ollama_model or "gemma4").strip()
-        if requested_provider == "ollama"
-        else "gemini-1.5-pro"
-    )
-    base = {
-        "requested_llm_provider": requested_provider,
-        "requested_llm_model": requested_model,
-        "llm_profile_used": "standard",
-        "actual_llm_provider": None,
-        "actual_llm_model": None,
-        "should_use_llm": False,
-        "fallback_used": True,
-        "fallback_reason": "llm_unavailable",
-    }
-
-    try:
-        llm = get_llm_client(profile="standard")
-    except Exception as exc:  # noqa: BLE001
-        base["fallback_reason"] = f"client_init_failed:{type(exc).__name__}"
-        return base
-
-    if isinstance(llm, OllamaClient):
-        actual_provider = "ollama"
-        actual_model = llm.model
-    elif isinstance(llm, GeminiClient):
-        actual_provider = "gemini"
-        actual_model = llm.model_name
-    else:
-        actual_provider = requested_provider
-        actual_model = requested_model
-
-    provider_fallback_used = actual_provider != requested_provider or actual_model != requested_model
+    resolution = resolve_llm_runtime(profile="standard", concern="diagnosis")
     return {
-        **base,
-        "actual_llm_provider": actual_provider,
-        "actual_llm_model": actual_model,
-        "should_use_llm": True,
-        "fallback_used": provider_fallback_used,
-        "fallback_reason": "provider_auto_fallback" if provider_fallback_used else None,
+        "requested_llm_provider": resolution.attempted_provider,
+        "requested_llm_model": resolution.attempted_model,
+        "llm_profile_used": "standard",
+        "actual_llm_provider": resolution.actual_provider,
+        "actual_llm_model": resolution.actual_model,
+        "should_use_llm": resolution.client is not None,
+        "fallback_used": resolution.fallback_used,
+        "fallback_reason": resolution.fallback_reason or ("provider_auto_fallback" if resolution.fallback_used else None),
+        "resolved_client": resolution.client,
+        "resolved_resolution": resolution,
     }
 
 
@@ -374,10 +344,16 @@ async def run_diagnosis_run(
     fallback_target_university: str | None,
     fallback_target_major: str | None,
     interest_universities: list[str] | None = None,
+    heartbeat_callback: Any | None = None,
 ) -> DiagnosisRun:
     run = get_run_with_relations(db, run_id)
     if run is None:
         raise ValueError(f"Diagnosis run not found: {run_id}")
+
+    def _update_status(msg: str, stage: str = "RUNNING", progress: float | None = None) -> None:
+        _update_run_status(db, run, status=stage, status_message=msg)
+        if heartbeat_callback:
+            heartbeat_callback(stage=stage.lower(), message=msg, progress=progress)
 
     try:
         resolved_owner_user_id = owner_user_id.strip() or None
@@ -416,16 +392,13 @@ async def run_diagnosis_run(
         diagnosis_input_text = full_text[:MAX_DIAGNOSIS_LLM_INPUT_CHARS]
         semantic_input_text = full_text[:MAX_SEMANTIC_INPUT_CHARS]
         llm_strategy = _diagnosis_llm_strategy()
+        resolved_llm_client = llm_strategy.get("resolved_client")
+        resolved_llm_resolution = llm_strategy.get("resolved_resolution")
         should_use_llm = bool(llm_strategy.get("should_use_llm"))
         model_name = str(llm_strategy.get("actual_llm_model") or "grounded-fallback")
         generation_timeout_seconds = _resolve_diagnosis_generation_timeout_seconds()
 
-        _update_run_status(
-            db,
-            run,
-            status="RUNNING",
-            status_message="업로드한 문서 근거를 점검하고 있습니다...",
-        )
+        _update_status("업로드한 문서 근거를 점검하고 있습니다...", progress=10.0)
         findings = detect_policy_flags(policy_scan_text)
         flag_records = run.policy_flags
         review_task = run.review_tasks[0] if run.review_tasks else None
@@ -437,11 +410,7 @@ async def run_diagnosis_run(
         user_major = project.target_major or fallback_target_major or "일반 탐구"
         evidence_keys = [document.sha256 or document.id for document in documents if (document.sha256 or document.id)]
 
-        _update_run_status(
-            db,
-            run,
-            status_message="학생부 핵심 지표를 추출하고 있습니다...",
-        )
+        _update_status("학생부 핵심 지표를 추출하고 있습니다...", progress=25.0)
         features = extract_student_record_features(
             documents=documents,
             full_text=full_text,
@@ -453,11 +422,7 @@ async def run_diagnosis_run(
         if should_use_llm and semantic_input_text:
             from unifoli_api.services.diagnosis_scoring_service import extract_semantic_diagnosis
 
-            _update_run_status(
-                db,
-                run,
-                status_message="추출된 근거를 바탕으로 심화 의미 분석을 수행하고 있습니다...",
-            )
+            _update_status("추출된 근거를 바탕으로 심화 의미 분석을 수행하고 있습니다...", progress=40.0)
             try:
                 semantic_data = await asyncio.wait_for(
                     extract_semantic_diagnosis(
@@ -487,11 +452,7 @@ async def run_diagnosis_run(
         )
 
         if should_use_llm:
-            _update_run_status(
-                db,
-                run,
-                status_message="정밀 진단 내용을 생성하고 근거 데이터를 매핑하고 있습니다...",
-            )
+            _update_status("정밀 진단 내용을 생성하고 근거 데이터를 매핑하고 있습니다...", progress=70.0)
             try:
                 result = await asyncio.wait_for(
                     evaluate_student_record(
@@ -505,9 +466,22 @@ async def run_diagnosis_run(
                         scope_key=f"project:{project.id}",
                         evidence_keys=evidence_keys,
                         raise_on_llm_failure=True,
+                        llm_client=resolved_llm_client,
+                        llm_resolution=resolved_llm_resolution,
                     ),
                     timeout=generation_timeout_seconds,
                 )
+                invocation = get_last_llm_invocation(resolved_llm_client)
+                if invocation.get("provider"):
+                    llm_strategy["actual_llm_provider"] = invocation["provider"]
+                if invocation.get("model"):
+                    llm_strategy["actual_llm_model"] = invocation["model"]
+                    model_name = str(invocation["model"])
+                if invocation.get("fallback_used"):
+                    llm_strategy["fallback_used"] = True
+                    llm_strategy["fallback_reason"] = (
+                        str(invocation.get("fallback_reason") or "").strip() or "provider_auto_fallback"
+                    )
             except asyncio.TimeoutError as exc:
                 logger.warning(
                     "LLM diagnosis generation timed out for run %s after %.1fs",
@@ -574,11 +548,7 @@ async def run_diagnosis_run(
         result.fallback_reason = str(llm_strategy.get("fallback_reason") or "").strip() or None
         result.processing_duration_ms = processing_duration_ms
 
-        _update_run_status(
-            db,
-            run,
-            status_message="진단 근거 추적과 인용 데이터를 저장하고 있습니다...",
-        )
+        _update_status("진단 근거 추적과 인용 데이터를 저장하고 있습니다...", progress=90.0)
         trace, citation_records = create_response_trace(
             db,
             run=run,
@@ -646,4 +616,3 @@ async def run_diagnosis_run(
                 project_id,
             )
         raise
-

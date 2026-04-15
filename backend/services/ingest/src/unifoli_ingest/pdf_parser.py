@@ -1,7 +1,7 @@
-# -*- coding: latin-1 -*-
 from __future__ import annotations
 
 from collections import Counter
+import logging
 from pathlib import Path
 import re
 
@@ -13,6 +13,18 @@ from unifoli_ingest.models import ParsedChunkPayload, ParsedDocumentPayload
 
 TEXT_EXTENSIONS = {".txt", ".md"}
 SUPPORTED_EXTENSIONS = {".pdf", *TEXT_EXTENSIONS}
+
+logger = logging.getLogger(__name__)
+
+_PDF_MALFORMED_MESSAGE = "Uploaded PDF file is malformed."
+_PDF_ENCRYPTED_MESSAGE = "Encrypted PDF files are not supported. Remove password protection and retry."
+_PDF_NO_USABLE_TEXT_MESSAGE = "No extractable text was found in the uploaded PDF."
+
+
+class PDFParseFailure(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def parse_uploaded_document(
@@ -73,25 +85,80 @@ def parse_pdf_document(
     neis_provider_min_quality_score: float = 0.58,
     neis_merge_policy: str = "conservative_table",
 ) -> ParsedDocumentPayload:
-    if neis_ensemble_enabled:
-        from unifoli_ingest.neis_pipeline import inspect_pdf_route, is_neis_candidate, parse_pdf_with_neis_pipeline
+    document = _open_pdf_document(file_path)
+    try:
+        if neis_ensemble_enabled:
+            from unifoli_ingest.neis_pipeline import inspect_pdf_route, is_neis_candidate, parse_pdf_with_neis_pipeline
 
-        route = inspect_pdf_route(file_path)
-        if (not neis_auto_detect_enabled) or is_neis_candidate(route, min_confidence=neis_auto_detect_min_confidence):
-            return parse_pdf_with_neis_pipeline(
-                file_path,
-                chunk_size_chars=chunk_size_chars,
-                overlap_chars=overlap_chars,
-                odl_enabled=odl_enabled,
-            )
+            try:
+                route = inspect_pdf_route(file_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("NEIS route inspection failed for %s; falling back to base PyMuPDF parsing.", file_path)
+                return _parse_pdf_with_pymupdf(
+                    document=document,
+                    file_path=file_path,
+                    chunk_size_chars=chunk_size_chars,
+                    overlap_chars=overlap_chars,
+                    extra_warnings=["NEIS route inspection failed; generic PDF parsing was used instead."],
+                    continuity_metadata={
+                        "advanced_parse_fallback_used": True,
+                        "advanced_parse_fallback_reason": f"route_inspection_failed:{type(exc).__name__}",
+                    },
+                )
+            if (not neis_auto_detect_enabled) or is_neis_candidate(
+                route,
+                min_confidence=neis_auto_detect_min_confidence,
+            ):
+                try:
+                    return parse_pdf_with_neis_pipeline(
+                        file_path,
+                        chunk_size_chars=chunk_size_chars,
+                        overlap_chars=overlap_chars,
+                        odl_enabled=odl_enabled,
+                        neis_extractpdf4j_enabled=neis_extractpdf4j_enabled,
+                        neis_extractpdf4j_base_url=neis_extractpdf4j_base_url,
+                        neis_extractpdf4j_timeout_seconds=neis_extractpdf4j_timeout_seconds,
+                        neis_dedoc_enabled=neis_dedoc_enabled,
+                        neis_provider_min_quality_score=neis_provider_min_quality_score,
+                        neis_merge_policy=neis_merge_policy,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("NEIS pipeline failed for %s; falling back to base PyMuPDF parsing.", file_path)
+                    return _parse_pdf_with_pymupdf(
+                        document=document,
+                        file_path=file_path,
+                        chunk_size_chars=chunk_size_chars,
+                        overlap_chars=overlap_chars,
+                        extra_warnings=["Advanced NEIS parsing failed; generic PDF parsing was used instead."],
+                        continuity_metadata={
+                            "advanced_parse_fallback_used": True,
+                            "advanced_parse_fallback_reason": type(exc).__name__,
+                            "route_inspection": route,
+                        },
+                    )
 
-    document = fitz.open(file_path)
-    if document.is_encrypted:
-        raise ValueError("??로??하??PDF ??일????호???보호??어 ??어 ??용????을 ????습??다. ??호?????제??????시 ??로??해 주세??")
+        return _parse_pdf_with_pymupdf(
+            document=document,
+            file_path=file_path,
+            chunk_size_chars=chunk_size_chars,
+            overlap_chars=overlap_chars,
+        )
+    finally:
+        document.close()
 
+
+def _parse_pdf_with_pymupdf(
+    *,
+    document: fitz.Document,
+    file_path: Path,
+    chunk_size_chars: int,
+    overlap_chars: int,
+    extra_warnings: list[str] | None = None,
+    continuity_metadata: dict[str, object] | None = None,
+) -> ParsedDocumentPayload:
     masking_pipeline = MaskingPipeline()
     masking_counter: Counter[str] = Counter()
-    warnings: list[str] = []
+    warnings: list[str] = [str(item).strip() for item in (extra_warnings or []) if str(item).strip()]
     replacement_count = 0
     masking_methods: set[str] = set()
     raw_pages: list[dict[str, object]] = []
@@ -181,6 +248,8 @@ def parse_pdf_document(
     processing_status = DocumentProcessingStatus.PARSED.value if chunks else DocumentProcessingStatus.FAILED.value
     if blank_pages or warnings:
         processing_status = DocumentProcessingStatus.PARTIAL.value if chunks else DocumentProcessingStatus.FAILED.value
+    if not chunks and _PDF_NO_USABLE_TEXT_MESSAGE not in warnings:
+        warnings.append(_PDF_NO_USABLE_TEXT_MESSAGE)
 
     parse_confidence = round(
         max(page_confidences, default=0.35)
@@ -200,6 +269,28 @@ def parse_pdf_document(
         "evidence_references": evidence_references,
         "chunk_evidence_map": chunk_evidence_map,
     }
+    if continuity_metadata:
+        analysis_artifact["continuity"] = continuity_metadata
+
+    metadata = {
+        "filename": file_path.name,
+        "warnings": warnings,
+        "blank_pages": blank_pages,
+        "masking": {
+            "pattern_hits": dict(masking_counter),
+            "replacement_count": replacement_count,
+            "methods": sorted(masking_methods),
+            "warnings": warnings,
+        },
+        "raw_parse_artifact": {
+            "schema_version": "unifoli.raw_pdf.v1",
+            "source": "pymupdf",
+            "pages": raw_pages,
+        },
+        "student_artifact_parse": analysis_artifact,
+    }
+    if continuity_metadata:
+        metadata["continuity"] = continuity_metadata
 
     return ParsedDocumentPayload(
         parser_name="pymupdf",
@@ -208,23 +299,7 @@ def parse_pdf_document(
         word_count=len(content_text.split()),
         content_text=content_text,
         content_markdown=content_markdown,
-        metadata={
-            "filename": file_path.name,
-            "warnings": warnings,
-            "blank_pages": blank_pages,
-            "masking": {
-                "pattern_hits": dict(masking_counter),
-                "replacement_count": replacement_count,
-                "methods": sorted(masking_methods),
-                "warnings": warnings,
-            },
-            "raw_parse_artifact": {
-                "schema_version": "unifoli.raw_pdf.v1",
-                "source": "pymupdf",
-                "pages": raw_pages,
-            },
-            "student_artifact_parse": analysis_artifact,
-        },
+        metadata=metadata,
         chunks=chunks,
         processing_status=processing_status,
         masking_status=DocumentMaskingStatus.MASKED.value if content_text else DocumentMaskingStatus.FAILED.value,
@@ -327,7 +402,8 @@ def _slice_text(text: str, chunk_size_chars: int, overlap_chars: int) -> list[tu
 
 
 def _normalize_text(value: str) -> str:
-    collapsed = value.replace("\x00", " ")
+    repaired = _repair_mojibake_text(value)
+    collapsed = repaired.replace("\x00", " ")
     collapsed = collapsed.replace("\r\n", "\n").replace("\r", "\n")
     collapsed = re.sub(r"[ \t]+", " ", collapsed)
     collapsed = re.sub(r"\n{3,}", "\n\n", collapsed)
@@ -347,3 +423,25 @@ def _page_confidence(text: str) -> float:
     if length >= 80:
         return 0.68
     return 0.48
+
+
+def _open_pdf_document(file_path: Path) -> fitz.Document:
+    try:
+        document = fitz.open(file_path)
+    except Exception as exc:  # noqa: BLE001
+        raise PDFParseFailure("pdf_malformed", _PDF_MALFORMED_MESSAGE) from exc
+    if document.is_encrypted:
+        document.close()
+        raise PDFParseFailure("pdf_encrypted", _PDF_ENCRYPTED_MESSAGE)
+    return document
+
+
+def _repair_mojibake_text(value: str) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    try:
+        repaired = text.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return text
+    return repaired or text

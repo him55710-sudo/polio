@@ -19,6 +19,7 @@ depends_on = None
 def upgrade() -> None:
     conn = op.get_bind()
     inspector = Inspector.from_engine(conn)
+    portable_json = JSONB(astext_type=sa.Text()).with_variant(sa.JSON(), "sqlite")
 
     # workshop_sessions: quality_level 컬럼 추??
     ws_cols = [c["name"] for c in inspector.get_columns("workshop_sessions")] if "workshop_sessions" in inspector.get_table_names() else []
@@ -32,7 +33,7 @@ def upgrade() -> None:
     if "safety_score" not in da_cols:
         op.add_column("draft_artifacts", sa.Column("safety_score", sa.Integer(), nullable=True))
     if "safety_flags" not in da_cols:
-        op.add_column("draft_artifacts", sa.Column("safety_flags", JSONB(astext_type=sa.Text()), nullable=True))
+        op.add_column("draft_artifacts", sa.Column("safety_flags", portable_json, nullable=True))
     if "quality_downgraded" not in da_cols:
         op.add_column("draft_artifacts", sa.Column("quality_downgraded", sa.Boolean(), nullable=False, server_default="false"))
 

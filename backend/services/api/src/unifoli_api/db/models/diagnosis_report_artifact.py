@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from unifoli_api.core.database import Base, utc_now
@@ -11,6 +11,16 @@ from unifoli_api.core.database import Base, utc_now
 
 class DiagnosisReportArtifact(Base):
     __tablename__ = "diagnosis_report_artifacts"
+    __table_args__ = (
+        Index(
+            "ix_diagnosis_report_artifacts_run_mode_version",
+            "diagnosis_run_id",
+            "report_mode",
+            "version",
+            "created_at",
+        ),
+        Index("ix_diagnosis_report_artifacts_project_created_at", "project_id", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     diagnosis_run_id = Column(String(36), ForeignKey("diagnosis_runs.id", ondelete="CASCADE"), nullable=False, index=True)

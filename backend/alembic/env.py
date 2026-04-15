@@ -22,7 +22,7 @@ for package_path in PACKAGE_PATHS:
 
 from unifoli_api.core.config import get_settings  # noqa: E402
 from unifoli_api.core.database import Base  # noqa: E402
-from unifoli_api.db.models import document_chunk, draft, parsed_document, project, render_job, upload_asset  # noqa: F401, E402
+from unifoli_api.db import models  # noqa: F401, E402
 
 config = context.config
 if config.config_file_name is not None:
@@ -41,6 +41,8 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        compare_server_default=True,
+        render_as_batch=url.startswith("sqlite:"),
     )
 
     with context.begin_transaction():
@@ -55,7 +57,13 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            compare_server_default=True,
+            render_as_batch=connection.dialect.name == "sqlite",
+        )
 
         with context.begin_transaction():
             context.run_migrations()

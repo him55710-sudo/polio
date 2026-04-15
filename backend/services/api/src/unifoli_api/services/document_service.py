@@ -18,6 +18,7 @@ from unifoli_api.services.pdf_analysis_service import (
     build_student_record_structure_metadata,
 )
 from unifoli_api.services.student_record_pipeline_service import StudentRecordPipelineService
+from unifoli_api.schemas.pipeline_metadata import PipelineMetadata
 import pdfplumber
 import logging
 from unifoli_api.core.errors import UniFoliErrorCode, UniFoliError
@@ -48,8 +49,13 @@ STUDENT_RECORD_KEYWORDS = (
     "학생부",
     "생기부",
 )
-
-
+_DOCUMENT_FAILURE_CODE_MAP = {
+    "pdf_malformed": "MALFORMED_PDF",
+    "pdf_encrypted": "ENCRYPTED_PDF",
+    "pdf_no_usable_text": UniFoliErrorCode.NO_USABLE_TEXT.value,
+    "file_not_found": UniFoliErrorCode.FILE_NOT_FOUND.value,
+    "storage_missing": UniFoliErrorCode.FILE_NOT_FOUND.value,
+}
 
 
 def upload_supports_ingest(upload_asset: UploadAsset) -> bool:
@@ -80,6 +86,40 @@ def ensure_document_placeholder(db: Session, upload_asset: UploadAsset) -> Parse
     return document
 
 
+def sync_document_async_job_state(
+    document: ParsedDocument,
+    *,
+    job_id: str | None,
+    job_status: str | None,
+    job_error: str | None = None,
+) -> ParsedDocument:
+    metadata = dict(document.parse_metadata or {})
+
+    if job_id:
+        document.latest_async_job_id = job_id
+        metadata["latest_async_job_id"] = job_id
+    else:
+        document.latest_async_job_id = None
+        metadata.pop("latest_async_job_id", None)
+
+    if job_status:
+        document.latest_async_job_status = job_status
+        metadata["latest_async_job_status"] = job_status
+    else:
+        document.latest_async_job_status = None
+        metadata.pop("latest_async_job_status", None)
+
+    if job_error:
+        document.latest_async_job_error = job_error
+        metadata["latest_async_job_error"] = job_error
+    else:
+        document.latest_async_job_error = None
+        metadata.pop("latest_async_job_error", None)
+
+    document.parse_metadata = metadata
+    return document
+
+
 def _map_document_status_to_upload_status(document_status: str) -> str:
     mapping = {
         DocumentProcessingStatus.UPLOADED.value: UploadStatus.STORED.value,
@@ -91,6 +131,26 @@ def _map_document_status_to_upload_status(document_status: str) -> str:
         DocumentProcessingStatus.FAILED.value: UploadStatus.FAILED.value,
     }
     return mapping.get(document_status, UploadStatus.STORED.value)
+
+
+def _normalize_document_failure_code(raw_code: str | None, message: str) -> str:
+    normalized = str(raw_code or "").strip()
+    lowered = normalized.lower()
+    if lowered in _DOCUMENT_FAILURE_CODE_MAP:
+        return _DOCUMENT_FAILURE_CODE_MAP[lowered]
+    if normalized in {member.value for member in UniFoliErrorCode}:
+        return normalized
+
+    lowered_message = str(message or "").lower()
+    if "encrypted pdf" in lowered_message:
+        return "ENCRYPTED_PDF"
+    if "malformed" in lowered_message and "pdf" in lowered_message:
+        return "MALFORMED_PDF"
+    if "no extractable text" in lowered_message or "no usable text" in lowered_message:
+        return UniFoliErrorCode.NO_USABLE_TEXT.value
+    if "not found in storage" in lowered_message or "source file not found" in lowered_message:
+        return UniFoliErrorCode.FILE_NOT_FOUND.value
+    return normalized or UniFoliErrorCode.INTERNAL_ERROR.value
 
 
 def _is_student_record_candidate(*, parser_name: str, content_text: str | None) -> bool:
@@ -135,16 +195,29 @@ def _mark_document_failed(
     message: str,
     *,
     masking_failed: bool = False,
+    failure_code: str | None = None,
+    failure_stage: str = "document_ingest",
 ) -> None:
     public_message = sanitize_public_error(message, fallback=DOCUMENT_FAILURE_FALLBACK)
+    normalized_code = _normalize_document_failure_code(failure_code, message)
+    existing_metadata = dict(document.parse_metadata or {})
+    warnings = [
+        sanitize_public_error(str(item), fallback=DOCUMENT_FAILURE_FALLBACK)
+        for item in existing_metadata.get("warnings", [])
+        if str(item).strip()
+    ]
+    if public_message not in warnings:
+        warnings.append(public_message)
     document.status = DocumentProcessingStatus.FAILED.value
     if masking_failed:
         document.masking_status = DocumentMaskingStatus.FAILED.value
     document.last_error = public_message
     document.parse_completed_at = utc_now()
     document.parse_metadata = {
-        **(document.parse_metadata or {}),
-        "warnings": [public_message],
+        **existing_metadata,
+        "warnings": warnings,
+        "error_code": normalized_code,
+        "failure_stage": failure_stage,
     }
 
     upload_asset.status = UploadStatus.FAILED.value
@@ -160,6 +233,7 @@ def ingest_upload_asset(
     *,
     force: bool = False,
     prepared: bool = False,
+    job_id: str | None = None,
 ) -> ParsedDocument:
     document = ensure_document_placeholder(db, upload_asset)
     if document.status in IN_PROGRESS_DOCUMENT_STATUSES and not force:
@@ -169,7 +243,15 @@ def ingest_upload_asset(
 
     if not upload_supports_ingest(upload_asset):
         message = f"Unsupported ingest extension for {upload_asset.original_filename}"
-        _mark_document_failed(db, document, upload_asset, message, masking_failed=True)
+        _mark_document_failed(
+            db,
+            document,
+            upload_asset,
+            message,
+            masking_failed=True,
+            failure_code="unsupported_extension",
+            failure_stage="preflight",
+        )
         raise ValueError(message)
 
     if not prepared:
@@ -179,7 +261,15 @@ def ingest_upload_asset(
     storage = get_storage_provider(settings)
     if not storage.exists(upload_asset.stored_path):
         message = f"Source file not found in storage: {upload_asset.stored_path}"
-        _mark_document_failed(db, document, upload_asset, message, masking_failed=True)
+        _mark_document_failed(
+            db,
+            document,
+            upload_asset,
+            message,
+            masking_failed=True,
+            failure_code=UniFoliErrorCode.FILE_NOT_FOUND.value,
+            failure_stage="storage_lookup",
+        )
         raise FileNotFoundError(message)
 
     source_path: Path | None = None
@@ -214,7 +304,14 @@ def ingest_upload_asset(
             )
         except Exception as parse_err:
             logger.error(f"Base parse failed critically: {parse_err}")
-            _mark_document_failed(db, document, upload_asset, f"Base parse failed: {str(parse_err)}")
+            _mark_document_failed(
+                db,
+                document,
+                upload_asset,
+                f"Base parse failed: {str(parse_err)}",
+                failure_code=getattr(parse_err, "code", None),
+                failure_stage="base_parse",
+            )
             raise
 
         if document.chunks:
@@ -246,6 +343,12 @@ def ingest_upload_asset(
             "source_storage_provider": get_storage_provider_name(storage),
             "source_storage_key": upload_asset.stored_path,
         }
+        if parsed.processing_status == DocumentProcessingStatus.FAILED.value and parsed.warnings:
+            document.parse_metadata["error_code"] = _normalize_document_failure_code(
+                parsed.metadata.get("error_code") if isinstance(parsed.metadata, dict) else None,
+                parsed.warnings[0],
+            )
+            document.parse_metadata["failure_stage"] = "base_parse"
 
         # --- STAGE 2: Advanced Semantic Pipeline (Optional) ---
         is_student_record_candidate = _is_student_record_candidate(
@@ -257,9 +360,19 @@ def ingest_upload_asset(
                 logger.info(f"Applying advanced semantic parsing pipeline: {upload_asset.original_filename}")
                 with pdfplumber.open(source_path) as pdf:
                     advanced_pipeline = StudentRecordPipelineService()
-                    advanced_artifact = advanced_pipeline.process_document(pdf.pages, parsed.content_text)
+
+                    def _heartbeat():
+                        if job_id:
+                            from unifoli_api.services.async_job_service import heartbeat_async_job
+                            heartbeat_async_job(db, job_id)
+
+                    advanced_artifact = advanced_pipeline.process_document(
+                        pdf.pages,
+                        parsed.content_text,
+                        heartbeat_callback=_heartbeat,
+                    )
                     document.parse_metadata["analysis_artifact"] = advanced_artifact
-                    
+
                     quality_report = advanced_artifact.get("quality_report", {})
                     if quality_report:
                         document.parse_metadata["pipeline_quality_score"] = float(quality_report.get("overall_score", 0))
@@ -303,6 +416,15 @@ def ingest_upload_asset(
                 document.parse_metadata["student_record_structure"] = student_record_structure
         except Exception as e:
             logger.warning(f"Metadata composition failed: {e}")
+
+        # --- VALIDATION: Pipeline Integrity ---
+        try:
+            # Validate and clean up metadata before final stages
+            validated_metadata = PipelineMetadata.from_dict(document.parse_metadata)
+            document.parse_metadata = validated_metadata.model_dump(exclude_none=True)
+            logger.info("Pipeline metadata validation successful.")
+        except Exception as e:
+            logger.warning(f"Pipeline metadata validation failed: {str(e)}. Proceeding with raw metadata.")
 
         # --- STAGE 5: Embeddings (Optional) ---
         try:
@@ -356,7 +478,16 @@ def ingest_upload_asset(
         db.refresh(document)
         return document
     except Exception as exc:  # noqa: BLE001
-        _mark_document_failed(db, document, upload_asset, str(exc), masking_failed=True)
+        if document.status != DocumentProcessingStatus.FAILED.value:
+            _mark_document_failed(
+                db,
+                document,
+                upload_asset,
+                str(exc),
+                masking_failed=True,
+                failure_code=getattr(exc, "code", None),
+                failure_stage="document_ingest",
+            )
         raise
     finally:
         if cleanup_source_path and source_path is not None and source_path.exists():
@@ -369,13 +500,14 @@ def parse_document_by_id(
     *,
     force: bool = True,
     prepared: bool = False,
+    job_id: str | None = None,
 ) -> ParsedDocument:
     document = get_document(db, document_id)
     if document is None:
         raise ValueError(f"Document not found: {document_id}")
     if document.upload_asset is None:
         raise ValueError(f"Document has no upload asset: {document_id}")
-    return ingest_upload_asset(db, document.upload_asset, force=force, prepared=prepared)
+    return ingest_upload_asset(db, document.upload_asset, force=force, prepared=prepared, job_id=job_id)
 
 
 def enqueue_document_parse(document_id: str) -> None:
@@ -395,11 +527,12 @@ def enqueue_document_parse(document_id: str) -> None:
             project_id=document.project_id,
             payload={"document_id": document_id, "prepared": True},
         )
-        document.parse_metadata = {
-            **(document.parse_metadata or {}),
-            "latest_async_job_id": job.id,
-            "latest_async_job_status": job.status,
-        }
+        sync_document_async_job_state(
+            document,
+            job_id=job.id,
+            job_status=job.status,
+            job_error=None,
+        )
         db.add(document)
         db.commit()
         dispatch_job_if_enabled(job.id)

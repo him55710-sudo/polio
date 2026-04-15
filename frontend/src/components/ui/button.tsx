@@ -12,10 +12,11 @@ interface ButtonStyleOptions {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'border-transparent bg-[linear-gradient(135deg,#1d4fff_0%,#2da3ff_100%)] text-white shadow-[0_14px_28px_rgba(29,79,255,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(29,79,255,0.32)]',
-  secondary: 'border-[#d6e4ff] bg-white/95 text-[#19305f] shadow-[0_8px_20px_rgba(25,69,179,0.08)] hover:bg-[#f7faff]',
-  tertiary: 'border-transparent bg-[#edf4ff] text-[#1f3f86] hover:bg-[#e3eeff]',
-  ghost: 'border-transparent bg-transparent text-slate-600 hover:bg-[#edf3ff] hover:text-[#15305f]',
+    'border-transparent bg-[linear-gradient(135deg,#3458ff_0%,#6170ff_55%,#2cb6ff_100%)] text-white shadow-[0_16px_34px_rgba(54,92,255,0.28)] hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(54,92,255,0.34)]',
+  secondary:
+    'border-white/70 bg-white/82 text-[#20335e] shadow-[0_10px_24px_rgba(33,52,110,0.08)] backdrop-blur-md hover:border-[#cbd7ff] hover:bg-[#f8faff]',
+  tertiary: 'border-transparent bg-[#eef2ff] text-[#25408a] hover:bg-[#e4ebff]',
+  ghost: 'border-transparent bg-transparent text-slate-600 hover:bg-white/60 hover:text-[#15305f]',
   danger: 'border-transparent bg-red-600 text-white shadow-md shadow-red-900/15 hover:bg-red-700',
 };
 

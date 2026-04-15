@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from unifoli_api.core.database import Base, utc_now
@@ -12,6 +12,11 @@ from unifoli_domain.enums import AsyncJobStatus
 
 class AsyncJob(Base):
     __tablename__ = "async_jobs"
+    __table_args__ = (
+        Index("ix_async_jobs_resource_created_at", "resource_type", "resource_id", "created_at"),
+        Index("ix_async_jobs_status_next_attempt_at", "status", "next_attempt_at", "created_at"),
+        Index("ix_async_jobs_project_created_at", "project_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     project_id: Mapped[str | None] = mapped_column(

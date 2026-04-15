@@ -179,13 +179,25 @@ def _patch_settings(monkeypatch, **kwargs) -> Settings:
     return settings
 
 
-def _patch_resolution(monkeypatch, llm_client, *, attempted_model: str = "gemma4-pdf") -> None:  # noqa: ANN001
+def _patch_resolution(
+    monkeypatch,
+    llm_client,
+    *,
+    attempted_provider: str = "ollama",
+    attempted_model: str = "gemma4-pdf",
+    actual_provider: str = "ollama",
+    actual_model: str | None = None,
+    fallback_used: bool = False,
+    fallback_reason: str | None = None,
+) -> None:  # noqa: ANN001
     resolution = PDFAnalysisLLMResolution(
-        attempted_provider="ollama",
+        attempted_provider=attempted_provider,
         attempted_model=attempted_model,
-        actual_provider="ollama",
-        actual_model=attempted_model,
+        actual_provider=actual_provider,
+        actual_model=actual_model or attempted_model,
         client=llm_client,
+        fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
     )
     monkeypatch.setattr("unifoli_api.services.pdf_analysis_service.resolve_pdf_analysis_llm_resolution", lambda: resolution)
 
@@ -241,6 +253,31 @@ def test_pdf_analysis_timeout_to_heuristic_fallback(monkeypatch) -> None:
     assert metadata["actual_model"] == "heuristic-summary-v1"
     assert metadata["actual_pdf_analysis_provider"] == "heuristic"
     assert metadata["actual_pdf_analysis_model"] == "heuristic-summary-v1"
+
+
+def test_pdf_analysis_success_preserves_provider_fallback_metadata(monkeypatch) -> None:
+    _patch_settings(monkeypatch)
+    fake_llm = _DeterministicPdfLLM()
+    _patch_resolution(
+        monkeypatch,
+        fake_llm,
+        attempted_provider="ollama",
+        attempted_model="gemma4-pdf",
+        actual_provider="gemini",
+        actual_model="gemini-2.0-flash",
+        fallback_used=True,
+        fallback_reason="ollama_unreachable",
+    )
+
+    metadata = build_pdf_analysis_metadata(_build_payload())
+
+    assert metadata is not None
+    assert metadata["engine"] == "llm"
+    assert metadata["fallback_used"] is True
+    assert metadata["fallback_reason"] == "ollama_unreachable"
+    assert metadata["attempted_provider"] == "ollama"
+    assert metadata["actual_provider"] == "gemini"
+    assert metadata["actual_model"] == "gemini-2.0-flash"
 
 
 def test_pdf_analysis_metadata_provider_model_fields(monkeypatch) -> None:

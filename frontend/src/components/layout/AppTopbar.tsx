@@ -6,6 +6,7 @@ import { UniversityLogo } from '../UniversityLogo';
 import { Button } from '../ui';
 import { Topbar } from '../primitives';
 import { WorkflowContextHeader } from './WorkflowContextHeader';
+import { cn } from '../../lib/cn';
 
 interface GoalItem {
   university: string;
@@ -20,6 +21,24 @@ interface AppTopbarProps {
   primaryGoal?: GoalItem | null;
   rankedGoals?: GoalItem[];
 }
+
+const goalToneClasses = [
+  {
+    shell: 'border-sky-200/90 bg-sky-50/88 text-sky-800 shadow-[0_12px_26px_rgba(14,165,233,0.12)]',
+    rank: 'text-sky-700',
+    logo: 'bg-white',
+  },
+  {
+    shell: 'border-violet-200/90 bg-violet-50/90 text-violet-800 shadow-[0_12px_26px_rgba(139,92,246,0.12)]',
+    rank: 'text-violet-700',
+    logo: 'bg-white',
+  },
+  {
+    shell: 'border-emerald-200/90 bg-emerald-50/90 text-emerald-800 shadow-[0_12px_26px_rgba(16,185,129,0.12)]',
+    rank: 'text-emerald-700',
+    logo: 'bg-white',
+  },
+];
 
 export function AppTopbar({
   currentSectionLabel,
@@ -43,24 +62,28 @@ export function AppTopbar({
       </Topbar>
 
       {visibleGoals.length ? (
-        <div className="border-b border-[#d6e4ff] bg-[#eff5ff]/90 px-3 py-2 md:hidden">
-          <div className="flex gap-2 overflow-x-auto pb-0.5">
-            {visibleGoals.map((goal, index) => (
-              <div
-                key={`${goal.university}-${goal.major ?? ''}-${index}`}
-                className="flex min-w-[148px] items-center gap-2 rounded-xl border border-[#d6e4ff] bg-white/95 px-2 py-1.5 shadow-[0_8px_20px_rgba(24,66,170,0.08)] sm:min-w-[170px]"
-              >
-                <UniversityLogo
-                  universityName={goal.university}
-                  className="h-7 w-7 rounded-md bg-slate-100 object-contain p-1"
-                  fallbackClassName="border border-[#d6e4ff]"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-black text-[#2550b7]">{index + 1}순위</p>
-                  <p className="truncate text-xs font-black text-slate-800">{goal.university}</p>
+        <div className="border-b border-white/70 bg-[linear-gradient(180deg,rgba(248,250,255,0.84)_0%,rgba(241,246,255,0.8)_100%)] px-3 py-2.5 md:hidden">
+          <div className="flex gap-2.5 overflow-x-auto pb-0.5">
+            {visibleGoals.map((goal, index) => {
+              const tone = goalToneClasses[index % goalToneClasses.length];
+
+              return (
+                <div
+                  key={`${goal.university}-${goal.major ?? ''}-${index}`}
+                  className={cn('flex min-w-[156px] items-center gap-2.5 rounded-2xl border px-3 py-2 sm:min-w-[176px]', tone.shell)}
+                >
+                  <UniversityLogo
+                    universityName={goal.university}
+                    className={cn('h-8 w-8 rounded-xl object-contain p-1.5', tone.logo)}
+                    fallbackClassName="border border-[#d6e4ff]"
+                  />
+                  <div className="min-w-0">
+                    <p className={cn('truncate text-[11px] font-black', tone.rank)}>{index + 1}순위</p>
+                    <p className="truncate text-xs font-black text-slate-900">{goal.university}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -70,29 +93,33 @@ export function AppTopbar({
 
         <div className="flex items-center gap-3">
           {visibleGoals.length ? (
-            <div className="hidden max-w-[560px] items-center gap-2 overflow-x-auto rounded-2xl border border-[#d6e4ff] bg-white/72 px-3 py-2 shadow-[0_8px_20px_rgba(24,66,170,0.08)] lg:flex">
-              {visibleGoals.map((goal, index) => (
-                <div
-                  key={`${goal.university}-${goal.major ?? ''}-${index}`}
-                  className="flex min-w-[180px] items-center gap-2 rounded-xl border border-[#d9e7ff] bg-white/95 px-2 py-1.5"
-                >
-                  <UniversityLogo
-                    universityName={goal.university}
-                    className="h-7 w-7 rounded-md bg-slate-100 object-contain p-1"
-                    fallbackClassName="border border-[#d6e4ff]"
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate text-[11px] font-black text-[#2550b7]">{index + 1}순위</p>
-                    <p className="truncate text-xs font-black text-slate-800">{goal.university}</p>
+            <div className="hidden max-w-[620px] items-center gap-2.5 overflow-x-auto rounded-[1.6rem] border border-white/70 bg-white/68 px-3.5 py-2.5 shadow-[0_14px_30px_rgba(42,64,132,0.08)] backdrop-blur-xl lg:flex">
+              {visibleGoals.map((goal, index) => {
+                const tone = goalToneClasses[index % goalToneClasses.length];
+
+                return (
+                  <div
+                    key={`${goal.university}-${goal.major ?? ''}-${index}`}
+                    className={cn('flex min-w-[186px] items-center gap-2.5 rounded-2xl border px-3 py-2', tone.shell)}
+                  >
+                    <UniversityLogo
+                      universityName={goal.university}
+                      className={cn('h-8 w-8 rounded-xl object-contain p-1.5', tone.logo)}
+                      fallbackClassName="border border-[#d6e4ff]"
+                    />
+                    <div className="min-w-0">
+                      <p className={cn('truncate text-[11px] font-black', tone.rank)}>{index + 1}순위</p>
+                      <p className="truncate text-xs font-black text-slate-900">{goal.university}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : null}
 
           <Link
             to="/"
-            className="inline-flex items-center gap-2 rounded-2xl border border-[#d5e3ff] bg-white/95 px-3 py-2 text-sm font-bold text-[#35518d] shadow-[0_8px_18px_rgba(24,66,170,0.08)] hover:bg-[#f3f8ff]"
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/84 px-3.5 py-2.5 text-sm font-bold text-[#35518d] shadow-[0_12px_26px_rgba(42,64,132,0.08)] backdrop-blur-md transition-colors hover:bg-[#f7f9ff]"
           >
             <ArrowLeft size={14} />
             공개 페이지

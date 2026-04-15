@@ -10,9 +10,10 @@ interface AppFooterProps {
 
 export function AppFooter({ onOpenPartnership }: AppFooterProps) {
   return (
-    <SurfaceCard className="mt-8 border-[#d8e6ff] bg-white/86 p-5 shadow-[0_18px_36px_rgba(24,66,170,0.12)] sm:mt-12 sm:p-8">
-      <div className="grid gap-8 lg:grid-cols-[1.25fr_0.75fr]">
-        <div className="space-y-4">
+    <SurfaceCard className="relative mt-8 overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(245,248,255,0.86)_100%)] p-5 shadow-[0_20px_42px_rgba(42,64,132,0.12)] sm:mt-12 sm:p-8">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_10%_20%,rgba(56,189,248,0.18),transparent_28%),radial-gradient(circle_at_82%_0%,rgba(251,191,36,0.16),transparent_24%)]" />
+      <div className="relative grid gap-8 lg:grid-cols-[1.25fr_0.75fr]">
+        <div className="space-y-5">
           <div className="mt-1 space-y-2">
             <UniFoliLogo size="sm" subtitle={null} />
             <p className="text-sm font-medium leading-relaxed text-slate-500">
@@ -22,7 +23,7 @@ export function AppFooter({ onOpenPartnership }: AppFooterProps) {
               </span>
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link to="/faq" className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
               자주 묻는 질문
             </Link>

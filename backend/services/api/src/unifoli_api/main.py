@@ -18,10 +18,8 @@ logger = logging.getLogger("unifoli.api")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    settings = get_settings()
     ensure_app_directories()
-    if settings.database_auto_create_tables:
-        initialize_database()
+    initialize_database()
     yield
 
 

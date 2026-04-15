@@ -21,8 +21,8 @@ class DocumentChunk(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    document_id: Mapped[str] = mapped_column(ForeignKey("parsed_documents.id", ondelete="CASCADE"))
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    document_id: Mapped[str] = mapped_column(ForeignKey("parsed_documents.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     chunk_index: Mapped[int] = mapped_column(Integer)
     page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     char_start: Mapped[int] = mapped_column(Integer, default=0)

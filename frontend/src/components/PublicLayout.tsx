@@ -19,10 +19,10 @@ function PublicNavItem({ to, label, onClick }: { to: string; label: string; onCl
       onClick={onClick}
       className={({ isActive }) =>
         cn(
-          'rounded-xl px-3 py-2 text-sm font-bold transition-all',
+          'rounded-2xl px-3.5 py-2.5 text-sm font-bold transition-all',
           isActive
-            ? 'bg-[linear-gradient(135deg,#1d4fff_0%,#2da3ff_100%)] text-white shadow-[0_10px_22px_rgba(29,79,255,0.25)]'
-            : 'text-slate-600 hover:bg-[#eef5ff] hover:text-[#21478d]',
+            ? 'bg-[linear-gradient(135deg,#3558ff_0%,#5f6fff_56%,#2cb6ff_100%)] text-white shadow-[0_14px_30px_rgba(54,92,255,0.24)]'
+            : 'text-slate-600 hover:bg-white/70 hover:text-[#21478d]',
         )
       }
     >
@@ -57,9 +57,9 @@ export function PublicLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(45,163,255,0.14),transparent_26%),radial-gradient(circle_at_95%_2%,rgba(82,129,255,0.12),transparent_24%),linear-gradient(180deg,#f7faff_0%,#eef5ff_100%)] text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-[#d7e5ff] bg-white/76 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_24%),radial-gradient(circle_at_92%_2%,rgba(99,102,241,0.12),transparent_24%),radial-gradient(circle_at_55%_100%,rgba(251,113,133,0.08),transparent_20%),linear-gradient(180deg,#fbfcff_0%,#f3f6ff_50%,#faf6ff_100%)] text-slate-900">
+      <header className="sticky top-0 z-40 border-b border-white/70 bg-white/72 backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           <Link to="/" onClick={handleDesktopNavClick}>
             <UniFoliLogo size="md" subtitle={null} />
           </Link>
@@ -83,14 +83,14 @@ export function PublicLayout() {
             type="button"
             onClick={() => setMenuOpen(open => !open)}
             aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#d5e3ff] bg-white text-[#31569f] shadow-[0_8px_18px_rgba(24,66,170,0.1)] md:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/70 bg-white/84 text-[#31569f] shadow-[0_12px_26px_rgba(42,64,132,0.1)] backdrop-blur-md md:hidden"
           >
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
 
         {menuOpen ? (
-          <div className="border-t border-[#d7e5ff] bg-white/92 px-4 py-3 backdrop-blur md:hidden">
+          <div className="border-t border-white/70 bg-white/86 px-4 py-3 backdrop-blur-xl md:hidden">
             <div className="flex flex-col gap-1">
               {navItems.map(item => (
                 <PublicNavItem key={item.to} to={item.to} label={item.label} onClick={handleMobileNavClick} />
@@ -112,7 +112,7 @@ export function PublicLayout() {
 
       <Outlet />
 
-      <footer className="border-t border-[#d7e5ff] bg-white/90 backdrop-blur-sm">
+      <footer className="border-t border-white/70 bg-white/72 backdrop-blur-xl">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.4fr_0.6fr] lg:px-8">
           <div className="space-y-4">
             <UniFoliLogo

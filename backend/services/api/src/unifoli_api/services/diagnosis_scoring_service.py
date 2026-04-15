@@ -110,7 +110,10 @@ async def extract_semantic_diagnosis(
 
     from unifoli_api.services.prompt_registry import get_prompt_registry
 
-    llm = get_llm_client()
+    try:
+        llm = get_llm_client(profile="standard", concern="diagnosis")
+    except TypeError:
+        llm = get_llm_client()  # type: ignore[call-arg]
     registry = get_prompt_registry()
 
     # Get base instruction from registry

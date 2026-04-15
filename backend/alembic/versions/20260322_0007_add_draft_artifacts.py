@@ -19,6 +19,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     inspector = Inspector.from_engine(conn)
     tables = inspector.get_table_names()
+    portable_json = JSONB(astext_type=sa.Text()).with_variant(sa.JSON(), "sqlite")
 
     # stream_token column on workshop_sessions
     existing_cols = [c["name"] for c in inspector.get_columns("workshop_sessions")] if "workshop_sessions" in tables else []
@@ -34,7 +35,7 @@ def upgrade() -> None:
             sa.Column("report_markdown", sa.Text(), nullable=True),
             sa.Column("teacher_record_summary_500", sa.Text(), nullable=True),
             sa.Column("student_submission_note", sa.Text(), nullable=True),
-            sa.Column("evidence_map", JSONB(astext_type=sa.Text()), nullable=True),
+            sa.Column("evidence_map", portable_json, nullable=True),
             sa.Column("render_status", sa.String(length=32), nullable=False),
             sa.Column("error_message", sa.Text(), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

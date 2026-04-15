@@ -18,11 +18,13 @@ from unifoli_api.core.config import get_settings
 
 T = TypeVar("T", bound=BaseModel)
 LLMProfile = Literal["fast", "standard", "render"]
+LLMConcern = Literal["default", "guided_chat", "diagnosis", "render", "pdf_analysis"]
 
 logger = logging.getLogger("unifoli.llm")
 _OLLAMA_LOG_COOLDOWN_SECONDS = 120.0
 _last_ollama_failure_logs: dict[str, float] = {}
 _ollama_model_alias_cache: dict[str, str] = {}
+DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 
 
 class LLMRequestError(RuntimeError):
@@ -61,7 +63,22 @@ class PDFAnalysisLLMResolution:
     attempted_model: str
     actual_provider: str
     actual_model: str
-    client: LLMClient
+    client: LLMClient | None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class LLMRuntimeResolution:
+    concern: LLMConcern
+    profile: LLMProfile
+    attempted_provider: str
+    attempted_model: str
+    actual_provider: str | None
+    actual_model: str | None
+    fallback_used: bool
+    fallback_reason: str | None
+    client: LLMClient | None
 
 
 class LLMClient(abc.ABC):
@@ -88,11 +105,12 @@ class LLMClient(abc.ABC):
 
 
 class GeminiClient(LLMClient):
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, *, model_name: str = DEFAULT_GEMINI_MODEL):
         from google import genai
 
         self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = (model_name or DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
+        _initialize_runtime_state(self)
 
     async def generate_json(
         self,
@@ -101,17 +119,37 @@ class GeminiClient(LLMClient):
         system_instruction: str | None = None,
         temperature: float = 0.2,
     ) -> T:
-        response = await self.client.models.generate_content_async(
-            model=self.model_name,
-            contents=prompt,
-            config={
-                "system_instruction": system_instruction,
-                "response_mime_type": "application/json",
-                "response_schema": response_model,
-                "temperature": temperature,
-            },
-        )
-        return response_model.model_validate_json(response.text)
+        started_at = time.perf_counter()
+        try:
+            response = await self.client.models.generate_content_async(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "system_instruction": system_instruction,
+                    "response_mime_type": "application/json",
+                    "response_schema": response_model,
+                    "temperature": temperature,
+                },
+            )
+            parsed = response_model.model_validate_json(response.text)
+            _record_runtime_success(
+                self,
+                provider="gemini",
+                model=self.model_name,
+                operation="generate_json",
+                started_at=started_at,
+            )
+            return parsed
+        except Exception as exc:  # noqa: BLE001
+            _record_runtime_failure(
+                self,
+                provider="gemini",
+                model=self.model_name,
+                operation="generate_json",
+                started_at=started_at,
+                exc=exc,
+            )
+            raise
 
     async def stream_chat(
         self,
@@ -119,17 +157,36 @@ class GeminiClient(LLMClient):
         system_instruction: str | None = None,
         temperature: float = 0.5,
     ) -> AsyncIterator[str]:
-        response_stream = await self.client.models.generate_content_stream_async(
-            model=self.model_name,
-            contents=prompt,
-            config={
-                "system_instruction": system_instruction,
-                "temperature": temperature,
-            },
-        )
-        async for chunk in response_stream:
-            if chunk.text:
-                yield chunk.text
+        started_at = time.perf_counter()
+        try:
+            response_stream = await self.client.models.generate_content_stream_async(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "system_instruction": system_instruction,
+                    "temperature": temperature,
+                },
+            )
+            async for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
+            _record_runtime_success(
+                self,
+                provider="gemini",
+                model=self.model_name,
+                operation="stream_chat",
+                started_at=started_at,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _record_runtime_failure(
+                self,
+                provider="gemini",
+                model=self.model_name,
+                operation="stream_chat",
+                started_at=started_at,
+                exc=exc,
+            )
+            raise
 
 
 class OllamaClient(LLMClient):
@@ -166,6 +223,7 @@ class OllamaClient(LLMClient):
             self.options["num_predict"] = num_predict
         if num_thread is not None:
             self.options["num_thread"] = num_thread
+        _initialize_runtime_state(self)
 
     def _extra_body(self) -> dict[str, Any] | None:
         payload: dict[str, Any] = {}
@@ -241,6 +299,7 @@ class OllamaClient(LLMClient):
         system_instruction: str | None = None,
         temperature: float = 0.2,
     ) -> T:
+        started_at = time.perf_counter()
         messages: list[dict[str, str]] = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
@@ -266,12 +325,21 @@ class OllamaClient(LLMClient):
         except Exception as exc:  # noqa: BLE001
             fallback_model = await self._resolve_model_not_found_fallback(exc)
             if not fallback_model:
-                raise _to_ollama_request_error(
+                request_error = _to_ollama_request_error(
                     exc,
                     base_url=self.base_url,
                     model=self.model,
                     profile=self.profile_name,
-                ) from exc
+                )
+                _record_runtime_failure(
+                    self,
+                    provider="ollama",
+                    model=self.model,
+                    operation="generate_json",
+                    started_at=started_at,
+                    exc=request_error,
+                )
+                raise request_error from exc
             try:
                 response = await self.client.chat.completions.create(
                     model=fallback_model,
@@ -281,12 +349,21 @@ class OllamaClient(LLMClient):
                     extra_body=self._extra_body(),
                 )
             except Exception as retry_exc:  # noqa: BLE001
-                raise _to_ollama_request_error(
+                request_error = _to_ollama_request_error(
                     retry_exc,
                     base_url=self.base_url,
                     model=fallback_model,
                     profile=self.profile_name,
-                ) from retry_exc
+                )
+                _record_runtime_failure(
+                    self,
+                    provider="ollama",
+                    model=fallback_model,
+                    operation="generate_json",
+                    started_at=started_at,
+                    exc=request_error,
+                )
+                raise request_error from retry_exc
 
         content = response.choices[0].message.content
         if not content:
@@ -367,6 +444,7 @@ class RobustLLMClient(LLMClient):
     def __init__(self, primary: LLMClient, fallback: LLMClient | None = None):
         self.primary = primary
         self.fallback = fallback
+        _initialize_runtime_state(self)
 
     async def generate_json(
         self,
@@ -381,9 +459,11 @@ class RobustLLMClient(LLMClient):
         # 1. Primary 시도 (재시도 포함)
         for attempt in range(max_retries + 1):
             try:
-                return await self.primary.generate_json(
+                result = await self.primary.generate_json(
                     prompt, response_model, system_instruction, temperature
                 )
+                _inherit_runtime_result(self, self.primary, fallback_used=False, fallback_reason=None)
+                return result
             except Exception as e:
                 last_exception = e
                 logger.warning(f"Primary LLM attempt {attempt + 1} failed: {e}")
@@ -397,9 +477,16 @@ class RobustLLMClient(LLMClient):
         if self.fallback:
             logger.warning("Attempting fallback LLM...")
             try:
-                return await self.fallback.generate_json(
+                result = await self.fallback.generate_json(
                     prompt, response_model, system_instruction, temperature
                 )
+                _inherit_runtime_result(
+                    self,
+                    self.fallback,
+                    fallback_used=True,
+                    fallback_reason=f"primary_failed:{type(last_exception).__name__}" if last_exception else "primary_failed",
+                )
+                return result
             except Exception as e:
                 logger.error(f"Fallback LLM also failed: {e}")
                 raise e
@@ -419,48 +506,39 @@ class RobustLLMClient(LLMClient):
         try:
             async for chunk in self.primary.stream_chat(prompt, system_instruction, temperature):
                 yield chunk
+            _inherit_runtime_result(self, self.primary, fallback_used=False, fallback_reason=None)
         except Exception as e:
             logger.error(f"Primary Stream failed: {e}. Attempting fallback...")
             if self.fallback:
                 async for chunk in self.fallback.stream_chat(prompt, system_instruction, temperature):
                     yield chunk
+                _inherit_runtime_result(
+                    self,
+                    self.fallback,
+                    fallback_used=True,
+                    fallback_reason=f"primary_failed:{type(e).__name__}",
+                )
             else:
                 raise
 
 
-def get_llm_client(*, profile: LLMProfile = "standard") -> LLMClient:
-    settings = get_settings()
-    provider = (settings.llm_provider or "gemini").strip().lower()
-    api_key = (settings.gemini_api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
-    has_valid_gemini_key = bool(api_key) and api_key != "DUMMY_KEY"
-
-    gemini = None
-    if has_valid_gemini_key:
-        gemini = GeminiClient(api_key=api_key)
-
-    ollama = None
-    if settings.app_env == "local" or _has_remote_ollama_endpoint(settings.ollama_base_url):
-        ollama = _build_ollama_client(profile=profile)
-
-    if provider == "ollama" and ollama:
-        return ollama
-
-    if gemini and ollama:
-        # Gemini 우선, 실패 시 Ollama로 Fallback
-        return RobustLLMClient(primary=gemini, fallback=ollama)
-
-    if gemini:
-        return gemini
-
-    if ollama:
-        return ollama
-
-    raise RuntimeError("No valid LLM client (Gemini or Ollama) could be configured.")
+def get_llm_client(*, profile: LLMProfile = "standard", concern: LLMConcern = "default") -> LLMClient:
+    resolution = resolve_llm_runtime(profile=profile, concern=concern)
+    if resolution.client is not None:
+        return resolution.client
+    reason = resolution.fallback_reason or "llm_unconfigured"
+    raise RuntimeError(f"No valid LLM client (Gemini or Ollama) could be configured. reason={reason}")
 
 
-def get_llm_temperature(*, profile: LLMProfile = "standard") -> float:
-    settings = get_settings()
-    provider = (settings.llm_provider or "gemini").strip().lower()
+def get_llm_temperature(
+    *,
+    profile: LLMProfile = "standard",
+    concern: LLMConcern = "default",
+    resolution: LLMRuntimeResolution | None = None,
+) -> float:
+    provider = resolution.actual_provider if resolution and resolution.actual_provider else None
+    if provider is None:
+        provider = _resolve_requested_provider(get_settings(), concern=concern)
     if provider == "ollama":
         return _resolve_ollama_runtime_profile(profile).temperature
     if profile == "fast":
@@ -471,57 +549,93 @@ def get_llm_temperature(*, profile: LLMProfile = "standard") -> float:
 
 
 async def probe_ollama_connectivity(*, profile: LLMProfile = "standard") -> tuple[bool, str | None]:
-    client = get_llm_client(profile=profile)
-    # RobustLLMClient인 경우 Fallback(Ollama)이 있으면 확인
-    if isinstance(client, RobustLLMClient) and isinstance(client.fallback, OllamaClient):
-        return await client.fallback.check_connectivity()
-    if not isinstance(client, OllamaClient):
-        return True, None
+    client, reason = _maybe_build_runtime_ollama_client(profile=profile)
+    if client is None:
+        return False, reason or "ollama_unavailable"
     return await client.check_connectivity()
 
 
 def get_pdf_analysis_llm_client() -> LLMClient:
-    settings = get_settings()
-    provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
-    gemini_api_key = (
-        settings.pdf_analysis_gemini_api_key or settings.gemini_api_key or os.environ.get("GEMINI_API_KEY") or ""
-    ).strip()
-
-    primary: LLMClient | None = None
-    fallback: LLMClient | None = None
-
-    # Gemini 설정 시도
-    if gemini_api_key and gemini_api_key != "DUMMY_KEY":
-        primary = GeminiClient(api_key=gemini_api_key)
-
-    # Ollama 설정 시도
-    ollama = _build_ollama_client(
-        profile="render",
-        base_url=settings.pdf_analysis_ollama_base_url or settings.ollama_base_url,
-        model=settings.pdf_analysis_ollama_model or settings.ollama_model,
-        request_timeout_seconds=settings.pdf_analysis_timeout_seconds,
-        keep_alive=settings.pdf_analysis_keep_alive,
-        num_ctx=settings.pdf_analysis_num_ctx,
-        num_predict=settings.pdf_analysis_num_predict,
-        num_thread=settings.pdf_analysis_num_thread,
-    )
-
-    if provider == "gemini" and primary:
-        return RobustLLMClient(primary=primary, fallback=ollama)
-    
-    if provider == "ollama":
-        # Ollama가 메인이면 Gemini를 Fallback으로 사용 (키가 있는 경우)
-        if primary:
-            return RobustLLMClient(primary=ollama, fallback=primary)
-        return ollama
-
-    if primary:
-        return primary
-    
-    return ollama
+    resolution = resolve_pdf_analysis_llm_resolution()
+    if resolution.client is not None:
+        return resolution.client
+    reason = resolution.fallback_reason or "pdf_analysis_llm_unconfigured"
+    raise RuntimeError(f"No valid PDF analysis LLM client could be configured. reason={reason}")
 
 
 def resolve_pdf_analysis_llm_resolution() -> PDFAnalysisLLMResolution:
+    settings = get_settings()
+    attempted_provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
+    attempted_model = _resolve_pdf_analysis_requested_model(settings, attempted_provider)
+    gemini_client, gemini_reason = _maybe_build_pdf_analysis_gemini_client()
+    ollama_client, ollama_reason = _maybe_build_pdf_analysis_ollama_client()
+
+    actual_provider = "heuristic"
+    actual_model = "heuristic-summary-v1"
+    fallback_used = False
+    fallback_reason: str | None = None
+    client: LLMClient | None = None
+
+    if attempted_provider == "ollama":
+        if ollama_client is not None and gemini_client is not None:
+            client = RobustLLMClient(primary=ollama_client, fallback=gemini_client)
+            actual_provider = "ollama"
+            actual_model = ollama_client.model
+        elif ollama_client is not None:
+            client = ollama_client
+            actual_provider = "ollama"
+            actual_model = ollama_client.model
+        elif gemini_client is not None:
+            client = gemini_client
+            actual_provider = "gemini"
+            actual_model = gemini_client.model_name
+            fallback_used = True
+            fallback_reason = ollama_reason or "pdf_analysis_ollama_unavailable_gemini_fallback"
+        else:
+            fallback_used = True
+            fallback_reason = ollama_reason or gemini_reason or "pdf_analysis_llm_unconfigured"
+    else:
+        if gemini_client is not None and ollama_client is not None:
+            client = RobustLLMClient(primary=gemini_client, fallback=ollama_client)
+            actual_provider = "gemini"
+            actual_model = gemini_client.model_name
+        elif gemini_client is not None:
+            client = gemini_client
+            actual_provider = "gemini"
+            actual_model = gemini_client.model_name
+        elif ollama_client is not None:
+            client = ollama_client
+            actual_provider = "ollama"
+            actual_model = ollama_client.model
+            fallback_used = True
+            fallback_reason = gemini_reason or "pdf_analysis_gemini_unavailable_ollama_fallback"
+        else:
+            fallback_used = True
+            fallback_reason = gemini_reason or ollama_reason or "pdf_analysis_llm_unconfigured"
+
+    resolution = PDFAnalysisLLMResolution(
+        attempted_provider=attempted_provider,
+        attempted_model=attempted_model,
+        actual_provider=actual_provider,
+        actual_model=actual_model,
+        client=client,
+        fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
+    )
+    _bind_pdf_resolution(resolution, gemini_client=gemini_client, ollama_client=ollama_client)
+    _log_llm_event(
+        "llm_runtime_resolved",
+        concern="pdf_analysis",
+        profile="render",
+        attempted_provider=resolution.attempted_provider,
+        attempted_model=resolution.attempted_model,
+        actual_provider=resolution.actual_provider,
+        actual_model=resolution.actual_model,
+        fallback_used=resolution.fallback_used,
+        fallback_reason=resolution.fallback_reason,
+        has_client=resolution.client is not None,
+    )
+    return resolution
     settings = get_settings()
     attempted_provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
     attempted_model = _resolve_pdf_analysis_requested_model(settings, attempted_provider)
@@ -544,10 +658,17 @@ def _resolve_pdf_analysis_requested_model(settings: Any, provider: str) -> str:
     if provider == "ollama":
         return (settings.pdf_analysis_ollama_model or settings.ollama_model or "gemma4").strip()
     if provider == "gemini":
-        configured = str(getattr(settings, "pdf_analysis_gemini_model", "") or "").strip()
-        if configured:
-            return configured
-        return "gemini-2.0-flash"
+        return _resolve_gemini_model_name(settings, concern="pdf_analysis")
+    return "unknown"
+
+
+def resolve_llm_requested_model(*, profile: LLMProfile = "standard", concern: LLMConcern = "default") -> str:
+    settings = get_settings()
+    provider = _resolve_requested_provider(settings, concern=concern)
+    if provider == "ollama":
+        return _resolve_ollama_runtime_profile(profile).model
+    if provider == "gemini":
+        return _resolve_gemini_model_name(settings, concern=concern)
     return "unknown"
 
 
@@ -559,13 +680,418 @@ def _describe_client_provider_model(
 ) -> tuple[str, str]:
     if isinstance(client, RobustLLMClient):
         # primary 기준으로 설명
-        return _describe_client_provider_model(client.primary, requested_provider=requested_provider, requested_model=requested_model)
+        return _describe_client_provider_model(
+            client.primary,
+            requested_provider=requested_provider,
+            requested_model=requested_model,
+        )
     if isinstance(client, OllamaClient):
         return "ollama", str(client.model or requested_model).strip() or requested_model
     if isinstance(client, GeminiClient):
         model = str(getattr(client, "model_name", "") or "").strip()
         return "gemini", model or requested_model
     return requested_provider, requested_model
+
+
+def resolve_llm_runtime(*, profile: LLMProfile = "standard", concern: LLMConcern = "default") -> LLMRuntimeResolution:
+    settings = get_settings()
+    requested_provider = _resolve_requested_provider(settings, concern=concern)
+    attempted_model = resolve_llm_requested_model(profile=profile, concern=concern)
+    gemini_client, gemini_reason = _maybe_build_gemini_client(concern=concern)
+    ollama_client, ollama_reason = _maybe_build_runtime_ollama_client(profile=profile)
+
+    actual_provider: str | None = None
+    actual_model: str | None = None
+    fallback_used = False
+    fallback_reason: str | None = None
+    client: LLMClient | None = None
+
+    if requested_provider == "ollama":
+        if ollama_client is not None:
+            client = ollama_client
+            actual_provider = "ollama"
+            actual_model = ollama_client.model
+        elif gemini_client is not None:
+            client = gemini_client
+            actual_provider = "gemini"
+            actual_model = gemini_client.model_name
+            fallback_used = True
+            fallback_reason = ollama_reason or "ollama_unavailable_gemini_fallback"
+        else:
+            fallback_used = True
+            fallback_reason = ollama_reason or gemini_reason or "llm_unconfigured"
+    else:
+        if gemini_client is not None and ollama_client is not None:
+            client = RobustLLMClient(primary=gemini_client, fallback=ollama_client)
+            actual_provider = "gemini"
+            actual_model = gemini_client.model_name
+        elif gemini_client is not None:
+            client = gemini_client
+            actual_provider = "gemini"
+            actual_model = gemini_client.model_name
+        elif ollama_client is not None:
+            client = ollama_client
+            actual_provider = "ollama"
+            actual_model = ollama_client.model
+            fallback_used = True
+            fallback_reason = gemini_reason or "gemini_unavailable_ollama_fallback"
+        else:
+            fallback_used = True
+            fallback_reason = gemini_reason or ollama_reason or "llm_unconfigured"
+
+    resolution = LLMRuntimeResolution(
+        concern=concern,
+        profile=profile,
+        attempted_provider=requested_provider,
+        attempted_model=attempted_model,
+        actual_provider=actual_provider,
+        actual_model=actual_model,
+        fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
+        client=client,
+    )
+    _bind_runtime_resolution(resolution, gemini_client=gemini_client, ollama_client=ollama_client)
+    _log_runtime_resolution(resolution)
+    return resolution
+
+
+def _initialize_runtime_state(client: object) -> None:
+    setattr(client, "_runtime_selection", {})
+    setattr(client, "last_provider_used", None)
+    setattr(client, "last_model_used", None)
+    setattr(client, "last_latency_ms", None)
+    setattr(client, "last_failure_category", None)
+    setattr(client, "last_fallback_used", False)
+    setattr(client, "last_fallback_reason", None)
+
+
+def _inherit_runtime_result(
+    parent: object,
+    source: object,
+    *,
+    fallback_used: bool,
+    fallback_reason: str | None,
+) -> None:
+    selection = getattr(source, "_runtime_selection", {})
+    setattr(parent, "_runtime_selection", selection)
+    if isinstance(source, GeminiClient):
+        provider = "gemini"
+        model = source.model_name
+    elif isinstance(source, OllamaClient):
+        provider = "ollama"
+        model = source.model
+    else:
+        provider = getattr(source, "last_provider_used", None)
+        model = getattr(source, "last_model_used", None)
+    setattr(parent, "last_provider_used", provider)
+    setattr(parent, "last_model_used", model)
+    setattr(parent, "last_latency_ms", getattr(source, "last_latency_ms", None))
+    setattr(parent, "last_failure_category", getattr(source, "last_failure_category", None))
+    setattr(parent, "last_fallback_used", fallback_used)
+    setattr(parent, "last_fallback_reason", fallback_reason)
+
+
+def _record_runtime_success(
+    client: object,
+    *,
+    provider: str,
+    model: str,
+    operation: str,
+    started_at: float,
+) -> None:
+    latency_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
+    setattr(client, "last_provider_used", provider)
+    setattr(client, "last_model_used", model)
+    setattr(client, "last_latency_ms", latency_ms)
+    setattr(client, "last_failure_category", None)
+    _log_llm_event(
+        "llm_request_succeeded",
+        operation=operation,
+        **_runtime_log_payload(client),
+    )
+
+
+def _record_runtime_failure(
+    client: object,
+    *,
+    provider: str,
+    model: str,
+    operation: str,
+    started_at: float,
+    exc: Exception,
+) -> None:
+    latency_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
+    setattr(client, "last_provider_used", provider)
+    setattr(client, "last_model_used", model)
+    setattr(client, "last_latency_ms", latency_ms)
+    setattr(client, "last_failure_category", _classify_runtime_failure(exc))
+    if isinstance(exc, LLMRequestError):
+        setattr(client, "last_fallback_reason", exc.limited_reason)
+    _log_llm_event(
+        "llm_request_failed",
+        operation=operation,
+        detail=repr(exc),
+        **_runtime_log_payload(client),
+    )
+
+
+def _runtime_log_payload(client: object) -> dict[str, Any]:
+    selection = getattr(client, "_runtime_selection", {}) or {}
+    return {
+        **selection,
+        "last_provider_used": getattr(client, "last_provider_used", None),
+        "last_model_used": getattr(client, "last_model_used", None),
+        "latency_ms": getattr(client, "last_latency_ms", None),
+        "failure_category": getattr(client, "last_failure_category", None),
+        "fallback_used": getattr(client, "last_fallback_used", None),
+        "fallback_reason": getattr(client, "last_fallback_reason", None),
+    }
+
+
+def get_last_llm_invocation(client: object | None) -> dict[str, Any]:
+    if client is None:
+        return {}
+    return _runtime_log_payload(client)
+
+
+def _log_llm_event(event: str, **payload: Any) -> None:
+    compact_payload = ", ".join(
+        f"{key}={value}"
+        for key, value in payload.items()
+        if value is not None
+    )
+    logger.info("%s | %s", event, compact_payload)
+
+
+def _log_runtime_resolution(resolution: LLMRuntimeResolution) -> None:
+    _log_llm_event(
+        "llm_runtime_resolved",
+        concern=resolution.concern,
+        profile=resolution.profile,
+        attempted_provider=resolution.attempted_provider,
+        attempted_model=resolution.attempted_model,
+        actual_provider=resolution.actual_provider,
+        actual_model=resolution.actual_model,
+        fallback_used=resolution.fallback_used,
+        fallback_reason=resolution.fallback_reason,
+        has_client=resolution.client is not None,
+    )
+
+
+def _bind_runtime_resolution(
+    resolution: LLMRuntimeResolution,
+    *,
+    gemini_client: GeminiClient | None,
+    ollama_client: OllamaClient | None,
+) -> None:
+    if gemini_client is not None:
+        _set_runtime_selection(
+            gemini_client,
+            concern=resolution.concern,
+            profile=resolution.profile,
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider="gemini",
+            actual_model=gemini_client.model_name,
+        )
+    if ollama_client is not None:
+        _set_runtime_selection(
+            ollama_client,
+            concern=resolution.concern,
+            profile=resolution.profile,
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider="ollama",
+            actual_model=ollama_client.model,
+        )
+    if resolution.client is not None:
+        _set_runtime_selection(
+            resolution.client,
+            concern=resolution.concern,
+            profile=resolution.profile,
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider=resolution.actual_provider,
+            actual_model=resolution.actual_model,
+        )
+
+
+def _bind_pdf_resolution(
+    resolution: PDFAnalysisLLMResolution,
+    *,
+    gemini_client: GeminiClient | None,
+    ollama_client: OllamaClient | None,
+) -> None:
+    if gemini_client is not None:
+        _set_runtime_selection(
+            gemini_client,
+            concern="pdf_analysis",
+            profile="render",
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider="gemini",
+            actual_model=gemini_client.model_name,
+        )
+    if ollama_client is not None:
+        _set_runtime_selection(
+            ollama_client,
+            concern="pdf_analysis",
+            profile="render",
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider="ollama",
+            actual_model=ollama_client.model,
+        )
+    if resolution.client is not None:
+        _set_runtime_selection(
+            resolution.client,
+            concern="pdf_analysis",
+            profile="render",
+            attempted_provider=resolution.attempted_provider,
+            attempted_model=resolution.attempted_model,
+            actual_provider=resolution.actual_provider,
+            actual_model=resolution.actual_model,
+        )
+
+
+def _set_runtime_selection(
+    client: object,
+    *,
+    concern: str,
+    profile: str,
+    attempted_provider: str,
+    attempted_model: str,
+    actual_provider: str | None,
+    actual_model: str | None,
+) -> None:
+    setattr(
+        client,
+        "_runtime_selection",
+        {
+            "concern": concern,
+            "profile": profile,
+            "attempted_provider": attempted_provider,
+            "attempted_model": attempted_model,
+            "actual_provider": actual_provider,
+            "actual_model": actual_model,
+        },
+    )
+
+
+def _classify_runtime_failure(exc: Exception) -> str:
+    if isinstance(exc, LLMRequestError):
+        return str(exc.limited_reason or "provider_error").strip().lower() or "provider_error"
+    if isinstance(exc, (APITimeoutError, TimeoutError, asyncio.TimeoutError)):
+        return "timeout"
+    if isinstance(exc, APIConnectionError):
+        return "unreachable"
+    if isinstance(exc, NotFoundError):
+        return "not_found"
+    if isinstance(exc, BadRequestError):
+        return "invalid_request"
+    if isinstance(exc, APIError):
+        return "provider_error"
+    name = type(exc).__name__.strip().lower()
+    if "timeout" in name:
+        return "timeout"
+    if "connection" in name or "network" in name or "socket" in name:
+        return "unreachable"
+    if "json" in name or "decode" in name or "validation" in name:
+        return "invalid_response"
+    return "provider_error"
+
+
+def _resolve_requested_provider(settings: Any, *, concern: LLMConcern) -> str:
+    if concern == "guided_chat":
+        value = getattr(settings, "guided_chat_llm_provider", None) or getattr(settings, "llm_provider", "gemini")
+    elif concern == "diagnosis":
+        value = getattr(settings, "diagnosis_llm_provider", None) or getattr(settings, "llm_provider", "gemini")
+    elif concern == "render":
+        value = getattr(settings, "render_llm_provider", None) or getattr(settings, "llm_provider", "gemini")
+    elif concern == "pdf_analysis":
+        value = getattr(settings, "pdf_analysis_llm_provider", None) or "ollama"
+    else:
+        value = getattr(settings, "llm_provider", "gemini")
+    normalized = str(value or "").strip().lower()
+    return normalized or "gemini"
+
+
+def _resolve_gemini_model_name(settings: Any, *, concern: LLMConcern) -> str:
+    if concern == "pdf_analysis":
+        value = getattr(settings, "pdf_analysis_gemini_model", None) or getattr(settings, "gemini_model", None)
+    else:
+        value = getattr(settings, "gemini_model", None)
+    normalized = str(value or "").strip()
+    return normalized or DEFAULT_GEMINI_MODEL
+
+
+def _maybe_build_gemini_client(*, concern: LLMConcern) -> tuple[GeminiClient | None, str | None]:
+    settings = get_settings()
+    api_key = (settings.gemini_api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not api_key or api_key == "DUMMY_KEY":
+        return None, "gemini_api_key_missing"
+    try:
+        return GeminiClient(api_key=api_key, model_name=_resolve_gemini_model_name(settings, concern=concern)), None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini client initialization failed for concern=%s: %s", concern, exc)
+        return None, f"gemini_init_failed:{type(exc).__name__}"
+
+
+def _maybe_build_runtime_ollama_client(*, profile: LLMProfile) -> tuple[OllamaClient | None, str | None]:
+    settings = get_settings()
+    base_url = str(settings.ollama_base_url or "").strip()
+    if not _is_valid_http_url(base_url):
+        return None, "ollama_endpoint_invalid"
+    if _ollama_localhost_blocked(settings.app_env, base_url):
+        return None, "ollama_localhost_blocked_in_deployed_runtime"
+    try:
+        return _build_ollama_client(profile=profile, base_url=base_url), None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ollama client initialization failed: %s", exc)
+        return None, f"ollama_init_failed:{type(exc).__name__}"
+
+
+def _maybe_build_pdf_analysis_gemini_client() -> tuple[GeminiClient | None, str | None]:
+    settings = get_settings()
+    api_key = (
+        settings.pdf_analysis_gemini_api_key
+        or settings.gemini_api_key
+        or os.environ.get("GEMINI_API_KEY")
+        or ""
+    ).strip()
+    if not api_key or api_key == "DUMMY_KEY":
+        return None, "gemini_api_key_missing"
+    try:
+        return GeminiClient(api_key=api_key, model_name=_resolve_gemini_model_name(settings, concern="pdf_analysis")), None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("PDF Gemini client initialization failed: %s", exc)
+        return None, f"gemini_init_failed:{type(exc).__name__}"
+
+
+def _maybe_build_pdf_analysis_ollama_client() -> tuple[OllamaClient | None, str | None]:
+    settings = get_settings()
+    base_url = str(settings.pdf_analysis_ollama_base_url or settings.ollama_base_url or "").strip()
+    if not _is_valid_http_url(base_url):
+        return None, "ollama_endpoint_invalid"
+    if _ollama_localhost_blocked(settings.app_env, base_url):
+        return None, "ollama_localhost_blocked_in_deployed_runtime"
+    try:
+        return (
+            _build_ollama_client(
+                profile="render",
+                base_url=base_url,
+                model=settings.pdf_analysis_ollama_model or settings.ollama_model,
+                request_timeout_seconds=settings.pdf_analysis_timeout_seconds,
+                keep_alive=settings.pdf_analysis_keep_alive,
+                num_ctx=settings.pdf_analysis_num_ctx,
+                num_predict=settings.pdf_analysis_num_predict,
+                num_thread=settings.pdf_analysis_num_thread,
+            ),
+            None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("PDF Ollama client initialization failed: %s", exc)
+        return None, f"ollama_init_failed:{type(exc).__name__}"
 
 
 def _resolve_ollama_runtime_profile(profile: LLMProfile) -> OllamaRuntimeProfile:
@@ -661,6 +1187,24 @@ def _has_remote_ollama_endpoint(base_url: str | None) -> bool:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False
     return host not in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _ollama_localhost_blocked(app_env: str | None, base_url: str | None) -> bool:
+    normalized_env = str(app_env or "").strip().lower()
+    if normalized_env == "local":
+        return False
+    if not base_url:
+        return False
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").strip().lower()
+    return host in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _is_valid_http_url(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _log_ollama_failure_once(

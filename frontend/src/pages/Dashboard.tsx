@@ -91,16 +91,37 @@ const levelSummary = (level: string) => {
   }
 };
 
+const questToneMap = {
+  high: {
+    badge: 'danger' as const,
+    icon: 'bg-rose-50 text-rose-600 group-hover:bg-rose-500',
+    shell: 'border-rose-200/80',
+    action: 'bg-[linear-gradient(135deg,#ef4444_0%,#f97316_100%)] shadow-[0_10px_22px_rgba(239,68,68,0.22)]',
+  },
+  medium: {
+    badge: 'warning' as const,
+    icon: 'bg-amber-50 text-amber-600 group-hover:bg-amber-500',
+    shell: 'border-amber-200/80',
+    action: 'bg-[linear-gradient(135deg,#f59e0b_0%,#f97316_100%)] shadow-[0_10px_22px_rgba(245,158,11,0.22)]',
+  },
+  low: {
+    badge: 'success' as const,
+    icon: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-500',
+    shell: 'border-emerald-200/80',
+    action: 'bg-[linear-gradient(135deg,#10b981_0%,#06b6d4_100%)] shadow-[0_10px_22px_rgba(16,185,129,0.22)]',
+  },
+};
+
 const QuestCard = ({ quest, onStart, isStarting }: { quest: BlueprintQuest; onStart: (q: BlueprintQuest) => void; isStarting: boolean }) => {
   const diffLabel = quest.difficulty === 'high' ? '상' : quest.difficulty === 'medium' ? '중' : '하';
-  const diffVariant: any = quest.difficulty === 'high' ? 'danger' : quest.difficulty === 'medium' ? 'warning' : 'success';
+  const tone = questToneMap[quest.difficulty === 'high' ? 'high' : quest.difficulty === 'medium' ? 'medium' : 'low'];
 
   return (
-    <SurfaceCard className="group relative flex flex-col justify-between overflow-hidden border-[#d8e6ff] bg-white/90 p-6 shadow-[0_14px_30px_rgba(24,66,170,0.11)] transition-all hover:-translate-y-0.5 hover:shadow-[0_20px_38px_rgba(24,66,170,0.16)] active:scale-[0.98]">
+    <SurfaceCard className={`group relative flex flex-col justify-between overflow-hidden bg-white/90 p-6 shadow-[0_16px_34px_rgba(42,64,132,0.11)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_42px_rgba(42,64,132,0.16)] active:scale-[0.98] ${tone.shell}`}>
       <div className="space-y-4">
         <div className="flex items-start justify-between">
-          <StatusBadge status={diffVariant} className="font-black px-2.5 py-0.5 text-[10px]">난이도 {diffLabel}</StatusBadge>
-          <div className="rounded-xl bg-[#ecf4ff] p-2 text-[#2350b8] transition-colors group-hover:bg-[#1d4fff] group-hover:text-white">
+          <StatusBadge status={tone.badge} className="px-2.5 py-0.5 text-[10px] font-black">난이도 {diffLabel}</StatusBadge>
+          <div className={`rounded-xl p-2 transition-colors group-hover:text-white ${tone.icon}`}>
             <Zap size={16} fill="currentColor" className="opacity-80" />
           </div>
         </div>
@@ -110,7 +131,7 @@ const QuestCard = ({ quest, onStart, isStarting }: { quest: BlueprintQuest; onSt
         </div>
       </div>
       
-      <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#e4edff] pt-5">
+      <div className="mt-6 flex items-center justify-between gap-4 border-t border-[#e8eefc] pt-5">
         <div className="flex flex-col">
           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">관련 과목</span>
           <span className="text-sm font-bold text-slate-700">{quest.subject}</span>
@@ -118,7 +139,7 @@ const QuestCard = ({ quest, onStart, isStarting }: { quest: BlueprintQuest; onSt
         <button
           onClick={() => onStart(quest)}
           disabled={isStarting}
-          className="inline-flex h-9 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#1d4fff_0%,#2da3ff_100%)] px-4 text-xs font-black text-white shadow-[0_8px_18px_rgba(29,79,255,0.28)] transition-all hover:-translate-y-0.5 disabled:opacity-50"
+          className={`inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-black text-white transition-all hover:-translate-y-0.5 disabled:opacity-50 ${tone.action}`}
         >
           {isStarting ? '준비 중...' : '시작하기'}
           {!isStarting && <PlayCircle size={14} />}
@@ -358,11 +379,12 @@ export default function Dashboard() {
   const primaryGoal = allGoals[0] ?? null;
 
   return (
-    <div className="mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 space-y-6 pb-20 duration-1000 sm:space-y-10">
+    <div className="mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-20 duration-1000 sm:space-y-12">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-[2rem] border border-[#d4e3ff] bg-[linear-gradient(135deg,#1d4fff_0%,#2d8eff_55%,#57b8ff_100%)] p-5 shadow-[0_22px_46px_rgba(29,79,255,0.22)] sm:rounded-[2.5rem] sm:p-8 md:p-12">
+      <div className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,#3257ff_0%,#5b6cff_46%,#2bb6ff_78%,#5eead4_100%)] p-6 shadow-[0_26px_54px_rgba(54,92,255,0.24)] sm:rounded-[2.5rem] sm:p-8 md:p-12">
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/16 blur-3xl animate-shine-pulse" />
         <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#9edfff]/34 blur-3xl" />
+        <div className="absolute bottom-0 right-1/3 h-40 w-40 rounded-full bg-rose-300/20 blur-3xl" />
         
         <div className="relative z-10">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/16 px-3 py-1.5 backdrop-blur-md sm:px-4">
@@ -391,7 +413,7 @@ export default function Dashboard() {
               </p>
             </div>
 
-            <div className="flex shrink-0 flex-wrap gap-3">
+             <div className="flex shrink-0 flex-wrap gap-3.5">
               {hasPrimaryGoal && (
                 <button
                   onClick={() => navigate('/app/diagnosis')}
@@ -401,12 +423,12 @@ export default function Dashboard() {
                   목표 정보 관리
                 </button>
               )}
-              <button
-                onClick={nextAction.onPrimary}
-                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/70 bg-white px-5 text-sm font-black text-[#1d4fff] shadow-xl shadow-[#1d4fff]/24 transition-all hover:scale-105 active:scale-95 sm:h-12 sm:px-8 sm:text-base"
-              >
-                {nextAction.primaryLabel}
-                <ArrowRight size={18} />
+                <button
+                  onClick={nextAction.onPrimary}
+                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/70 bg-white px-5 text-sm font-black text-[#294cf0] shadow-xl shadow-[#1d4fff]/24 transition-all hover:scale-105 active:scale-95 sm:h-12 sm:px-8 sm:text-base"
+                >
+                  {nextAction.primaryLabel}
+                  <ArrowRight size={18} />
               </button>
             </div>
           </div>
@@ -430,10 +452,10 @@ export default function Dashboard() {
       {/* Target & Progress Grid */}
       <div className="grid gap-6 sm:gap-8 lg:grid-cols-3">
         {/* Target Card */}
-        <SurfaceCard className="relative overflow-hidden border-[#d4e3ff] bg-white/88 p-5 shadow-[0_18px_36px_rgba(24,66,170,0.14)] sm:p-8 lg:col-span-2">
+        <SurfaceCard className="relative overflow-hidden border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(245,248,255,0.86)_100%)] p-5 shadow-[0_20px_42px_rgba(42,64,132,0.14)] sm:p-8 lg:col-span-2">
           {/* Subtle background decoration for empty state */}
           {!hasPrimaryGoal && (
-            <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-blue-50/50 blur-3xl" />
+            <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-blue-50/60 blur-3xl" />
           )}
           
           <div className="relative z-10">
@@ -451,7 +473,7 @@ export default function Dashboard() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-black tracking-widest text-[#2150b8] ring-1 ring-inset ring-[#2150b8]/12 uppercase">
+                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[linear-gradient(135deg,#eef3ff_0%,#eefaff_100%)] px-3 py-1 text-[11px] font-black tracking-widest text-[#2150b8] ring-1 ring-inset ring-[#2150b8]/12 uppercase">
                     <Flag size={10} />
                     {hasPrimaryGoal ? '핵심 목표' : '첫 걸음'}
                   </div>
@@ -479,7 +501,7 @@ export default function Dashboard() {
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 {allGoals.length > 1 ? (
                   allGoals.slice(1, 4).map((goal, index) => (
-                    <div key={index} className="flex items-center gap-3 rounded-2xl border border-[#dce8ff] bg-white/95 p-3 shadow-[0_10px_22px_rgba(24,66,170,0.09)]">
+                     <div key={index} className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/88 p-3 shadow-[0_12px_24px_rgba(42,64,132,0.09)]">
                       <UniversityLogo universityName={goal.university} className="h-10 w-10 rounded-xl bg-slate-50 p-1" />
                       <div className="min-w-[120px]">
                         <p className="text-[10px] font-black text-slate-400 uppercase">차순위 {index + 1}</p>
@@ -490,7 +512,7 @@ export default function Dashboard() {
                 ) : (
                   // Empty placeholders to fill the grid and provide guidance
                   <>
-                    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[#dce8ff] bg-slate-50/40 p-3 opacity-60 transition-colors hover:bg-slate-50">
+                     <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[#dce8ff] bg-slate-50/50 p-3 opacity-70 transition-colors hover:bg-slate-50">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/80">
                         <Target size={16} className="text-slate-300" />
                       </div>
@@ -500,7 +522,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     {/* Hide second placeholder on small screens to avoid clutter, but keep for desktop to fill space */}
-                    <div className="hidden items-center gap-3 rounded-2xl border border-dashed border-[#dce8ff] bg-slate-50/40 p-3 opacity-40 sm:flex">
+                     <div className="hidden items-center gap-3 rounded-2xl border border-dashed border-[#dce8ff] bg-slate-50/40 p-3 opacity-45 sm:flex">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/80">
                         <Target size={16} className="text-slate-300" />
                       </div>
@@ -516,7 +538,7 @@ export default function Dashboard() {
             
             {/* If no diagnosis but goal exists, add a hint to fill more space */}
             {hasPrimaryGoal && !hasDiagnosis && (
-              <div className="mt-8 flex items-center gap-4 rounded-2xl bg-[#f8faff] p-4 text-sm font-medium text-slate-600 ring-1 ring-inset ring-blue-100/50">
+              <div className="mt-8 flex items-center gap-4 rounded-2xl bg-[linear-gradient(135deg,#f5f9ff_0%,#f0fffb_100%)] p-4 text-sm font-medium text-slate-600 ring-1 ring-inset ring-blue-100/50">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
                   <Sparkles size={18} />
                 </div>
@@ -533,7 +555,7 @@ export default function Dashboard() {
         <SectionCard title="워크플로 진행도" className="h-full">
           <div className="space-y-4">
             {workflowSteps.map((step) => (
-              <div key={step.key} className="flex gap-4 p-2">
+              <div key={step.key} className="flex gap-4 rounded-2xl bg-white/55 p-3">
                 <div className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
                   step.status === 'done' ? 'bg-[#1d4fff] border-[#1d4fff] text-white' : 
                   step.status === 'active' ? 'border-[#1d4fff] text-[#1d4fff]' : 'border-slate-200 text-slate-200'
@@ -584,7 +606,7 @@ export default function Dashboard() {
                   <div key={group.name} className="space-y-4">
                     <button 
                       onClick={() => setOpenSubjectGroups(prev => ({ ...prev, [group.name]: !prev[group.name] }))}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#dce8ff] bg-[#f5f9ff] p-4 transition-colors hover:bg-[#edf4ff]"
+                      className="flex w-full items-center justify-between rounded-2xl border border-white/80 bg-[linear-gradient(135deg,#f7faff_0%,#f3f8ff_100%)] p-4 transition-colors hover:bg-[#edf4ff]"
                     >
                       <div className="flex items-center gap-3">
                         <School size={18} className="text-[#6b83af]" />

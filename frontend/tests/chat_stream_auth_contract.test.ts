@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { AxiosHeaders } from 'axios';
 
-import { applyAuthorizationHeader } from '../src/lib/api';
+import { api, applyAuthorizationHeader } from '../src/lib/api';
 import { ChatStreamError, openChatEventStream } from '../src/lib/chatStream';
 import { getAuthorizationHeader } from '../src/lib/requestAuth';
 
@@ -83,4 +83,27 @@ test('chat stream rejects non-event-stream content types and keeps auth header w
   );
 
   assert.equal(observedAuthorization, 'Bearer draft-token');
+});
+
+test('standard API surfaces misrouted HTML responses with backend diagnostics', async () => {
+  await assert.rejects(
+    () =>
+      api.get('/api/v1/runtime/capabilities', {
+        adapter: async (config) =>
+          ({
+            data: '<html><body>frontend shell</body></html>',
+            status: 200,
+            statusText: 'OK',
+            headers: { 'content-type': 'text/html; charset=utf-8' },
+            config,
+            request: {},
+          }) as any,
+      }),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.match(error.message, /VITE_API_URL/i);
+      assert.match(error.message, /HTML/i);
+      return true;
+    },
+  );
 });

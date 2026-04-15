@@ -26,6 +26,30 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _repair_mojibake_text(value: str) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    try:
+        repaired = text.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return text
+    return repaired or text
+
+
+def _repair_token_sequence(values: tuple[str, ...]) -> tuple[str, ...]:
+    repaired = [_repair_mojibake_text(value).strip() for value in values if str(value).strip()]
+    return tuple(dict.fromkeys(repaired))
+
+
+def _repair_token_mapping(values: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+    repaired: dict[str, tuple[str, ...]] = {}
+    for key, aliases in values.items():
+        repaired_key = _repair_mojibake_text(key).strip()
+        repaired[repaired_key] = _repair_token_sequence(aliases)
+    return repaired
+
 SECTION_PATTERNS: dict[str, tuple[str, ...]] = {
     "교과학습발달상황": ("교과학습발달상황", "교과 학습 발달 상황", "세부능력 및 특기사항", "세특"),
     "창의적체험활동": ("창의적체험활동", "창의적 체험활동", "자율활동", "동아리활동", "진로활동", "봉사활동"),
@@ -86,6 +110,11 @@ NEIS_SECTION_TOKENS: tuple[str, ...] = (
     "행동특성 및 종합의견",
     "독서활동",
 )
+SECTION_PATTERNS = _repair_token_mapping(SECTION_PATTERNS)
+HEADER_ALIASES = _repair_token_mapping(HEADER_ALIASES)
+NEIS_SCORE_HEADER_TOKENS = _repair_token_sequence(NEIS_SCORE_HEADER_TOKENS)
+NEIS_NARRATIVE_TOKENS = _repair_token_sequence(NEIS_NARRATIVE_TOKENS)
+NEIS_SECTION_TOKENS = _repair_token_sequence(NEIS_SECTION_TOKENS)
 
 
 @dataclass(slots=True)
@@ -125,41 +154,84 @@ def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
     neis_section_token_hits = 0
     header_line_counter: Counter[str] = Counter()
 
-    with pdfplumber.open(file_path) as pdf:
-        page_count = len(pdf.pages)
-        for page in pdf.pages:
-            try:
-                text = (page.extract_text(layout=False) or "").strip()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Route inspection text extraction failed on %s: %s", file_path, exc)
-                text = ""
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            page_count = len(pdf.pages)
+            for page in pdf.pages:
+                try:
+                    text = _normalize_text(page.extract_text(layout=False) or "")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Route inspection text extraction failed on %s: %s", file_path, exc)
+                    text = ""
 
-            char_count = len(text)
-            image_count = len(page.images)
-            line_count = len(page.lines) + len(page.rects)
-            lines = [line.strip() for line in text.splitlines() if line.strip()]
-            looks_like_table = line_count >= 14 or any(
-                token in text for token in ("학년", "학기", "세부능력", "과목", "창의적체험활동")
+                char_count = len(text)
+                image_count = len(page.images)
+                line_count = len(page.lines) + len(page.rects)
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                looks_like_table = line_count >= 14 or any(
+                    token in text for token in ("학년", "학기", "세부능력", "과목", "창의적체험활동")
+                )
+
+                total_chars += char_count
+                if char_count < 100:
+                    low_text_pages += 1
+                if image_count > 0 and char_count < 80:
+                    image_heavy_pages += 1
+                if looks_like_table:
+                    table_like_pages += 1
+                if image_count > 0 and char_count >= 80:
+                    mixed_signal_pages += 1
+                if lines:
+                    header_line_counter.update(lines[:2])
+
+                for token in NEIS_SCORE_HEADER_TOKENS:
+                    score_table_token_hits += text.count(token)
+                for token in NEIS_NARRATIVE_TOKENS:
+                    narrative_token_hits += text.count(token)
+                for token in NEIS_SECTION_TOKENS:
+                    neis_section_token_hits += text.count(token)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Route inspection failed for %s: %s", file_path, exc)
+        degraded = asdict(
+            RouteDecision(
+                document_kind="inspection_degraded",
+                selected_strategy="pdfplumber_fallback",
+                parse_mode="fallback",
+                ocr_enabled=False,
+                confidence=0.34,
+                reasons=[
+                    "route inspection failed before advanced parser selection",
+                    "falling back to a parse-safe strategy that preserves best-effort analysis",
+                ],
+                metrics={
+                    "page_count": page_count,
+                    "avg_chars_per_page": 0.0,
+                    "low_text_pages": low_text_pages,
+                    "image_heavy_pages": image_heavy_pages,
+                    "table_like_pages": table_like_pages,
+                    "mixed_signal_pages": mixed_signal_pages,
+                    "image_heavy_ratio": 0.0,
+                    "table_like_ratio": 0.0,
+                    "mixed_ratio": 0.0,
+                    "embedded_text_density": 0.0,
+                    "score_table_token_hits": 0,
+                    "narrative_token_hits": 0,
+                    "neis_section_token_hits": 0,
+                    "repeated_header_patterns": 0,
+                    "inspection_error": type(exc).__name__,
+                },
             )
-
-            total_chars += char_count
-            if char_count < 100:
-                low_text_pages += 1
-            if image_count > 0 and char_count < 80:
-                image_heavy_pages += 1
-            if looks_like_table:
-                table_like_pages += 1
-            if image_count > 0 and char_count >= 80:
-                mixed_signal_pages += 1
-            if lines:
-                header_line_counter.update(lines[:2])
-
-            for token in NEIS_SCORE_HEADER_TOKENS:
-                score_table_token_hits += text.count(token)
-            for token in NEIS_NARRATIVE_TOKENS:
-                narrative_token_hits += text.count(token)
-            for token in NEIS_SECTION_TOKENS:
-                neis_section_token_hits += text.count(token)
+        )
+        return _route_with_execution_metadata(
+            degraded,
+            requested_strategy=degraded.get("selected_strategy"),
+            actual_strategy="pdfplumber_fallback",
+            ocr_requested=False,
+            ocr_executed=False,
+            provider_attempts=[],
+            provider_selected=None,
+            degraded_reason=f"route_inspection_failed:{type(exc).__name__}",
+        )
 
     avg_chars_per_page = total_chars / max(page_count, 1)
     image_heavy_ratio = image_heavy_pages / max(page_count, 1)
@@ -224,7 +296,16 @@ def inspect_pdf_route(file_path: Path) -> dict[str, Any]:
         "neis_section_token_hits": neis_section_token_hits,
         "repeated_header_patterns": repeated_header_patterns,
     }
-    return asdict(decision)
+    return _route_with_execution_metadata(
+        asdict(decision),
+        requested_strategy=decision.selected_strategy,
+        actual_strategy=decision.selected_strategy,
+        ocr_requested=decision.ocr_enabled,
+        ocr_executed=False,
+        provider_attempts=[],
+        provider_selected=None,
+        degraded_reason=None,
+    )
 
 
 def is_neis_candidate(route: dict[str, Any], *, min_confidence: float = 0.62) -> bool:
@@ -268,6 +349,116 @@ def _provider_priority(route: dict[str, Any]) -> list[str]:
     if mixed_ratio >= 0.2:
         return ["opendataloader", "dedoc", "extractpdf4j", "pdfplumber"]
     return ["opendataloader", "extractpdf4j", "dedoc", "pdfplumber"]
+
+
+def _route_with_execution_metadata(
+    route: dict[str, Any],
+    *,
+    requested_strategy: str | None,
+    actual_strategy: str | None,
+    ocr_requested: bool,
+    ocr_executed: bool,
+    provider_attempts: list[dict[str, Any]],
+    provider_selected: str | None,
+    degraded_reason: str | None,
+) -> dict[str, Any]:
+    enriched = deepcopy(route)
+    enriched["requested_strategy"] = str(requested_strategy or enriched.get("selected_strategy") or "unknown")
+    enriched["actual_strategy"] = str(actual_strategy or enriched.get("selected_strategy") or "unknown")
+    enriched["ocr_requested"] = bool(ocr_requested)
+    enriched["ocr_executed"] = bool(ocr_executed)
+    enriched["provider_attempts"] = provider_attempts
+    enriched["provider_selected"] = provider_selected
+    enriched["degraded_reason"] = degraded_reason
+    return enriched
+
+
+def _provider_has_usable_output(result: ParserProviderResult) -> bool:
+    return bool(result.normalized_pages or result.normalized_elements or result.normalized_tables)
+
+
+def _provider_supports_ocr(provider_name: str) -> bool:
+    return provider_name in {"opendataloader", "extractpdf4j"}
+
+
+def _actual_strategy_for_provider(provider_name: str, route: dict[str, Any], parse_mode: str) -> str:
+    requested_strategy = str(route.get("selected_strategy") or "heuristic")
+    if provider_name == "opendataloader":
+        return requested_strategy
+    if provider_name == "pdfplumber":
+        return "pdfplumber_fallback"
+    return f"{provider_name}_{parse_mode}"
+
+
+def _build_provider_attempt(
+    provider_name: str,
+    *,
+    route: dict[str, Any],
+    result: ParserProviderResult,
+    priority_index: int,
+) -> dict[str, Any]:
+    ocr_requested = bool(route.get("ocr_enabled", False))
+    usable = _provider_has_usable_output(result)
+    ocr_executed = usable and ocr_requested and _provider_supports_ocr(provider_name)
+    warning_messages = [str(item).strip() for item in result.warnings if str(item).strip()]
+    return {
+        "provider": provider_name,
+        "priority_index": priority_index,
+        "success": usable,
+        "selected": False,
+        "parse_mode": result.parse_mode,
+        "requested_strategy": str(route.get("selected_strategy") or "unknown"),
+        "actual_strategy": _actual_strategy_for_provider(provider_name, route, result.parse_mode),
+        "ocr_requested": ocr_requested,
+        "ocr_executed": ocr_executed,
+        "page_count": len(result.normalized_pages),
+        "element_count": len(result.normalized_elements),
+        "table_count": len(result.normalized_tables),
+        "provider_confidence": round(float(result.provider_confidence or 0.0), 2),
+        "warnings": warning_messages,
+    }
+
+
+def _select_best_provider_result(
+    usable_results: list[tuple[int, ParserProviderResult]],
+    *,
+    min_quality_score: float,
+) -> tuple[int, ParserProviderResult] | None:
+    if not usable_results:
+        return None
+    return max(
+        usable_results,
+        key=lambda item: (
+            float(item[1].provider_confidence or 0.0) >= min_quality_score,
+            float(item[1].provider_confidence or 0.0),
+            -item[0],
+        ),
+    )
+
+
+def _resolve_degraded_reason(
+    *,
+    priority_order: list[str],
+    selected_provider: str | None,
+    selected_confidence: float,
+    min_quality_score: float,
+    ocr_requested: bool,
+    ocr_executed: bool,
+    provider_attempts: list[dict[str, Any]],
+) -> str | None:
+    if selected_provider is None:
+        return "no_provider_returned_usable_output"
+    preferred_provider = priority_order[0] if priority_order else None
+    preferred_attempt = provider_attempts[0] if provider_attempts else None
+    if selected_confidence < min_quality_score:
+        return "no_provider_met_quality_threshold"
+    if preferred_provider and selected_provider != preferred_provider:
+        if preferred_attempt and preferred_attempt.get("warnings"):
+            return f"preferred_provider_failed:{preferred_provider}"
+        return f"preferred_provider_deprioritized:{preferred_provider}"
+    if ocr_requested and not ocr_executed:
+        return "ocr_requested_but_no_ocr_capable_provider_succeeded"
+    return None
 
 
 def _empty_provider_result(
@@ -674,45 +865,143 @@ def extract_raw_pdf_artifact(
     *,
     route: dict[str, Any],
     odl_enabled: bool,
-) -> tuple[dict[str, Any], list[str]]:
+) -> tuple[dict[str, Any], list[str], dict[str, Any]]:
+    priority_order = _provider_priority(route)
     warnings: list[str] = []
-    attempted_odl = odl_enabled and route.get("selected_strategy", "").startswith("odl")
+    attempts: list[dict[str, Any]] = []
+    usable_results: list[tuple[int, ParserProviderResult]] = []
+    parse_mode = str(route.get("parse_mode", "heuristic"))
+    ocr_requested = bool(route.get("ocr_enabled", False))
 
-    if attempted_odl:
-        adapter = OpenDataLoaderAdapter()
-        if adapter.is_available():
-            try:
-                result = adapter.parse_pdf(
-                    file_path,
-                    parse_mode=str(route.get("parse_mode", "heuristic")),
-                    ocr_enabled=bool(route.get("ocr_enabled", False)),
-                )
-                raw_json = {
-                    "schema_version": "unifoli.raw_pdf.v1",
-                    "source": "opendataloader",
-                    "parse_mode": route.get("parse_mode", "heuristic"),
-                    "ocr_enabled": route.get("ocr_enabled", False),
-                    "annotated_pdf_path": result.annotated_pdf_path,
-                    "trace": {
-                        **result.trace_metadata,
-                        "route_decision": route,
-                    },
-                    "payload": result.raw_json,
-                }
-                if _count_nested_pages(raw_json) > 0:
-                    return raw_json, warnings
-                warnings.append("OpenDataLoader returned an empty payload. Falling back to pdfplumber.")
-            except OpenDataLoaderError as exc:
-                warnings.append(f"OpenDataLoader unavailable: {exc}")
-            except Exception as exc:  # noqa: BLE001
-                warnings.append(f"OpenDataLoader parse failed: {exc}")
+    for priority_index, provider_name in enumerate(priority_order):
+        if provider_name == "opendataloader":
+            result = _extract_odl_provider(file_path, route=route, odl_enabled=odl_enabled)
+        elif provider_name == "extractpdf4j":
+            result = _extract_extractpdf4j_provider(
+                file_path,
+                route=route,
+                enabled=bool(route.get("neis_extractpdf4j_enabled", False)),
+                base_url=route.get("neis_extractpdf4j_base_url"),
+                timeout_seconds=float(route.get("neis_extractpdf4j_timeout_seconds", 8.0)),
+            )
+        elif provider_name == "dedoc":
+            result = _extract_dedoc_provider(
+                file_path,
+                route=route,
+                enabled=bool(route.get("neis_dedoc_enabled", True)),
+            )
         else:
-            warnings.append("OpenDataLoader is not installed. Falling back to pdfplumber.")
+            result = _extract_pdfplumber_provider(file_path, route=route)
 
-    fallback_raw = _extract_pdf_with_pdfplumber(file_path, route=route)
-    if attempted_odl:
-        fallback_raw.setdefault("trace", {})["fallback_reason"] = warnings[-1] if warnings else "low_confidence"
-    return fallback_raw, warnings
+        attempt = _build_provider_attempt(
+            provider_name,
+            route=route,
+            result=result,
+            priority_index=priority_index,
+        )
+        attempts.append(attempt)
+        warnings.extend(result.warnings)
+
+        if attempt["success"]:
+            usable_results.append((priority_index, result))
+            logger.info(
+                "NEIS provider usable | provider=%s priority=%s confidence=%.2f pages=%s strategy=%s",
+                provider_name,
+                priority_index,
+                float(result.provider_confidence or 0.0),
+                len(result.normalized_pages),
+                attempt["actual_strategy"],
+            )
+        else:
+            logger.warning(
+                "NEIS provider failed | provider=%s priority=%s warnings=%s",
+                provider_name,
+                priority_index,
+                "; ".join(attempt["warnings"]) or "no usable output",
+            )
+
+    selected = _select_best_provider_result(
+        usable_results,
+        min_quality_score=float(route.get("neis_provider_min_quality_score", 0.58)),
+    )
+
+    if selected is None:
+        fallback_raw = _extract_pdf_with_pdfplumber(file_path, route=route)
+        actual_route = _route_with_execution_metadata(
+            route,
+            requested_strategy=str(route.get("selected_strategy") or "unknown"),
+            actual_strategy="pdfplumber_fallback",
+            ocr_requested=ocr_requested,
+            ocr_executed=False,
+            provider_attempts=attempts,
+            provider_selected="pdfplumber",
+            degraded_reason="no_provider_returned_usable_output",
+        )
+        fallback_raw.setdefault("trace", {})["provider_selection"] = {
+            "priority_order": priority_order,
+            "provider_attempts": attempts,
+            "provider_selected": "pdfplumber",
+            "requested_strategy": actual_route["requested_strategy"],
+            "actual_strategy": actual_route["actual_strategy"],
+            "ocr_requested": actual_route["ocr_requested"],
+            "ocr_executed": actual_route["ocr_executed"],
+            "degraded_reason": actual_route["degraded_reason"],
+            "provider_min_quality_score": route.get("neis_provider_min_quality_score", 0.58),
+        }
+        fallback_raw.setdefault("trace", {})["route_decision"] = actual_route
+        warnings.append("All advanced NEIS providers failed; pdfplumber fallback was used.")
+        return fallback_raw, warnings, actual_route
+
+    selected_priority, selected_result = selected
+    selected_provider = selected_result.provider_name
+    selected_attempt = attempts[selected_priority]
+    selected_attempt["selected"] = True
+    ocr_executed = bool(selected_attempt["ocr_executed"])
+    degraded_reason = _resolve_degraded_reason(
+        priority_order=priority_order,
+        selected_provider=selected_provider,
+        selected_confidence=float(selected_result.provider_confidence or 0.0),
+        min_quality_score=float(route.get("neis_provider_min_quality_score", 0.58)),
+        ocr_requested=ocr_requested,
+        ocr_executed=ocr_executed,
+        provider_attempts=attempts,
+    )
+    actual_route = _route_with_execution_metadata(
+        route,
+        requested_strategy=str(route.get("selected_strategy") or "unknown"),
+        actual_strategy=str(selected_attempt["actual_strategy"]),
+        ocr_requested=ocr_requested,
+        ocr_executed=ocr_executed,
+        provider_attempts=attempts,
+        provider_selected=selected_provider,
+        degraded_reason=degraded_reason,
+    )
+
+    selected_raw_artifact = deepcopy(selected_result.raw_artifact)
+    selected_raw_artifact.setdefault("trace", {})["provider_selection"] = {
+        "priority_order": priority_order,
+        "provider_attempts": attempts,
+        "provider_selected": selected_provider,
+        "requested_strategy": actual_route["requested_strategy"],
+        "actual_strategy": actual_route["actual_strategy"],
+        "ocr_requested": actual_route["ocr_requested"],
+        "ocr_executed": actual_route["ocr_executed"],
+        "degraded_reason": actual_route["degraded_reason"],
+        "provider_min_quality_score": route.get("neis_provider_min_quality_score", 0.58),
+    }
+    selected_raw_artifact.setdefault("trace", {})["route_decision"] = actual_route
+
+    logger.info(
+        "NEIS provider selected | provider=%s confidence=%.2f requested_strategy=%s actual_strategy=%s ocr_requested=%s ocr_executed=%s degraded_reason=%s",
+        selected_provider,
+        float(selected_result.provider_confidence or 0.0),
+        route.get("selected_strategy"),
+        actual_route["actual_strategy"],
+        ocr_requested,
+        ocr_executed,
+        degraded_reason,
+    )
+    return selected_raw_artifact, warnings, actual_route
 
 
 def normalize_odl_payload(
@@ -853,7 +1142,11 @@ def normalize_odl_payload(
     }
 
 
-def stitch_neis_context(normalized_artifact: dict[str, Any]) -> dict[str, Any]:
+def stitch_neis_context(
+    normalized_artifact: dict[str, Any],
+    *,
+    merge_policy: str = "conservative_table",
+) -> dict[str, Any]:
     tables = sorted(
         normalized_artifact.get("tables", []),
         key=lambda item: (item.get("page_number") or 0, item.get("table_id") or ""),
@@ -895,7 +1188,7 @@ def stitch_neis_context(normalized_artifact: dict[str, Any]) -> dict[str, Any]:
             merged_chains.append(chain)
             continue
         previous_chain = merged_chains[-1]
-        should_merge, reasons = _should_merge_chains(previous_chain, chain)
+        should_merge, reasons = _should_merge_chains(previous_chain, chain, merge_policy=merge_policy)
         if should_merge:
             merged_chains[-1] = _merge_chains(previous_chain, chain, reasons)
         else:
@@ -942,6 +1235,7 @@ def stitch_neis_context(normalized_artifact: dict[str, Any]) -> dict[str, Any]:
     )
     normalized_artifact.setdefault("trace", {})["stitching"] = {
         "table_chain_count": len(merged_chains),
+        "merge_policy": merge_policy,
         "steps": [
             "previous_next_table_id",
             "repeated_header_or_subject_context",
@@ -975,7 +1269,12 @@ def _build_table_chain(chain_tables: list[dict[str, Any]], *, stitch_reasons: li
     }
 
 
-def _should_merge_chains(left_chain: dict[str, Any], right_chain: dict[str, Any]) -> tuple[bool, list[str]]:
+def _should_merge_chains(
+    left_chain: dict[str, Any],
+    right_chain: dict[str, Any],
+    *,
+    merge_policy: str,
+) -> tuple[bool, list[str]]:
     if right_chain["page_span"][0] - left_chain["page_span"][1] > 1:
         return False, []
 
@@ -1000,7 +1299,13 @@ def _should_merge_chains(left_chain: dict[str, Any], right_chain: dict[str, Any]
     if _looks_like_continuation_row(right_chain.get("rows", [])):
         score += 0.15
 
-    return score >= 0.65, reasons
+    threshold = 0.65
+    if merge_policy == "strict_table":
+        threshold = 0.85
+    elif merge_policy == "aggressive_chain":
+        threshold = 0.5
+
+    return score >= threshold, reasons
 
 
 def _merge_chains(left_chain: dict[str, Any], right_chain: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
@@ -1203,11 +1508,30 @@ def parse_pdf_with_neis_pipeline(
     chunk_size_chars: int,
     overlap_chars: int,
     odl_enabled: bool,
+    neis_extractpdf4j_enabled: bool = False,
+    neis_extractpdf4j_base_url: str | None = None,
+    neis_extractpdf4j_timeout_seconds: float = 8.0,
+    neis_dedoc_enabled: bool = True,
+    neis_provider_min_quality_score: float = 0.58,
+    neis_merge_policy: str = "conservative_table",
 ) -> ParsedDocumentPayload:
     route = inspect_pdf_route(file_path)
-    raw_artifact, extraction_warnings = extract_raw_pdf_artifact(file_path, route=route, odl_enabled=odl_enabled)
-    normalized_artifact = normalize_odl_payload(raw_artifact, source_file=file_path.name, route=route)
-    stitched_artifact = stitch_neis_context(normalized_artifact)
+    route = {
+        **route,
+        "neis_extractpdf4j_enabled": neis_extractpdf4j_enabled,
+        "neis_extractpdf4j_base_url": neis_extractpdf4j_base_url,
+        "neis_extractpdf4j_timeout_seconds": neis_extractpdf4j_timeout_seconds,
+        "neis_dedoc_enabled": neis_dedoc_enabled,
+        "neis_provider_min_quality_score": neis_provider_min_quality_score,
+        "neis_merge_policy": neis_merge_policy,
+    }
+    raw_artifact, extraction_warnings, resolved_route = extract_raw_pdf_artifact(
+        file_path,
+        route=route,
+        odl_enabled=odl_enabled,
+    )
+    normalized_artifact = normalize_odl_payload(raw_artifact, source_file=file_path.name, route=resolved_route)
+    stitched_artifact = stitch_neis_context(normalized_artifact, merge_policy=neis_merge_policy)
     neis_document = map_neis_semantics(stitched_artifact)
     content_text, content_markdown, chunks, chunk_evidence_map = _build_masked_outputs(
         neis_document,
@@ -1231,7 +1555,7 @@ def parse_pdf_with_neis_pipeline(
     analysis_artifact = {
         "schema_version": "student_artifact_parse.v1",
         "artifact_type": "neis_document",
-        "route": route,
+        "route": resolved_route,
         "parse_confidence": neis_document["parse_confidence"],
         "stitch_confidence": neis_document["stitch_confidence"],
         "semantic_mapping_confidence": neis_document["semantic_mapping_confidence"],
@@ -1239,10 +1563,11 @@ def parse_pdf_with_neis_pipeline(
         "evidence_references": neis_document["evidence_references"],
         "neis_document": neis_document,
         "chunk_evidence_map": chunk_evidence_map,
+        "provider_selection": raw_artifact.get("trace", {}).get("provider_selection", {}),
     }
     metadata = {
         "filename": file_path.name,
-        "parser_route": route,
+        "parser_route": resolved_route,
         "warnings": warnings,
         "raw_parse_artifact": raw_artifact,
         "normalized_artifact": stitched_artifact,
@@ -1250,6 +1575,7 @@ def parse_pdf_with_neis_pipeline(
         "masking": neis_document.get("masking", {}),
         "annotated_pdf_path": raw_artifact.get("annotated_pdf_path"),
         "table_chain_count": len(stitched_artifact.get("table_chains", [])),
+        "provider_selection": raw_artifact.get("trace", {}).get("provider_selection", {}),
     }
 
     return ParsedDocumentPayload(
@@ -1876,7 +2202,8 @@ def _slice_text(text: str, chunk_size_chars: int, overlap_chars: int) -> list[tu
 
 
 def _normalize_text(value: str) -> str:
-    collapsed = value.replace("\x00", " ")
+    repaired = _repair_mojibake_text(value)
+    collapsed = repaired.replace("\x00", " ")
     collapsed = collapsed.replace("\r\n", "\n").replace("\r", "\n")
     collapsed = re.sub(r"[ \t]+", " ", collapsed)
     collapsed = re.sub(r"\n{3,}", "\n\n", collapsed)

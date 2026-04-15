@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import relationship
 
 from unifoli_api.core.database import Base, utc_now
@@ -9,6 +9,10 @@ from unifoli_api.core.database import Base, utc_now
 
 class DiagnosisRun(Base):
     __tablename__ = "diagnosis_runs"
+    __table_args__ = (
+        Index("ix_diagnosis_runs_project_created_at", "project_id", "created_at"),
+        Index("ix_diagnosis_runs_status_created_at", "status", "created_at"),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     project_id = Column(String, ForeignKey("projects.id"), index=True, nullable=False)

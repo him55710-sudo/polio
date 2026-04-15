@@ -20,6 +20,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     inspector = Inspector.from_engine(conn)
     tables = inspector.get_table_names()
+    portable_json = JSONB(astext_type=sa.Text()).with_variant(sa.JSON(), "sqlite")
 
     if 'workshop_sessions' not in tables:
         op.create_table('workshop_sessions',
@@ -44,7 +45,7 @@ def upgrade() -> None:
             sa.Column('turn_type', sa.String(length=32), nullable=False),
             sa.Column('query', sa.Text(), nullable=False),
             sa.Column('response', sa.Text(), nullable=True),
-            sa.Column('action_payload', JSONB(astext_type=sa.Text()), nullable=True),
+            sa.Column('action_payload', portable_json, nullable=True),
             sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
             sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(['session_id'], ['workshop_sessions.id'], ondelete='CASCADE'),

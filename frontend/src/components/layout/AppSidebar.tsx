@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { UniFoliLogo } from '../UniFoliLogo';
-import { Badge, Button } from '../ui';
 import { appNavSections, isNavItemActive } from './nav-config';
 import { Sidebar } from '../primitives';
 import { SidebarAccountBlock } from './SidebarAccountBlock';
@@ -78,27 +77,40 @@ export function AppSidebar({
     });
   };
 
+  const sectionToneClass = (sectionKey: string) => {
+    switch (sectionKey) {
+      case 'setup':
+        return 'text-sky-700';
+      case 'analyze':
+        return 'text-violet-700';
+      case 'execute':
+        return 'text-emerald-700';
+      default:
+        return 'text-amber-700';
+    }
+  };
+
   return (
     <Sidebar open={isOpen} aria-label="앱 주요 메뉴">
       {/* Desktop Toggle Button */}
       <div className="absolute -right-3 top-6 z-50 hidden md:block">
         <button 
           onClick={onToggle}
-          className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d5e3ff] bg-white shadow-[0_8px_18px_rgba(24,66,170,0.14)] transition-colors hover:bg-[#f4f8ff]"
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-white/80 bg-white/90 shadow-[0_14px_28px_rgba(42,64,132,0.14)] transition-colors hover:bg-[#f6f8ff]"
         >
           {isOpen ? <ChevronLeft size={14} className="text-[#3056a4]" /> : <ChevronRight size={14} className="text-[#3056a4]" />}
         </button>
       </div>
 
-      <div className={cn("flex flex-col h-full", !isOpen && "items-center")}>
+      <div className={cn('flex h-full flex-col', !isOpen && 'items-center')}>
         {/* Logo Section */}
-        <div className={cn("mb-2 p-6", !isOpen && "px-2 py-6")}>
+        <div className={cn('mb-2 px-6 pb-2 pt-6', !isOpen && 'px-2 py-6')}>
           <Link to="/app" onClick={onCloseMobile} className={cn('flex', !isOpen && 'justify-center')}>
             <UniFoliLogo size={isOpen ? 'md' : 'sm'} markOnly={!isOpen} subtitle={null} />
           </Link>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-6">
+        <nav className="flex-1 space-y-7 overflow-y-auto px-3 py-3">
           {appNavSections.map(section => {
             const activeSection = section.items.some(item => isNavItemActive(pathname, item.path));
             const sectionOpen = !isOpen ? true : (openSections[section.key] ?? activeSection);
@@ -109,11 +121,12 @@ export function AppSidebar({
                   <button
                     type="button"
                     onClick={() => handleSectionToggle(section.key)}
-                    className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[#eef5ff]"
+                    className="mb-2 flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition-colors hover:bg-white/60"
                     aria-expanded={sectionOpen}
                   >
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2rem] text-[#6a83b1]">{section.label}</p>
+                    <div className="min-w-0">
+                      <p className={cn('text-[10px] font-black uppercase tracking-[0.22rem]', sectionToneClass(section.key))}>{section.label}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-400">{section.hint}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {sectionOpen ? <ChevronDown size={14} className="text-[#6a83b1]" /> : <ChevronRight size={14} className="text-[#6a83b1]" />}
@@ -134,17 +147,20 @@ export function AppSidebar({
                         to={item.path}
                         onClick={onCloseMobile}
                         className={cn(
-                          'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200',
-                          active 
-                            ? 'bg-[linear-gradient(135deg,#1d4fff_0%,#2da3ff_100%)] text-white shadow-[0_12px_24px_rgba(29,79,255,0.26)] font-semibold' 
-                            : 'text-slate-500 hover:bg-[#eef5ff] hover:text-slate-900',
-                          !isOpen && 'justify-center px-0 h-10 w-10 mx-auto',
+                          'group flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm transition-all duration-200',
+                          active
+                            ? 'bg-[linear-gradient(135deg,#3558ff_0%,#5e6fff_56%,#2cb4ff_100%)] text-white shadow-[0_18px_34px_rgba(54,92,255,0.24)] font-semibold'
+                            : 'text-slate-500 hover:bg-white/72 hover:text-slate-900',
+                          !isOpen && 'mx-auto h-11 w-11 justify-center px-0',
                         )}
                       >
                         <Icon size={18} className={cn(active ? 'text-white' : 'text-slate-400 group-hover:text-[#3559a8]')} />
                         {isOpen && (
                           <div className="min-w-0 flex-1">
-                            <p className="truncate">{item.label}</p>
+                            <p className="truncate font-bold">{item.label}</p>
+                            <p className={cn('mt-0.5 truncate text-[11px] font-medium', active ? 'text-white/78' : 'text-slate-400')}>
+                              {item.hint}
+                            </p>
                           </div>
                         )}
                       </NavLink>
@@ -156,7 +172,7 @@ export function AppSidebar({
           })}
         </nav>
 
-        <div className="mt-auto border-t border-[#dce8ff] p-4">
+        <div className="mt-auto border-t border-white/70 p-4">
           <SidebarAccountBlock
             userName={userName}
             userPhotoUrl={userPhotoUrl}

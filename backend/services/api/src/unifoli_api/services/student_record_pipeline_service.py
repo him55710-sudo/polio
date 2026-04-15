@@ -37,7 +37,12 @@ class StudentRecordPipelineService:
         self.quality_service = StudentRecordQualityService()
         self.chunker = StudentRecordChunkingService()
 
-    def process_document(self, pages: List[Any], raw_text: str) -> Dict[str, Any]:
+    def process_document(
+        self,
+        pages: List[Any],
+        raw_text: str,
+        heartbeat_callback: Optional[callable] = None,
+    ) -> Dict[str, Any]:
         """
         Runs the full semantic parsing pipeline.
         
@@ -70,6 +75,8 @@ class StudentRecordPipelineService:
             classified_pages = self.classifier.classify_pages(pages)
             stages_success["classification"] = True
             logger.info("Step 1: Page classification complete")
+            if heartbeat_callback:
+                heartbeat_callback()
         except Exception as e:
             stage_errors["classification"] = str(e)
             logger.error(f"Step 1 Failed: {str(e)}")
@@ -80,6 +87,8 @@ class StudentRecordPipelineService:
                 sections = self.parser.parse_sections(classified_pages)
                 stages_success["parsing"] = True
                 logger.info(f"Step 2: Section parsing complete. Found {len(sections)} sections.")
+                if heartbeat_callback:
+                    heartbeat_callback()
             except Exception as e:
                 stage_errors["parsing"] = str(e)
                 logger.error(f"Step 2 Failed: {str(e)}")
@@ -91,6 +100,8 @@ class StudentRecordPipelineService:
                 canonical_data = canonical_data_obj.dict() if hasattr(canonical_data_obj, 'dict') else canonical_data_obj
                 stages_success["normalization"] = True
                 logger.info("Step 3: Normalization complete")
+                if heartbeat_callback:
+                    heartbeat_callback()
             except Exception as e:
                 stage_errors["normalization"] = str(e)
                 logger.error(f"Step 3 Failed: {str(e)}")

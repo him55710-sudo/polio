@@ -25,7 +25,7 @@ from unifoli_api.services.diagnosis_report_service import (
     report_artifact_storage_key,
 )
 from unifoli_api.services.diagnosis_runtime_service import run_diagnosis_run
-from unifoli_api.services.document_service import parse_document_by_id
+from unifoli_api.services.document_service import parse_document_by_id, sync_document_async_job_state
 from unifoli_api.services.render_job_service import process_render_job
 from unifoli_api.services.research_service import ingest_research_document
 from unifoli_domain.enums import AsyncJobStatus, AsyncJobType, RenderStatus
@@ -144,6 +144,33 @@ def get_latest_job_for_resource(db: Session, *, resource_type: str, resource_id:
         .order_by(AsyncJob.created_at.desc())
     )
     return db.scalar(stmt)
+
+
+def set_async_job_progress(
+    db: Session,
+    job_id: str,
+    *,
+    stage: str,
+    message: str,
+    progress_percent: float | None = None,
+) -> AsyncJob | None:
+    job = db.get(AsyncJob, job_id)
+    if job:
+        _set_job_progress(job, stage=stage, message=message, progress_percent=progress_percent)
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+    return job
+
+
+def heartbeat_async_job(db: Session, job_id: str) -> AsyncJob | None:
+    job = db.get(AsyncJob, job_id)
+    if job:
+        job.updated_at = utc_now()
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+    return job
 
 
 def list_project_jobs(db: Session, project_id: str) -> list[AsyncJob]:
@@ -364,8 +391,7 @@ def _requeue_stale_jobs(db: Session) -> None:
     stale_before = utc_now() - timedelta(seconds=settings.async_job_stale_after_seconds)
     stmt = select(AsyncJob).where(
         AsyncJob.status == AsyncJobStatus.RUNNING.value,
-        AsyncJob.started_at.is_not(None),
-        AsyncJob.started_at < stale_before,
+        AsyncJob.updated_at < stale_before,
     )
     stale_jobs = list(db.scalars(stmt))
     if not stale_jobs:
@@ -443,7 +469,7 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
         )
         return
     if job.job_type == AsyncJobType.RENDER.value:
-        process_render_job(db, str(payload.get("render_job_id") or job.resource_id))
+        process_render_job(db, str(payload.get("render_job_id") or job.resource_id), job_id=job.id)
         return
     if job.job_type == AsyncJobType.RESEARCH_INGEST.value:
         ingest_research_document(
@@ -462,6 +488,7 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
             fallback_target_university=_opt_str(payload.get("fallback_target_university")),
             fallback_target_major=_opt_str(payload.get("fallback_target_major")),
             interest_universities=_normalize_interest_universities(payload.get("interest_universities")),
+            job_id=job.id,
         )
         db.expire_all()
         completed_run = db.get(DiagnosisRun, str(completed_run_id or run_id))
@@ -502,6 +529,7 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
             include_appendix=bool(payload.get("include_appendix", True)),
             include_citations=bool(payload.get("include_citations", True)),
             force_regenerate=bool(payload.get("force_regenerate", False)),
+            job_id=job.id,
         )
         if artifact_status == "FAILED":
             logger.warning(
@@ -684,10 +712,12 @@ def _mark_resource_running(db: Session, job: AsyncJob) -> None:
         _set_job_progress(job, stage="running", message="문서 파싱을 진행 중입니다.")
         document = db.get(ParsedDocument, job.resource_id)
         if document is not None:
-            metadata = dict(document.parse_metadata or {})
-            metadata["latest_async_job_id"] = job.id
-            metadata["latest_async_job_status"] = job.status
-            document.parse_metadata = metadata
+            sync_document_async_job_state(
+                document,
+                job_id=job.id,
+                job_status=job.status,
+                job_error=None,
+            )
             db.add(document)
     elif job.job_type == AsyncJobType.INQUIRY_EMAIL.value:
         _set_job_progress(job, stage="running", message="문의 메일을 발송 중입니다.")
@@ -737,11 +767,12 @@ def _mark_resource_retrying(db: Session, job: AsyncJob, reason: str) -> None:
     elif job.job_type == AsyncJobType.DOCUMENT_PARSE.value:
         document = db.get(ParsedDocument, job.resource_id)
         if document is not None:
-            metadata = dict(document.parse_metadata or {})
-            metadata["latest_async_job_id"] = job.id
-            metadata["latest_async_job_status"] = job.status
-            metadata["latest_async_job_error"] = reason
-            document.parse_metadata = metadata
+            sync_document_async_job_state(
+                document,
+                job_id=job.id,
+                job_status=job.status,
+                job_error=reason,
+            )
             db.add(document)
     elif job.job_type == AsyncJobType.INQUIRY_EMAIL.value:
         from unifoli_api.services.inquiry_service import sync_inquiry_delivery_state_from_job
@@ -789,11 +820,12 @@ def _mark_resource_failed(db: Session, job: AsyncJob, reason: str) -> None:
     elif job.job_type == AsyncJobType.DOCUMENT_PARSE.value:
         document = db.get(ParsedDocument, job.resource_id)
         if document is not None:
-            metadata = dict(document.parse_metadata or {})
-            metadata["latest_async_job_id"] = job.id
-            metadata["latest_async_job_status"] = AsyncJobStatus.FAILED.value
-            metadata["latest_async_job_error"] = reason
-            document.parse_metadata = metadata
+            sync_document_async_job_state(
+                document,
+                job_id=job.id,
+                job_status=AsyncJobStatus.FAILED.value,
+                job_error=reason,
+            )
             db.add(document)
     elif job.job_type == AsyncJobType.INQUIRY_EMAIL.value:
         from unifoli_api.services.inquiry_service import sync_inquiry_delivery_state_from_job
@@ -839,11 +871,12 @@ def _reset_resource_for_retry(db: Session, job: AsyncJob) -> None:
     elif job.job_type == AsyncJobType.DOCUMENT_PARSE.value:
         document = db.get(ParsedDocument, job.resource_id)
         if document is not None:
-            metadata = dict(document.parse_metadata or {})
-            metadata["latest_async_job_id"] = job.id
-            metadata["latest_async_job_status"] = AsyncJobStatus.QUEUED.value
-            metadata.pop("latest_async_job_error", None)
-            document.parse_metadata = metadata
+            sync_document_async_job_state(
+                document,
+                job_id=job.id,
+                job_status=AsyncJobStatus.QUEUED.value,
+                job_error=None,
+            )
             db.add(document)
     elif job.job_type == AsyncJobType.INQUIRY_EMAIL.value:
         from unifoli_api.services.inquiry_service import sync_inquiry_delivery_state_from_job
@@ -889,8 +922,15 @@ async def _run_diagnosis_with_worker_session(
     fallback_target_university: str | None,
     fallback_target_major: str | None,
     interest_universities: list[str] | None,
+    job_id: str | None = None,
 ) -> str:
     with SessionLocal() as worker_db:
+        def _heartbeat(stage: str, message: str, progress: float | None = None) -> None:
+            if job_id:
+                heartbeat_async_job(worker_db, job_id)
+                if progress is not None:
+                    set_async_job_progress(worker_db, job_id, stage=stage, message=message, progress_percent=progress)
+
         run = await run_diagnosis_run(
             worker_db,
             run_id=run_id,
@@ -899,6 +939,7 @@ async def _run_diagnosis_with_worker_session(
             fallback_target_university=fallback_target_university,
             fallback_target_major=fallback_target_major,
             interest_universities=interest_universities,
+            heartbeat_callback=_heartbeat,
         )
         return run.id
 
@@ -910,6 +951,7 @@ async def _run_diagnosis_report_with_worker_session(
     include_appendix: bool,
     include_citations: bool,
     force_regenerate: bool,
+    job_id: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     with SessionLocal() as worker_db:
         run = worker_db.get(DiagnosisRun, run_id)
@@ -918,6 +960,12 @@ async def _run_diagnosis_report_with_worker_session(
         project = worker_db.get(Project, run.project_id)
         if project is None:
             raise ValueError(f"Project not found for report generation: {run.project_id}")
+
+        def _heartbeat(stage: str, message: str, progress: float | None = None) -> None:
+            if job_id:
+                heartbeat_async_job(worker_db, job_id)
+                if progress is not None:
+                    set_async_job_progress(worker_db, job_id, stage=stage, message=message, progress_percent=progress)
 
         artifact = await generate_consultant_report_artifact(
             worker_db,
@@ -928,6 +976,7 @@ async def _run_diagnosis_report_with_worker_session(
             include_appendix=include_appendix,
             include_citations=include_citations,
             force_regenerate=force_regenerate,
+            heartbeat_callback=_heartbeat,
         )
         return (
             getattr(artifact, "id", None),

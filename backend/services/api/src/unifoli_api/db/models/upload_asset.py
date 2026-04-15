@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from unifoli_api.core.database import Base
@@ -16,9 +16,12 @@ def utc_now() -> datetime:
 
 class UploadAsset(Base):
     __tablename__ = "upload_assets"
+    __table_args__ = (
+        Index("ix_upload_assets_project_created_at", "project_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     original_filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(255), default="application/octet-stream")
     stored_path: Mapped[str] = mapped_column(String(500))

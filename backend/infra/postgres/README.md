@@ -8,8 +8,16 @@ Primary database for transactional data plus vector search through pgvector.
 - extensions
 - backup policy
 - row-level access strategy
-`postgres` 폴더는 `unifoli`의 기본 로컬 데이터베이스 구성을 담습니다.
 
-- `docker-compose.yml`의 `postgres` 서비스는 `pgvector`가 포함된 Postgres 이미지를 사용합니다.
-- `init/01-init-db.sql`은 최초 컨테이너 생성 시 `vector` extension을 켭니다.
-- 운영 환경에서는 Alembic 마이그레이션을 기준으로 스키마를 맞추고, 앱의 `create_all()`은 보조 수단으로만 사용하세요.
+## Local Notes
+
+- `docker-compose.yml` uses a pgvector-enabled Postgres image.
+- `init/01-init-db.sql` creates the `vector` extension on first container boot.
+- The backend still supports SQLite for local development, but Postgres remains the deployment posture for durable environments.
+
+## Deployment Posture
+
+- Treat Alembic as the source of truth for schema creation and evolution.
+- Run `alembic upgrade head` before the API or worker starts serving traffic.
+- Local/test startup may auto-apply migrations for convenience, but deployed runtimes should not depend on `create_all()` or manual `ALTER TABLE` repair as a success path.
+- When pgvector is enabled, keep the extension installation step in place before running migrations that create vector-backed indexes.

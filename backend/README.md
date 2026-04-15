@@ -30,12 +30,23 @@ Background worker:
 .\scripts\start-worker.cmd
 ```
 
+Schema migration:
+
+```powershell
+.\scripts\migrate.cmd
+```
+
+- Alembic is the authoritative schema path for both local and deployed runtimes.
+- In local development, `DATABASE_AUTO_CREATE_TABLES=true` allows startup to auto-apply Alembic migrations when the database is behind.
+- In deployed environments, run `.\scripts\migrate.cmd` or `alembic upgrade head` during release, and prefer `DATABASE_AUTO_CREATE_TABLES=false` once that explicit migration step exists.
+
 ## Vercel
 
 Use a separate Vercel project whose Root Directory is `backend/`.
 
 - `main.py` now exposes the FastAPI `app` from the backend root so Vercel can detect the ASGI entrypoint.
 - Use a real managed database in `DATABASE_URL`. SQLite on Vercel is ephemeral and should only be used for throwaway testing.
+- Run Alembic before serving traffic. Startup verification now expects the deployed database to already match migration head instead of relying on `create_all()` repair.
 - Uploads and rendered files should be treated as temporary. On Vercel, `UNIFOLI_STORAGE_ROOT` can point to `/tmp/unifoli` and the backend will also auto-detect the Vercel runtime.
 - Background thread dispatch is intentionally skipped on Vercel. If you deploy without a separate worker, use the synchronous request paths from the frontend by setting `VITE_SYNC_API_JOBS=true` there.
 - Large ML packages are optional now. Install `.[ml]` and/or `.[privacy]` only when you need the sentence-transformers or Presidio-backed paths.

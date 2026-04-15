@@ -146,7 +146,11 @@ class Settings(BaseSettings):
 
     # LLM Settings
     llm_provider: str = Field(default="gemini", description="LLM provider: 'gemini' or 'ollama'")
+    guided_chat_llm_provider: str | None = None
+    diagnosis_llm_provider: str | None = None
+    render_llm_provider: str | None = None
     gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
     ollama_base_url: str = "http://localhost:11434/v1"
     ollama_model: str = "gemma4"
     ollama_timeout_seconds: float = 90.0
@@ -164,6 +168,7 @@ class Settings(BaseSettings):
     pdf_analysis_llm_enabled: bool = True
     pdf_analysis_llm_provider: str = "ollama"
     pdf_analysis_gemini_api_key: str | None = None
+    pdf_analysis_gemini_model: str | None = None
     pdf_analysis_ollama_base_url: str | None = None
     pdf_analysis_ollama_model: str = "gemma4"
     pdf_analysis_timeout_seconds: float = 60.0
@@ -324,25 +329,54 @@ class Settings(BaseSettings):
             raise ValueError("LIVE_WEB_SEARCH_PROVIDER must be 'none' or 'serpapi'.")
         object.__setattr__(self, "live_web_search_provider", normalized_live_web_provider)
 
+        allowed_llm_providers = {"gemini", "ollama"}
         normalized_provider = (self.llm_provider or "").strip().lower()
+        if normalized_provider not in allowed_llm_providers:
+            raise ValueError("LLM_PROVIDER must be 'gemini' or 'ollama'.")
         object.__setattr__(self, "llm_provider", normalized_provider or "gemini")
-        if self.llm_provider == "ollama":
-            if not _is_valid_http_url(self.ollama_base_url):
-                raise ValueError("OLLAMA_BASE_URL must be a valid http(s) URL when LLM_PROVIDER=ollama.")
-            if self.app_env != "local" and _is_local_host_url(self.ollama_base_url):
-                logger.warning(
-                    "OLLAMA_BASE_URL points to localhost outside local development. "
-                    "Continuing startup so runtime can use deterministic fallback mode."
-                )
-            if self.ollama_timeout_seconds <= 0:
-                raise ValueError("OLLAMA_TIMEOUT_SECONDS must be greater than zero.")
-            for name, value in (
-                ("OLLAMA_FAST_TIMEOUT_SECONDS", self.ollama_fast_timeout_seconds),
-                ("OLLAMA_STANDARD_TIMEOUT_SECONDS", self.ollama_standard_timeout_seconds),
-                ("OLLAMA_RENDER_TIMEOUT_SECONDS", self.ollama_render_timeout_seconds),
-            ):
-                if value is not None and value <= 0:
-                    raise ValueError(f"{name} must be greater than zero when set.")
+
+        for field_name in ("guided_chat_llm_provider", "diagnosis_llm_provider", "render_llm_provider"):
+            raw_value = getattr(self, field_name, None)
+            normalized_value = (raw_value or "").strip().lower() or None
+            if normalized_value is not None and normalized_value not in allowed_llm_providers:
+                raise ValueError(f"{field_name.upper()} must be 'gemini' or 'ollama' when set.")
+            object.__setattr__(self, field_name, normalized_value)
+
+        normalized_pdf_provider = (self.pdf_analysis_llm_provider or "").strip().lower() or "ollama"
+        if normalized_pdf_provider not in allowed_llm_providers:
+            raise ValueError("PDF_ANALYSIS_LLM_PROVIDER must be 'gemini' or 'ollama'.")
+        object.__setattr__(self, "pdf_analysis_llm_provider", normalized_pdf_provider)
+
+        if self.gemini_model.strip() == "":
+            raise ValueError("GEMINI_MODEL must not be empty.")
+
+        if not _is_valid_http_url(self.ollama_base_url):
+            raise ValueError("OLLAMA_BASE_URL must be a valid http(s) URL.")
+        if self.app_env != "local" and _is_local_host_url(self.ollama_base_url):
+            logger.warning(
+                "OLLAMA_BASE_URL points to localhost outside local development. "
+                "Startup continues, but deployed runtime will refuse localhost Ollama as a success path."
+            )
+        if self.ollama_timeout_seconds <= 0:
+            raise ValueError("OLLAMA_TIMEOUT_SECONDS must be greater than zero.")
+        for name, value in (
+            ("OLLAMA_FAST_TIMEOUT_SECONDS", self.ollama_fast_timeout_seconds),
+            ("OLLAMA_STANDARD_TIMEOUT_SECONDS", self.ollama_standard_timeout_seconds),
+            ("OLLAMA_RENDER_TIMEOUT_SECONDS", self.ollama_render_timeout_seconds),
+        ):
+            if value is not None and value <= 0:
+                raise ValueError(f"{name} must be greater than zero when set.")
+
+        pdf_ollama_base_url = self.pdf_analysis_ollama_base_url or self.ollama_base_url
+        if not _is_valid_http_url(pdf_ollama_base_url):
+            raise ValueError("PDF_ANALYSIS_OLLAMA_BASE_URL must be a valid http(s) URL when set.")
+        if self.app_env != "local" and _is_local_host_url(pdf_ollama_base_url):
+            logger.warning(
+                "PDF_ANALYSIS_OLLAMA_BASE_URL points to localhost outside local development. "
+                "Startup continues, but deployed runtime will fall back instead of using localhost Ollama."
+            )
+        if self.pdf_analysis_timeout_seconds <= 0:
+            raise ValueError("PDF_ANALYSIS_TIMEOUT_SECONDS must be greater than zero.")
 
         return self
 

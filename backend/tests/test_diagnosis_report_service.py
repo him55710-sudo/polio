@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from unifoli_api.schemas.diagnosis import ConsultantDiagnosisReport, DiagnosisResultPayload
 from unifoli_api.services import diagnosis_report_service as report_service
@@ -312,3 +315,58 @@ def test_pdf_renderer_smoke_renders_both_modes(tmp_path) -> None:
         )
         assert output_path.exists()
         assert output_path.stat().st_size > 0
+
+
+def test_report_generation_failure_keeps_diagnosis_payload_usable(monkeypatch) -> None:
+    class _FakeDb:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+
+        def add(self, obj: object) -> None:
+            self.added.append(obj)
+
+        def commit(self) -> None:
+            return None
+
+        def refresh(self, _obj: object) -> None:
+            return None
+
+    async def _raise_build_failure(**kwargs):  # noqa: ANN003, ARG001
+        raise RuntimeError("forced report build failure")
+
+    payload_json = _result_payload().model_dump_json()
+    run = SimpleNamespace(id="run-1", project_id="project-1", result_payload=payload_json)
+    project = SimpleNamespace(id="project-1", title="테스트 프로젝트")
+    db = _FakeDb()
+
+    monkeypatch.setattr(
+        report_service,
+        "get_settings",
+        lambda: SimpleNamespace(llm_provider="gemini", ollama_render_model=None, ollama_model="gemma4"),
+    )
+    monkeypatch.setattr(report_service, "get_storage_provider", lambda _settings: SimpleNamespace(exists=lambda _key: False))
+    monkeypatch.setattr(report_service, "get_storage_provider_name", lambda _storage: "memory")
+    monkeypatch.setattr(report_service, "resolve_consultant_report_template_id", lambda **kwargs: "template-compact")
+    monkeypatch.setattr(report_service, "get_latest_report_artifact_for_run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(report_service, "list_documents_for_project", lambda *args, **kwargs: [])
+    monkeypatch.setattr(report_service, "build_consultant_report_payload", _raise_build_failure)
+
+    artifact = asyncio.run(
+        report_service.generate_consultant_report_artifact(
+            db,
+            run=run,
+            project=project,
+            report_mode="compact",
+            template_id=None,
+            include_appendix=False,
+            include_citations=False,
+            force_regenerate=True,
+        )
+    )
+
+    assert artifact.status == "FAILED"
+    assert run.result_payload == payload_json
+    assert DiagnosisResultPayload.model_validate_json(run.result_payload).headline == "진단 헤드라인"
+    metadata = json.loads(artifact.execution_metadata_json or "{}")
+    assert metadata["fallback_used"] is True
+    assert "forced report build failure" in artifact.error_message

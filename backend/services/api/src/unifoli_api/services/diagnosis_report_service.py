@@ -7,14 +7,21 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from unifoli_api.core.config import get_settings
-from unifoli_api.core.llm import GeminiClient, LLMRequestError, OllamaClient, get_llm_client, get_llm_temperature
+from unifoli_api.core.llm import (
+    LLMRequestError,
+    get_last_llm_invocation,
+    get_llm_client,
+    get_llm_temperature,
+    resolve_llm_requested_model,
+    resolve_llm_runtime,
+)
 from unifoli_api.core.security import sanitize_public_error
 from unifoli_api.db.models.diagnosis_report_artifact import DiagnosisReportArtifact
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
@@ -244,7 +251,7 @@ async def generate_consultant_report_artifact(
     template_id: str | None,
     include_appendix: bool,
     include_citations: bool,
-    force_regenerate: bool,
+    force_regenerate: bool, heartbeat_callback: Callable[[], Awaitable[None]] | None = None,
 ) -> DiagnosisReportArtifact:
     settings = get_settings()
     storage = get_storage_provider(settings)
@@ -289,6 +296,7 @@ async def generate_consultant_report_artifact(
             include_appendix=include_appendix,
             include_citations=include_citations,
             documents=documents,
+            heartbeat_callback=heartbeat_callback,
         )
         report_json = report.model_dump(mode="json")
         report_json_str = report.model_dump_json()
@@ -398,7 +406,7 @@ async def build_consultant_report_payload(
     template_id: str,
     include_appendix: bool,
     include_citations: bool,
-    documents: list[Any],
+    documents: list[Any], heartbeat_callback: Callable[[], Awaitable[None]] | None = None,
 ) -> ConsultantDiagnosisReport:
     target_context = _build_target_context(project=project, result=result, documents=documents)
     document_structure = _collect_student_record_structure(documents)
@@ -469,6 +477,7 @@ async def build_consultant_report_payload(
         result=result,
         document_structure=document_structure,
         uncertainty_notes=uncertainty_notes,
+        heartbeat_callback=heartbeat_callback,
     )
     if isinstance(narratives_result_raw, _NarrativeGenerationResult):
         narratives_result = narratives_result_raw
@@ -1941,7 +1950,7 @@ async def _generate_narratives(
     project: Project,
     result: DiagnosisResultPayload,
     document_structure: dict[str, Any],
-    uncertainty_notes: list[str],
+    uncertainty_notes: list[str], heartbeat_callback: Callable[[], Awaitable[None]] | None = None,
 ) -> _NarrativeGenerationResult:
     fallback_summary = _build_fallback_executive_summary(result=result)
     fallback_memo = _build_fallback_final_memo(result=result)
@@ -2022,12 +2031,16 @@ async def _generate_narratives(
 
     try:
         llm = get_llm_client(profile="render")
+        if heartbeat_callback:
+            await heartbeat_callback()
         response = await llm.generate_json(
             prompt=prompt,
             response_model=_ConsultantNarrativePayload,
             system_instruction=system_instruction,
             temperature=get_llm_temperature(profile="render"),
         )
+        if heartbeat_callback:
+            await heartbeat_callback()
         actual_provider = "ollama" if isinstance(llm, OllamaClient) else "gemini" if isinstance(llm, GeminiClient) else requested_provider
         actual_model = (
             llm.model

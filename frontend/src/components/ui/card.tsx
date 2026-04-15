@@ -5,16 +5,16 @@ type CardTone = 'default' | 'muted' | 'strong';
 type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 
 const toneClasses: Record<CardTone, string> = {
-  default: 'border-[#d8e6ff] bg-white/92 backdrop-blur-sm',
-  muted: 'border-[#d8e6ff] bg-[#f6faff]',
-  strong: 'border-[#c4d8ff] bg-white shadow-[0_14px_28px_rgba(24,66,170,0.12)]',
+  default: 'border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(246,249,255,0.88)_100%)] backdrop-blur-xl',
+  muted: 'border-[#dce4ff] bg-[linear-gradient(180deg,#f8faff_0%,#f1f5ff_100%)]',
+  strong: 'border-[#ccd8ff] bg-white/96 shadow-[0_18px_40px_rgba(42,64,132,0.12)] backdrop-blur-xl',
 };
 
 const paddingClasses: Record<CardPadding, string> = {
   none: 'p-0',
   sm: 'p-4',
-  md: 'p-4 sm:p-6',
-  lg: 'p-5 sm:p-8',
+  md: 'p-5 sm:p-7',
+  lg: 'p-6 sm:p-8',
 };
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -25,7 +25,7 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 export function Card({ tone = 'default', padding = 'md', className, ...props }: CardProps) {
   return (
     <section
-      className={cn('rounded-[1.75rem] border shadow-[0_10px_24px_rgba(24,66,170,0.09)]', toneClasses[tone], paddingClasses[padding], className)}
+      className={cn('rounded-[1.9rem] border shadow-[0_16px_36px_rgba(42,64,132,0.09)]', toneClasses[tone], paddingClasses[padding], className)}
       {...props}
     />
   );
@@ -44,9 +44,9 @@ export function CardDescription({ className, ...props }: React.HTMLAttributes<HT
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('space-y-4', className)} {...props} />;
+  return <div className={cn('space-y-5', className)} {...props} />;
 }
 
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <footer className={cn('mt-6 flex flex-wrap items-center gap-3', className)} {...props} />;
+  return <footer className={cn('mt-8 flex flex-wrap items-center gap-3', className)} {...props} />;
 }

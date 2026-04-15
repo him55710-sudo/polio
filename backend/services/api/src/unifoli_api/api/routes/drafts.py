@@ -96,7 +96,7 @@ def _build_system_instruction(
     diagnosis_copilot_brief: str | None = None,
 ) -> str:
     profile_context = (
-        f"학생 목표 저자: {target_university or '미정'} / 목표 전공: {target_major or '미정'}"
+        f"학생 목표 대학: {target_university or '미정'} / 목표 전공: {target_major or '미정'}"
     )
     reference_context = _format_reference_materials(reference_materials)
     guided_context = _safe_json_dump(guided_state_summary)

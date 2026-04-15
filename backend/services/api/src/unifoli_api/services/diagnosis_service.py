@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from unifoli_api.core.llm import LLMRequestError, get_llm_client
+from unifoli_api.core.llm import LLMRequestError, LLMClient, LLMRuntimeResolution, get_llm_client, resolve_llm_requested_model
 from unifoli_api.db.models.citation import Citation
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
 from unifoli_api.db.models.document_chunk import DocumentChunk
@@ -64,6 +64,13 @@ class DiagnosisSummary(BaseModel):
     target_context: str
     reasoning: str
     authenticity_note: str
+
+
+class DiagnosisUncertainty(BaseModel):
+    is_uncertain: bool = False
+    reason: str | None = Field(default=None, description="Why this diagnosis might be uncertain")
+    confidence_score: float = Field(default=1.0, ge=0.0, le=1.0, description="Overall confidence in the analysis grounded in record")
+    affected_sections: list[str] = Field(default_factory=list, description="Sections likely impacted by low evidence")
 
 
 GapAxisKey = PositiveAxisKey
@@ -232,6 +239,7 @@ class DiagnosisResult(BaseModel):
     citations: list[DiagnosisCitation] = Field(default_factory=list)
     policy_codes: list[str] = Field(default_factory=list)
     review_required: bool = False
+    uncertainty: DiagnosisUncertainty | None = None
     response_trace_id: str | None = None
     requested_llm_provider: str | None = None
     requested_llm_model: str | None = None
@@ -503,6 +511,40 @@ def _risk_level_from_axes(gap_axes: list[GapAxis]) -> Literal["safe", "warning",
     if weak_count >= 1 or watch_count >= 2:
         return "warning"
     return "safe"
+
+
+def _detect_uncertainty(
+    *,
+    full_text: str,
+    gap_axes: list[GapAxis],
+) -> DiagnosisUncertainty:
+    word_count = len((full_text or "").split())
+    # Heuristic: Very low word count for a student record (usually 2000+)
+    is_thin = word_count < 800
+
+    # Heuristic: If all axes are "watch" or "weak", we might be hallucinating stability
+    weak_axes = [axis.key for axis in gap_axes if axis.severity == "weak"]
+    strong_axes = [axis.key for axis in gap_axes if axis.severity == "strong"]
+
+    is_unstable = len(strong_axes) == 0
+
+    if is_thin:
+        return DiagnosisUncertainty(
+            is_uncertain=True,
+            reason="추출된 데이터의 양이 충분하지 않아 분석의 정밀도가 낮을 수 있습니다. 생기부 원본이 모두 포함되었는지 확인하세요.",
+            confidence_score=max(0.3, word_count / 2000),
+            affected_sections=["strengths", "gaps", "gap_axes"]
+        )
+
+    if is_unstable:
+        return DiagnosisUncertainty(
+            is_uncertain=True,
+            reason="기록된 활동에서 명확한 강점 요소를 발견하기 어렵습니다. 현재 분석 결과는 추론에 기반하며, 실제 기록의 양이 부족할 수 있습니다.",
+            confidence_score=0.5,
+            affected_sections=["strengths", "cluster_depth"]
+        )
+
+    return DiagnosisUncertainty(is_uncertain=False, confidence_score=0.95)
 
 
 def _page_count_options_for_complexity(complexity: DirectionComplexity) -> list[PageCountOption]:
@@ -914,6 +956,7 @@ def _build_guided_diagnosis(
         gap_axes=gap_axes,
         recommended_directions=directions,
         recommended_default_action=_recommended_default_action_from_directions(directions),
+        uncertainty=_detect_uncertainty(full_text=full_text, gap_axes=gap_axes),
     )
     _normalize_guided_choice_constraints(result)
     return result
@@ -1011,6 +1054,8 @@ async def evaluate_student_record(
     evidence_keys: list[str] | None = None,
     bypass_cache: bool = False,
     raise_on_llm_failure: bool = False,
+    llm_client: LLMClient | None = None,
+    llm_resolution: LLMRuntimeResolution | None = None,
 ) -> DiagnosisResult:
     from unifoli_api.core.config import get_settings
 
@@ -1034,8 +1079,18 @@ async def evaluate_student_record(
     prompt = _build_diagnosis_prompt()
 
     settings = get_settings()
-    llm = get_llm_client()
-    model_name = _current_model_name()
+    if llm_client is not None:
+        llm = llm_client
+    else:
+        try:
+            llm = get_llm_client(profile="standard", concern="diagnosis")
+        except TypeError:
+            llm = get_llm_client()  # type: ignore[call-arg]
+    model_name = (
+        str(llm_resolution.actual_model or llm_resolution.attempted_model).strip()
+        if llm_resolution is not None
+        else _current_model_name()
+    )
     cache_request = CacheRequest(
         feature_name="diagnosis.evaluate_student_record",
         model_name=model_name,
@@ -1519,12 +1574,7 @@ def latest_response_trace(run: DiagnosisRun) -> ResponseTrace | None:
 
 
 def _current_model_name() -> str:
-    from unifoli_api.core.config import get_settings
-
-    settings = get_settings()
-    if settings.llm_provider == "ollama":
-        return settings.ollama_model
-    return "gemini-1.5-pro"
+    return resolve_llm_requested_model(profile="standard", concern="diagnosis")
 
 
 def _template_catalog_prompt_block() -> str:
