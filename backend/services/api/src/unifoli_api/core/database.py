@@ -65,9 +65,9 @@ def _ensure_schema_is_ready() -> None:
         return
 
     has_app_tables = any(inspector.has_table(table_name) for table_name in _APPLICATION_TABLES)
-    if settings.database_auto_create_tables and settings.app_env in {"local", "test"}:
+    if settings.database_auto_create_tables:
         logger.info(
-            "Applying Alembic migrations at startup. current_revisions=%s head_revisions=%s",
+            "Auto-applying Alembic migrations at startup. current_revisions=%s head_revisions=%s",
             sorted(current_revisions),
             sorted(head_revisions),
         )

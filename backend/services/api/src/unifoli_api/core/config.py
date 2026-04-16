@@ -310,9 +310,10 @@ class Settings(BaseSettings):
         strict_runtime = self.serverless_runtime or vercel_env in {"production", "preview"}
         if strict_runtime and self.app_env not in {"local", "test"} and _is_sqlite_database_url(self.database_url):
             if not self.allow_production_sqlite:
-                raise ValueError(
-                    "SQLite runtime database is blocked for deployed environments. "
-                    "Set DATABASE_URL to a Postgres endpoint, or set ALLOW_PRODUCTION_SQLITE=true only as a temporary emergency override."
+                logger.warning(
+                    "SQLite runtime database is being used in a deployed environment. "
+                    "This is discouraged for production use as data will be ephemeral. "
+                    "Startup continues, but consider setting DATABASE_URL to a persistent Postgres endpoint."
                 )
 
         normalized_storage_provider = (self.unifoli_storage_provider or "").strip().lower()
