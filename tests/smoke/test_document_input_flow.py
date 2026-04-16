@@ -62,3 +62,15 @@ def test_document_input_flow(tmp_path: Path) -> None:
         fetched_document = fetched.json()
         assert fetched_document["id"] == document_id
         assert fetched_document["status"] in {"parsed", "partial"}
+
+        diagnosis = client.post(
+            "/api/v1/diagnosis/run",
+            params={"wait_for_completion": "true"},
+            json={"project_id": parsed_document["project_id"]},
+        )
+        assert diagnosis.status_code == 200, diagnosis.text
+        diagnosis_payload = diagnosis.json()
+        assert diagnosis_payload["status"] == "COMPLETED"
+        assert diagnosis_payload["result_payload"] is not None
+        assert diagnosis_payload["result_payload"]["diagnosis_summary_json"] is not None
+        assert diagnosis_payload["result_payload"]["chatbot_context_json"] is not None

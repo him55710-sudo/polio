@@ -13,6 +13,7 @@ from unifoli_api.db.models.parsed_document import ParsedDocument
 from unifoli_api.db.models.project import Project
 from unifoli_api.db.models.user import User
 from unifoli_api.db.models.workshop import WorkshopSession, WorkshopTurn
+from unifoli_api.services.diagnosis_artifact_service import extract_diagnosis_summary_text
 from unifoli_api.services.guided_chat_state_service import GUIDED_CHAT_STATE_DRAFT_TITLE, load_guided_chat_state
 from unifoli_api.services.project_service import list_project_discussion_log
 
@@ -123,6 +124,10 @@ def _load_diagnosis_summary(*, db: Session, project: Project | None) -> str | No
         return None
     if not isinstance(payload, dict):
         return None
+
+    persisted_summary = extract_diagnosis_summary_text(payload)
+    if persisted_summary:
+        return persisted_summary
 
     headline = _clip(str(payload.get("headline") or ""))
     recommended_focus = _clip(str(payload.get("recommended_focus") or ""))

@@ -301,6 +301,10 @@ export interface DiagnosisResultPayload {
   fallback_used?: boolean | null;
   fallback_reason?: string | null;
   processing_duration_ms?: number | null;
+  diagnosis_result_json?: Record<string, unknown> | null;
+  diagnosis_report_markdown?: string | null;
+  diagnosis_summary_json?: Record<string, unknown> | null;
+  chatbot_context_json?: Record<string, unknown> | null;
   relational_graph?: RelationalGraph | null;
 }
 

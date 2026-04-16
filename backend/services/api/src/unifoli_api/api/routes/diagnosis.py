@@ -9,6 +9,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from unifoli_api.api.deps import get_current_user, get_db
 from unifoli_api.core.config import get_settings
+from unifoli_api.core.errors import (
+    UniFoliErrorCode,
+    build_error_detail,
+    extract_error_code,
+    extract_error_message,
+)
 from unifoli_api.core.rate_limit import rate_limit
 from unifoli_api.core.security import ensure_resolved_within_base
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
@@ -215,22 +221,47 @@ async def trigger_diagnosis(
             detail="Inline job processing is disabled. Use the worker instead.",
         )
 
-    project = get_project(db, payload.project_id, owner_user_id=current_user.id)
-    if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    try:
+        project = get_project(db, payload.project_id, owner_user_id=current_user.id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
-    documents, full_text = combine_project_text(project.id, db)
-    policy_scan_text = build_policy_scan_text(documents) or full_text
+        documents, full_text = combine_project_text(project.id, db)
+        policy_scan_text = build_policy_scan_text(documents) or full_text
 
-    run = DiagnosisRun(project_id=payload.project_id, status="PENDING")
-    db.add(run)
-    db.flush()
+        run = DiagnosisRun(project_id=payload.project_id, status="PENDING")
+        db.add(run)
+        db.flush()
 
-    findings = detect_policy_flags(policy_scan_text)
-    flag_records = attach_policy_flags_to_run(db, run=run, project=project, user=current_user, findings=findings)
-    review_task = ensure_review_task_for_flags(db, run=run, project=project, user=current_user, findings=findings)
-    db.commit()
-    db.refresh(run)
+        findings = detect_policy_flags(policy_scan_text)
+        flag_records = attach_policy_flags_to_run(db, run=run, project=project, user=current_user, findings=findings)
+        review_task = ensure_review_task_for_flags(db, run=run, project=project, user=current_user, findings=findings)
+        db.commit()
+        db.refresh(run)
+    except HTTPException as exc:
+        detail = exc.detail
+        if isinstance(detail, dict):
+            raise
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=build_error_detail(
+                extract_error_code(detail)
+                or ("PROJECT_NOT_FOUND" if exc.status_code == status.HTTP_404_NOT_FOUND else UniFoliErrorCode.INTERNAL_ERROR),
+                extract_error_message(detail) or "Diagnosis setup failed.",
+                stage="diagnosis_route_setup",
+            ),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=build_error_detail(
+                UniFoliErrorCode.INTERNAL_ERROR,
+                "Diagnosis setup failed before the async run could start.",
+                stage="diagnosis_route_setup",
+                debug_detail=str(exc),
+                extra={"project_id": payload.project_id},
+            ),
+        ) from exc
 
     async_job = create_async_job(
         db,

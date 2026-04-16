@@ -11,6 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from unifoli_api.core.config import get_settings
+from unifoli_api.core.errors import (
+    UniFoliErrorCode,
+    build_error_detail,
+    extract_error_code,
+    extract_error_message,
+)
 from unifoli_api.core.llm import get_last_llm_invocation, resolve_llm_runtime
 from unifoli_api.core.security import sanitize_public_error
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
@@ -18,6 +24,7 @@ from unifoli_api.db.models.project import Project
 from unifoli_api.db.models.response_trace import ResponseTrace
 from unifoli_api.db.models.user import User
 from unifoli_api.services.blueprint_service import build_blueprint_signals, create_blueprint_from_signals
+from unifoli_api.services.diagnosis_artifact_service import build_diagnosis_artifact_bundle
 from unifoli_api.services.diagnosis_scoring_service import (
     DiagnosisScoringSheet,
     build_diagnosis_scoring_sheet,
@@ -143,6 +150,16 @@ def combine_project_text(project_id: str, db: Session) -> tuple[list[Any], str]:
     if not documents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=build_error_detail(
+                UniFoliErrorCode.DIAGNOSIS_INPUT_EMPTY,
+                "Upload and parse at least one student record before running diagnosis.",
+                stage="combine_project_text",
+                extra={"project_id": project_id, "reason": "no_documents"},
+            ),
+        )
+    if not documents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="진단 실행 전에 파싱이 완료된 문서를 먼저 업로드해 주세요.",
         )
 
@@ -161,6 +178,16 @@ def combine_project_text(project_id: str, db: Session) -> tuple[list[Any], str]:
             break
 
     full_text = "\n\n".join(merged_parts).strip()
+    if not full_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=build_error_detail(
+                UniFoliErrorCode.NO_USABLE_TEXT,
+                "The uploaded record does not contain enough usable text for diagnosis.",
+                stage="combine_project_text",
+                extra={"project_id": project_id, "reason": "no_usable_text"},
+            ),
+        )
     if not full_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -255,6 +282,19 @@ def _apply_structured_backbone(*, result, sheet: DiagnosisScoringSheet) -> None:
     result.risk_level = sheet.risk_level
 
 
+def _apply_diagnosis_artifacts(*, result, run: DiagnosisRun, project: Project, documents: list[Any]) -> None:  # noqa: ANN001
+    artifact_bundle = build_diagnosis_artifact_bundle(
+        run_id=run.id,
+        project_id=project.id,
+        result=result,
+        documents=documents,
+    )
+    result.diagnosis_result_json = artifact_bundle["diagnosis_result_json"]
+    result.diagnosis_report_markdown = artifact_bundle["diagnosis_report_markdown"]
+    result.diagnosis_summary_json = artifact_bundle["diagnosis_summary_json"]
+    result.chatbot_context_json = artifact_bundle["chatbot_context_json"]
+
+
 def _safe_db_rollback(db: Session) -> None:
     rollback = getattr(db, "rollback", None)
     if callable(rollback):
@@ -281,6 +321,19 @@ def _update_run_status(
 
 
 def _diagnosis_runtime_failure_message(exc: Exception) -> str:
+    detail = exc.detail if isinstance(exc, HTTPException) else None
+    fallback = "Diagnosis failed while processing the student record. Please verify the uploaded document and try again."
+    normalized = extract_error_message(detail)
+    if normalized:
+        normalized = sanitize_public_error(normalized, fallback=fallback)
+    else:
+        normalized = sanitize_public_error(str(exc), fallback=fallback)
+    lowered = normalized.lower()
+    if "database is locked" in lowered:
+        return "Diagnosis storage is temporarily busy. Please try again shortly."
+    if "database or disk is full" in lowered:
+        return "Diagnosis storage is temporarily full. Please try again shortly."
+    return normalized
     fallback = "진단 작업이 실패했습니다. 프로젝트 근거를 확인한 뒤 다시 시도해 주세요."
     normalized = sanitize_public_error(str(exc), fallback=fallback)
     lowered = normalized.lower()
@@ -547,26 +600,51 @@ async def run_diagnosis_run(
         result.fallback_used = bool(llm_strategy.get("fallback_used"))
         result.fallback_reason = str(llm_strategy.get("fallback_reason") or "").strip() or None
         result.processing_duration_ms = processing_duration_ms
-
-        _update_status("진단 근거 추적과 인용 데이터를 저장하고 있습니다...", progress=90.0)
-        trace, citation_records = create_response_trace(
-            db,
-            run=run,
-            project=project,
-            user=owner,
-            input_text=full_text,
-            result=result,
-            chunks=chunks,
-            model_name=model_name,
-        )
-        result.citations = [DiagnosisCitation.model_validate(serialize_citation(item)) for item in citation_records]
         result.policy_codes = [flag.code for flag in flag_records]
         result.review_required = bool(review_task or run.review_tasks or findings)
-        result.response_trace_id = trace.id
+        _apply_diagnosis_artifacts(result=result, run=run, project=project, documents=documents)
+
+        _update_status("진단 근거 추적과 인용 데이터를 저장하고 있습니다...", progress=90.0)
+        try:
+            trace, citation_records = create_response_trace(
+                db,
+                run=run,
+                project=project,
+                user=owner,
+                input_text=full_text,
+                result=result,
+                chunks=chunks,
+                model_name=model_name,
+            )
+            result.citations = [DiagnosisCitation.model_validate(serialize_citation(item)) for item in citation_records]
+            result.response_trace_id = trace.id
+            _apply_diagnosis_artifacts(result=result, run=run, project=project, documents=documents)
+        except Exception as exc:  # noqa: BLE001
+            _safe_db_rollback(db)
+            trace_error_code = extract_error_code(exc.detail) if isinstance(exc, HTTPException) else None
+            trace_error_message = extract_error_message(exc.detail) if isinstance(exc, HTTPException) else None
+            logger.exception(
+                "Diagnosis trace persistence failed. run_id=%s project_id=%s code=%s detail=%s",
+                run.id,
+                project.id,
+                trace_error_code or UniFoliErrorCode.DIAGNOSIS_TRACE_PERSIST_FAILED.value,
+                trace_error_message or str(exc),
+            )
+            result.citations = []
+            result.response_trace_id = None
+            result.fallback_used = True
+            if not result.fallback_reason:
+                result.fallback_reason = "trace_persistence_degraded"
+            _apply_diagnosis_artifacts(result=result, run=run, project=project, documents=documents)
 
         run.result_payload = result.model_dump_json()
         run.status = "COMPLETED"
         run.status_message = "진단이 완료되었습니다."
+        run.status_message = (
+            "Diagnosis completed with stored artifacts."
+            if result.response_trace_id
+            else "Diagnosis completed, but evidence trace persistence was degraded."
+        )
         run.error_message = None
         _persist_run(db, run)
         db.refresh(run)

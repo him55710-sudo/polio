@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import asyncio
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -249,6 +249,10 @@ class DiagnosisResult(BaseModel):
     fallback_used: bool | None = None
     fallback_reason: str | None = None
     processing_duration_ms: int | None = None
+    diagnosis_result_json: dict[str, Any] | None = None
+    diagnosis_report_markdown: str | None = None
+    diagnosis_summary_json: dict[str, Any] | None = None
+    chatbot_context_json: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

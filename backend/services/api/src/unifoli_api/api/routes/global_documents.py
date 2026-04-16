@@ -6,6 +6,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.orm import Session
 
 from unifoli_api.api.deps import get_current_user, get_db
+from unifoli_api.core.errors import (
+    UniFoliErrorCode,
+    build_error_detail,
+    extract_error_code,
+    extract_error_message,
+)
 from unifoli_api.core.rate_limit import rate_limit
 from unifoli_api.db.models.user import User
 from unifoli_api.schemas.document import ParsedDocumentRead
@@ -94,6 +100,27 @@ def parse_global_document(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except FileNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source file not found.") from exc
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            db.refresh(document)
+            if document.status in {"parsed", "partial", "failed"}:
+                return ParsedDocumentRead.model_validate(document)
+            error_code = None
+            error_message = None
+            if isinstance(document.parse_metadata, dict):
+                error_code = document.parse_metadata.get("error_code")
+                error_message = document.last_error or document.parse_metadata.get("last_error")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=build_error_detail(
+                    error_code or UniFoliErrorCode.INTERNAL_ERROR,
+                    error_message or extract_error_message(exc) or "Document parsing failed unexpectedly.",
+                    stage="global_document_parse",
+                    debug_detail=str(exc),
+                    extra={"document_id": document_id},
+                ),
+            ) from exc
         return ParsedDocumentRead.model_validate(document)
 
     if document.status in IN_PROGRESS_DOCUMENT_STATUSES:

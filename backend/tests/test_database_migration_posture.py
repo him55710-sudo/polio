@@ -101,6 +101,11 @@ def test_alembic_head_creates_operational_indexes_and_parsed_document_job_column
         "latest_async_job_error",
     }.issubset(parsed_document_columns)
 
+    user_columns = {column["name"] for column in runtime_inspector.get_columns("users")}
+    project_columns = {column["name"] for column in runtime_inspector.get_columns("projects")}
+    assert "interest_universities" in user_columns
+    assert "discussion_log" in project_columns
+
     assert "ix_upload_assets_project_created_at" in {
         index["name"] for index in runtime_inspector.get_indexes("upload_assets")
     }

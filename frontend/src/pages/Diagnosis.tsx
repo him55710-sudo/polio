@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { api, shouldUseSynchronousApiJobs } from '../lib/api';
-import { getApiErrorMessage } from '../lib/apiError';
+import { getApiErrorInfo, getApiErrorMessage } from '../lib/apiError';
 import { ProcessTimingDashboard, TimingPhaseStatus } from '../components/ProcessTimingDashboard';
 
 import { 
@@ -74,6 +74,12 @@ interface TimingPhaseState {
 }
 type TimingPhaseMap = Record<TimingPhaseKey, TimingPhaseState>;
 
+interface FlowDebugState {
+  code?: string | null;
+  detail?: string | null;
+  status?: number | null;
+}
+
 const PARSE_SUCCESS_STATUSES = SUCCESS_STATUSES;
 const PARSE_TERMINAL_STATUSES = TERMINAL_STATUSES;
 
@@ -116,6 +122,7 @@ export function Diagnosis() {
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
   const [isRetryingDiagnosis, setIsRetryingDiagnosis] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
+  const [flowDebug, setFlowDebug] = useState<FlowDebugState | null>(null);
 
   // Sync state on mount
   useEffect(() => {
@@ -231,6 +238,7 @@ export function Diagnosis() {
       setDiagnosisResult(payload);
       setDiagnosisError(null);
       setFlowError(null);
+      setFlowDebug(null);
       setStep('RESULT');
       setDiagnosisRunId(null);
       setIsUploading(false);
@@ -254,6 +262,7 @@ export function Diagnosis() {
 
   const startDiagnosisForProject = useCallback(
     async (activeProjectId: string): Promise<boolean> => {
+      try {
       const diagnosisUrl = useSynchronousApiJobs ? '/api/v1/diagnosis/run?wait_for_completion=true' : '/api/v1/diagnosis/run';
       const others = goalList.slice(1).map(goal => `${goal.university} (${goal.major})`);
       const run = await api.post<DiagnosisRunResponse>(diagnosisUrl, { 
@@ -273,6 +282,7 @@ export function Diagnosis() {
         finishTimingPhase('diagnosis', 'failed', runFailure);
         setDiagnosisError(runFailure);
         setFlowError(runFailure);
+        setFlowDebug(null);
         setStep('FAILED');
         setDiagnosisRunId(null);
         setIsUploading(false);
@@ -284,12 +294,28 @@ export function Diagnosis() {
         triggerInlineDiagnosisProcessing(run.async_job_id);
       }
       return true;
+      } catch (error) {
+        const failure = getApiErrorInfo(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+        finishTimingPhase('diagnosis', 'failed', failure.userMessage);
+        setDiagnosisError(failure.userMessage);
+        setFlowError(failure.userMessage);
+        setFlowDebug({
+          code: failure.debugCode,
+          detail: failure.debugDetail,
+          status: failure.status,
+        });
+        setStep('FAILED');
+        setDiagnosisRunId(null);
+        setIsUploading(false);
+        return false;
+      }
     },
     [completeDiagnosis, finishTimingPhase, goalList, setProjectId, setDiagnosisRunId, setStep, triggerInlineDiagnosisProcessing, useSynchronousApiJobs],
   );
 
   const syncDiagnosisRun = useCallback(
     async (runId: string) => {
+      try {
       const run = await api.get<DiagnosisRunResponse>(`/api/v1/diagnosis/${runId}`);
       setDiagnosisRun(run);
 
@@ -310,6 +336,7 @@ export function Diagnosis() {
           finishTimingPhase('diagnosis', 'failed', failureMessage);
           setDiagnosisError(failureMessage);
           setFlowError(failureMessage);
+          setFlowDebug(null);
           setStep('FAILED');
           setDiagnosisRunId(null);
           setIsUploading(false);
@@ -322,6 +349,7 @@ export function Diagnosis() {
         finishTimingPhase('diagnosis', 'failed', failureMessage);
         setDiagnosisError(failureMessage);
         setFlowError(failureMessage);
+        setFlowDebug(null);
         setStep('FAILED');
         setDiagnosisRunId(null);
         setIsUploading(false);
@@ -329,6 +357,21 @@ export function Diagnosis() {
       }
 
       return false;
+      } catch (error) {
+        const failure = getApiErrorInfo(error, '진단 상태를 확인하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+        finishTimingPhase('diagnosis', 'failed', failure.userMessage);
+        setDiagnosisError(failure.userMessage);
+        setFlowError(failure.userMessage);
+        setFlowDebug({
+          code: failure.debugCode,
+          detail: failure.debugDetail,
+          status: failure.status,
+        });
+        setStep('FAILED');
+        setDiagnosisRunId(null);
+        setIsUploading(false);
+        return true;
+      }
     },
     [completeDiagnosis, finishTimingPhase, setDiagnosisRunId, setStep],
   );
@@ -378,6 +421,7 @@ export function Diagnosis() {
         finishTimingPhase('parse', 'failed', parseError);
         setDiagnosisError(parseError);
         setFlowError(parseError);
+        setFlowDebug(null);
         setStep('FAILED');
         setIsUploading(false);
       } else if (!extractionSucceeded) {
@@ -385,6 +429,7 @@ export function Diagnosis() {
         finishTimingPhase('parse', 'failed', emptyError);
         setDiagnosisError(emptyError);
         setFlowError(emptyError);
+        setFlowDebug(null);
         setStep('FAILED');
         setIsUploading(false);
       } else {
@@ -443,6 +488,7 @@ export function Diagnosis() {
       setDiagnosisRunId(null);
       setDiagnosisError(null);
       setFlowError(null);
+      setFlowDebug(null);
       resetTimingPhases();
       setIsUploading(true);
       const loadingId = toast.loading('생활기록부 파일 업로드와 진단 준비를 진행 중입니다...');
@@ -475,10 +521,16 @@ export function Diagnosis() {
 
         toast.success('진단 실행이 시작되었습니다.', { id: loadingId });
       } catch (error: any) {
+        const failure = getApiErrorInfo(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
         const failureMessage = getApiErrorMessage(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
         failRunningTimingPhases(failureMessage);
         setDiagnosisError(failureMessage);
         setFlowError(failureMessage);
+        setFlowDebug({
+          code: failure.debugCode,
+          detail: failure.debugDetail,
+          status: failure.status,
+        });
         setStep('FAILED');
         toast.error(failureMessage, { id: loadingId });
         setIsUploading(false);
@@ -504,6 +556,7 @@ export function Diagnosis() {
       setDiagnosisJob(retried);
       setDiagnosisError(null);
       setFlowError(null);
+      setFlowDebug(null);
       setStep('ANALYSING');
 
       if (useSynchronousApiJobs) {
@@ -517,6 +570,14 @@ export function Diagnosis() {
         toast.success('재시도를 요청했습니다.');
       }
     } catch (error) {
+      const failure = getApiErrorInfo(error, '진단 재시도 요청에 실패했습니다.');
+      setDiagnosisError(failure.userMessage);
+      setFlowError(failure.userMessage);
+      setFlowDebug({
+        code: failure.debugCode,
+        detail: failure.debugDetail,
+        status: failure.status,
+      });
       finishTimingPhase('diagnosis', 'failed', '진단 재시도 요청 실패');
       toast.error('재시도 요청에 실패했습니다.');
     } finally {
@@ -634,6 +695,14 @@ export function Diagnosis() {
         {step === 'FAILED' && (
           <motion.div key="failed" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
             <WorkflowNotice tone="danger" title="진단 실패" description={flowError || diagnosisError || '오류가 발생했습니다.'} />
+            {flowDebug && (flowDebug.code || flowDebug.detail || flowDebug.status != null) && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-950">
+                <p className="font-semibold">디버그 정보</p>
+                {flowDebug.code && <p className="mt-2 font-mono">code: {flowDebug.code}</p>}
+                {flowDebug.status != null && <p className="font-mono">status: {flowDebug.status}</p>}
+                {flowDebug.detail && <p className="mt-2 whitespace-pre-wrap break-words font-mono text-xs">{flowDebug.detail}</p>}
+              </div>
+            )}
             <div className="flex justify-center gap-2">
               <SecondaryButton onClick={() => setStep('UPLOAD')}>업로드로 돌아가기</SecondaryButton>
               <PrimaryButton onClick={retryDiagnosis} disabled={isRetryingDiagnosis}>재시도</PrimaryButton>

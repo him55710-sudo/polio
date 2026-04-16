@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from unifoli_api.db.models.parsed_document import ParsedDocument
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
 from unifoli_api.schemas.diagnosis import DiagnosisResultPayload
+from unifoli_api.services.diagnosis_artifact_service import (
+    build_diagnosis_copilot_brief as build_persisted_diagnosis_copilot_brief,
+)
 
 
 def build_diagnosis_copilot_brief(
@@ -34,6 +37,10 @@ def build_diagnosis_copilot_brief(
         payload = DiagnosisResultPayload.model_validate_json(run.result_payload)
     except Exception:  # noqa: BLE001
         return ""
+
+    persisted_brief = build_persisted_diagnosis_copilot_brief(payload, max_items=max_items)
+    if persisted_brief:
+        return persisted_brief
 
     strengths = [item.strip() for item in payload.strengths[:max_items] if str(item).strip()]
     gaps = [item.strip() for item in payload.gaps[:max_items] if str(item).strip()]
