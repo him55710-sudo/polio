@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from unifoli_api.api.deps import (
     _resolve_firebase_project_id,
@@ -25,6 +26,36 @@ def test_resolve_firebase_project_id_prefers_service_account_payload(monkeypatch
 
 def test_resolve_google_application_credentials_path_uses_runtime_resolution(monkeypatch) -> None:
     monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "./storage/runtime/firebase-service-account.json")
+
+    resolved = _resolve_google_application_credentials_path()
+
+    assert resolved is not None
+    assert Path(resolved).name == "firebase-service-account.json"
+    assert str(find_project_root()) in resolved
+
+
+def test_resolve_firebase_project_id_falls_back_to_settings_when_env_is_not_exported(monkeypatch) -> None:
+    monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.delenv("GCLOUD_PROJECT", raising=False)
+    monkeypatch.setattr(
+        "unifoli_api.api.deps._get_auth_bootstrap_settings",
+        lambda: SimpleNamespace(firebase_project_id="settings-project-id"),
+    )
+
+    resolved = _resolve_firebase_project_id()
+
+    assert resolved == "settings-project-id"
+
+
+def test_resolve_google_application_credentials_path_falls_back_to_settings_when_env_is_not_exported(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.setattr(
+        "unifoli_api.api.deps._get_auth_bootstrap_settings",
+        lambda: SimpleNamespace(google_application_credentials="./storage/runtime/firebase-service-account.json"),
+    )
 
     resolved = _resolve_google_application_credentials_path()
 

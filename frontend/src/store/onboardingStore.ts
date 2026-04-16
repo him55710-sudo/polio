@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { auth } from '../lib/firebase';
 import { isGuestSessionActive, updateGuestProfile, updateGuestTargets } from '../lib/guestProfile';
 import { updateLocalAuthProfile, updateLocalAuthTargets } from '../lib/localAuthProfile';
+import { buildRankedGoals } from '../lib/rankedGoals';
 import { useAuthStore } from './authStore';
 
 export interface ProfileData {
@@ -40,6 +41,7 @@ interface OnboardingState {
   activeProjectId: string | null;
   activeDiagnosisRunId: string | null;
   activeDocumentId: string | null;
+  lastSyncedUserKey: string | null;
   isLoading: boolean;
   error: string | null;
   hasInitialized: boolean;
@@ -53,15 +55,14 @@ interface OnboardingState {
   setActiveProjectId: (id: string | null) => void;
   setActiveDiagnosisRunId: (id: string | null) => void;
   setActiveDocumentId: (id: string | null) => void;
-  
+  clearActiveProjectContext: () => void;
+
   submitProfile: () => Promise<boolean>;
   submitGoals: (directData?: GoalsData) => Promise<boolean>;
   syncWithUser: (user: any) => void;
   initializeFromProject: (projectId: string) => Promise<boolean>;
   resetOnboarding: () => void;
 }
-
-import { buildRankedGoals } from '../lib/rankedGoals';
 
 const initialProfile: ProfileData = { grade: '', track: '', career: '' };
 const initialGoals: GoalsData = {
@@ -71,6 +72,20 @@ const initialGoals: GoalsData = {
   interest_universities: [],
 };
 
+export function deriveUserContextKey(user: { id?: string | null; firebase_uid?: string | null } | null | undefined): string | null {
+  if (!user) return null;
+  const id = typeof user.id === 'string' ? user.id.trim() : '';
+  const firebaseUid = typeof user.firebase_uid === 'string' ? user.firebase_uid.trim() : '';
+  const composite = `${id}::${firebaseUid}`.trim();
+  return composite || null;
+}
+
+function resolveDiagnosisStep(user: any, hasPrimaryGoal: boolean): DiagnosisStep {
+  if (!user?.grade || !user?.track) return 'PROFILE';
+  if (!hasPrimaryGoal) return 'GOALS';
+  return 'UPLOAD';
+}
+
 export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   diagnosisStep: 'PROFILE',
   profile: initialProfile,
@@ -79,6 +94,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   activeProjectId: null,
   activeDiagnosisRunId: null,
   activeDocumentId: null,
+  lastSyncedUserKey: null,
   isLoading: false,
   error: null,
   hasInitialized: false,
@@ -90,18 +106,23 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   setGoals: (data) => set((state) => ({ goals: { ...state.goals, ...data } })),
 
   setGoalList: (goalList) => set({ goalList }),
-  
-  addGoal: (goal) => set((state) => ({ 
-    goalList: [...state.goalList, goal].slice(0, 6) 
+
+  addGoal: (goal) => set((state) => ({
+    goalList: [...state.goalList, goal].slice(0, 6),
   })),
 
-  removeGoal: (id) => set((state) => ({ 
-    goalList: state.goalList.filter(g => g.id !== id) 
+  removeGoal: (id) => set((state) => ({
+    goalList: state.goalList.filter((goal) => goal.id !== id),
   })),
 
   setActiveProjectId: (id) => set({ activeProjectId: id }),
   setActiveDiagnosisRunId: (id) => set({ activeDiagnosisRunId: id }),
   setActiveDocumentId: (id) => set({ activeDocumentId: id }),
+  clearActiveProjectContext: () => set({
+    activeProjectId: null,
+    activeDiagnosisRunId: null,
+    activeDocumentId: null,
+  }),
 
   submitProfile: async () => {
     set({ isLoading: true, error: null });
@@ -128,6 +149,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         set({ diagnosisStep: 'GOALS', isLoading: false, hasInitialized: true });
         return true;
       }
+
       const currentAuthUser = auth?.currentUser;
       if (currentAuthUser) {
         const { profile } = get();
@@ -136,7 +158,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         set({ diagnosisStep: 'GOALS', isLoading: false, hasInitialized: true });
         return true;
       }
-      set({ error: err.response?.data?.detail || '프로필 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
+
+      set({ error: err.response?.data?.detail || '?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.', isLoading: false });
       return false;
     }
   },
@@ -148,16 +171,17 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (!goals) {
         const currentGoalList = get().goalList;
         if (currentGoalList.length === 0) {
-          set({ isLoading: false, error: '최소 1개의 목표를 설정해야 합니다.' });
+          set({ isLoading: false, error: '理쒖냼 1媛쒖쓽 紐⑺몴瑜??ㅼ젙?댁빞 ?⑸땲??' });
           return false;
         }
+
         const main = currentGoalList[0];
-        const others = currentGoalList.slice(1).map(g => `${g.university} (${g.major})`);
+        const others = currentGoalList.slice(1).map((goal) => `${goal.university} (${goal.major})`);
         goals = {
           target_university: main.university,
           target_major: main.major,
           interest_universities: others,
-          admission_type: get().goals.admission_type || '학생부종합',
+          admission_type: get().goals.admission_type || '?숈깮遺醫낇빀',
         };
       }
 
@@ -182,6 +206,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         set({ diagnosisStep: 'UPLOAD', isLoading: false });
         return true;
       }
+
       const currentAuthUser = auth?.currentUser;
       if (currentAuthUser) {
         const updatedUser = updateLocalAuthTargets(goals, currentAuthUser, useAuthStore.getState().user);
@@ -189,48 +214,64 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         set({ diagnosisStep: 'UPLOAD', isLoading: false, hasInitialized: true });
         return true;
       }
-      set({ error: err.response?.data?.detail || '목표 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
+
+      set({ error: err.response?.data?.detail || '紐⑺몴 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.', isLoading: false });
       return false;
     }
   },
 
   syncWithUser: (user) => {
     if (!user) return;
+
     const ranked = buildRankedGoals(user, 6);
-    const goalList: GoalItem[] = ranked.map((rg, idx) => ({
-      id: idx === 0 ? 'main' : `interest-${idx - 1}`,
-      university: rg.university,
-      major: rg.major
+    const goalList: GoalItem[] = ranked.map((goal, index) => ({
+      id: index === 0 ? 'main' : `interest-${index - 1}`,
+      university: goal.university,
+      major: goal.major,
     }));
     const [primaryGoal, ...otherGoals] = goalList;
     const hasPrimaryGoal = Boolean(primaryGoal?.university && primaryGoal?.major);
-    
-    const { hasInitialized, diagnosisStep } = get();
+    const nextStep = resolveDiagnosisStep(user, hasPrimaryGoal);
+    const nextUserKey = deriveUserContextKey(user);
+    const { hasInitialized, lastSyncedUserKey } = get();
+    const hasUserChanged = Boolean(lastSyncedUserKey && nextUserKey && lastSyncedUserKey !== nextUserKey);
 
-    set({ 
+    const nextState: Partial<OnboardingState> = {
       profile: {
         grade: user.grade || '',
         track: user.track || '',
-        career: user.career || ''
+        career: user.career || '',
       },
       goalList,
       goals: {
         target_university: primaryGoal?.university || '',
         target_major: primaryGoal?.major || '',
-        interest_universities: otherGoals.filter((goal) => goal.major).map((goal) => `${goal.university} (${goal.major})`),
-        admission_type: user.admission_type || '학생부종합'
-      }
-    });
+        interest_universities: otherGoals
+          .filter((goal) => goal.major)
+          .map((goal) => `${goal.university} (${goal.major})`),
+        admission_type: user.admission_type || '?숈깮遺醫낇빀',
+      },
+      lastSyncedUserKey: nextUserKey,
+    };
 
-    // Only auto-advance if we haven't manually interacted or if we are at the very beginning
+    if (hasUserChanged) {
+      set({
+        ...nextState,
+        diagnosisStep: nextStep,
+        activeProjectId: null,
+        activeDiagnosisRunId: null,
+        activeDocumentId: null,
+        error: null,
+        isLoading: false,
+        hasInitialized: true,
+      });
+      return;
+    }
+
+    set(nextState);
+
     if (!hasInitialized) {
-      if (!user.grade || !user.track) {
-        set({ diagnosisStep: 'PROFILE', hasInitialized: true });
-      } else if (!hasPrimaryGoal) {
-        set({ diagnosisStep: 'GOALS', hasInitialized: true });
-      } else {
-        set({ diagnosisStep: 'UPLOAD', hasInitialized: true });
-      }
+      set({ diagnosisStep: nextStep, hasInitialized: true });
     }
   },
 
@@ -239,50 +280,56 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     try {
       const project = await api.get<any>(`/api/v1/projects/${projectId}`);
       const projectGoals: GoalItem[] = [];
-      
+
       if (project.target_university) {
-        projectGoals.push({ 
-          id: 'main', 
-          university: project.target_university, 
-          major: project.target_major || '' 
+        projectGoals.push({
+          id: 'main',
+          university: project.target_university,
+          major: project.target_major || '',
         });
-        
+
         if (project.interest_universities?.length) {
-          project.interest_universities.forEach((iu: any, idx: number) => {
-            if (!iu || typeof iu !== 'string') return;
-            const match = iu.match(/^(.+)\s\((.+)\)$/);
+          project.interest_universities.forEach((interestUniversity: any, index: number) => {
+            if (!interestUniversity || typeof interestUniversity !== 'string') return;
+            const match = interestUniversity.match(/^(.+)\s\((.+)\)$/);
             if (match) {
-              projectGoals.push({ id: `interest-${idx}`, university: match[1]?.trim() || '', major: match[2]?.trim() || '' });
+              projectGoals.push({
+                id: `interest-${index}`,
+                university: match[1]?.trim() || '',
+                major: match[2]?.trim() || '',
+              });
             } else {
-              projectGoals.push({ id: `interest-${idx}`, university: iu.trim(), major: '' });
+              projectGoals.push({ id: `interest-${index}`, university: interestUniversity.trim(), major: '' });
             }
           });
         }
       }
 
-      set({ 
+      set({
         goalList: projectGoals,
         diagnosisStep: project.latest_diagnosis_run_id || project.documents?.length ? 'ANALYSING' : 'UPLOAD',
         activeDocumentId: project.documents?.[0]?.id || null,
         activeDiagnosisRunId: project.latest_diagnosis_run_id || null,
-        isLoading: false
+        isLoading: false,
       });
       return true;
     } catch (err: any) {
-      set({ isLoading: false, error: '프로젝트 정보를 불러오지 못했습니다.' });
+      set({ isLoading: false, error: '?꾨줈?앺듃 ?뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??' });
       return false;
     }
   },
 
-  resetOnboarding: () => set({ 
+  resetOnboarding: () => set({
     diagnosisStep: 'PROFILE',
-    profile: initialProfile, 
-    goals: initialGoals, 
+    profile: initialProfile,
+    goals: initialGoals,
     goalList: [],
     activeProjectId: null,
     activeDiagnosisRunId: null,
     activeDocumentId: null,
-    error: null, 
-    isLoading: false 
+    lastSyncedUserKey: null,
+    error: null,
+    isLoading: false,
+    hasInitialized: false,
   }),
 }));

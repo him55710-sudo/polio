@@ -99,6 +99,43 @@ class DiagnosisScoringSheet(BaseModel):
     relational_graph: RelationalGraph | None = None
 
 
+async def normalize_major_name(major_name: str | None) -> str | None:
+    """사용자가 입력한 전공 명칭의 오타를 교정하거나 표준 명칭으로 변환합니다."""
+    if not major_name or len(major_name.strip()) < 2:
+        return major_name
+
+    from unifoli_api.core.llm import get_llm_client
+    try:
+        llm = get_llm_client(profile="fast") # 빠른 응답을 위해 fast 프로필 사용
+    except Exception:
+        return major_name
+
+    prompt = (
+        f"다음은 사용자가 입력한 대학교 희망 전공 명칭입니다: '{major_name}'\n"
+        "만약 오타가 있다면 올바른 명칭으로 교정하고, 줄임말이나 비표준 명칭이라면 "
+        "한국 대학교에서 사용하는 표준 학과 명칭으로 변환해 주세요.\n"
+        "결과는 다른 부연 설명 없이 오직 교정된 전공 명칭만 출력하십시오.\n"
+        "만약 이미 표준 명칭이거나 교정이 불필요하다면 원문 그대로 출력하십시오."
+    )
+
+    try:
+        # stream_chat 대신 단순 생성을 위해 generate_json을 활용하거나 
+        # 간단한 텍스트 반환을 위해 직접 호출 로직을 사용 (llm.py의 구조에 따라)
+        # 여기서는 generate_json 스키마 대신 일반 텍스트가 필요할 수 있으나 
+        # 현재 llm 클라이언트는 generate_json 위주이므로 스카마 정의
+        class NormalizationResult(BaseModel):
+            corrected_name: str
+
+        res = await llm.generate_json(
+            prompt=prompt,
+            response_model=NormalizationResult,
+            temperature=0.0
+        )
+        return res.corrected_name.strip()
+    except Exception:
+        return major_name
+
+
 async def extract_semantic_diagnosis(
     *,
     masked_text: str,

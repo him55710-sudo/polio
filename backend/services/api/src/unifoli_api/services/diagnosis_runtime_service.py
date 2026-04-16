@@ -458,8 +458,13 @@ async def run_diagnosis_run(
             flag_records = attach_policy_flags_to_run(db, run=run, project=project, user=owner, findings=findings)
             review_task = ensure_review_task_for_flags(db, run=run, project=project, user=owner, findings=findings)
 
-        target_major = fallback_target_major or project.target_major
-        user_major = project.target_major or fallback_target_major or "일반 탐구"
+        _update_status("입력하신 희망 전공을 최적화하고 있습니다...", progress=15.0)
+        from unifoli_api.services.diagnosis_scoring_service import normalize_major_name
+        
+        raw_major = fallback_target_major or project.target_major
+        target_major = await normalize_major_name(raw_major)
+        
+        user_major = target_major or "일반 탐구"
         evidence_keys = [document.sha256 or document.id for document in documents if (document.sha256 or document.id)]
 
         _update_status("학생부 핵심 지표를 추출하고 있습니다...", progress=25.0)

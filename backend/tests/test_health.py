@@ -5,11 +5,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from unifoli_api.api.routes import health as health_route
 from unifoli_api.core.config import get_settings
+from unifoli_api.core.runtime_diagnostics import build_health_payload
 from unifoli_api.main import app, create_app
 
 
@@ -226,3 +228,47 @@ def test_root_page_shows_backend_info_in_local() -> None:
             assert "Open API Docs" in response.text
     finally:
         settings.app_env, settings.api_docs_enabled, settings.api_root_redirect_enabled = original
+
+
+def test_health_payload_reads_firebase_bootstrap_flags_from_loaded_settings(tmp_path: Path) -> None:
+    credential_path = tmp_path / "firebase-service-account.json"
+    credential_path.write_text("{}", encoding="utf-8")
+
+    settings = SimpleNamespace(
+        database_url="sqlite:///:memory:",
+        allow_production_sqlite=True,
+        database_auto_create_tables=True,
+        unifoli_storage_provider="local",
+        s3_bucket_name=None,
+        llm_provider="gemini",
+        guided_chat_llm_provider=None,
+        diagnosis_llm_provider=None,
+        render_llm_provider=None,
+        gemini_api_key=None,
+        gemini_model="gemini-2.0-flash",
+        ollama_base_url="http://localhost:11434/v1",
+        pdf_analysis_ollama_base_url=None,
+        pdf_analysis_llm_provider="ollama",
+        pdf_analysis_gemini_api_key=None,
+        auth_jwt_secret=None,
+        auth_jwt_public_key=None,
+        firebase_project_id="loaded-from-settings",
+        google_application_credentials=str(credential_path),
+        firebase_service_account_json=None,
+        firebase_service_account_json_base64=None,
+        auth_social_login_enabled=False,
+        app_env="local",
+        serverless_runtime=False,
+        api_prefix="/api/v1",
+    )
+    app_state = SimpleNamespace(
+        runtime_boot_stage="ready",
+        runtime_boot_ready=True,
+        runtime_boot_error_message=None,
+        runtime_boot_error_code=None,
+    )
+
+    payload = build_health_payload(settings, app_state=app_state)
+
+    assert payload["auth"]["firebase_project_configured"] is True
+    assert payload["auth"]["firebase_service_account_configured"] is True

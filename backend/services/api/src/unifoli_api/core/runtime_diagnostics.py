@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
@@ -10,6 +9,7 @@ from sqlalchemy import text
 
 from unifoli_api.core.config import _is_local_host_url
 from unifoli_api.core.errors import UniFoliErrorCode
+from unifoli_shared.paths import resolve_runtime_path
 
 
 def classify_startup_failure(error: Exception | str | None) -> str:
@@ -153,17 +153,27 @@ def build_health_payload(
     firebase_service_account_inline = bool(
         (os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON") or "").strip()
         or (os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64") or "").strip()
+        or str(getattr(settings, "firebase_service_account_json", "") or "").strip()
+        or str(getattr(settings, "firebase_service_account_json_base64", "") or "").strip()
     )
-    google_application_credentials = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
+    google_application_credentials = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip() or str(
+        getattr(settings, "google_application_credentials", "") or ""
+    ).strip()
+    resolved_google_application_credentials = (
+        resolve_runtime_path(google_application_credentials).expanduser()
+        if google_application_credentials
+        else None
+    )
     auth_info = {
         "jwt_configured": bool(getattr(settings, "auth_jwt_secret", None) or getattr(settings, "auth_jwt_public_key", None)),
         "firebase_project_configured": bool(
             (os.getenv("FIREBASE_PROJECT_ID") or "").strip()
             or (os.getenv("GOOGLE_CLOUD_PROJECT") or "").strip()
             or (os.getenv("GCLOUD_PROJECT") or "").strip()
+            or str(getattr(settings, "firebase_project_id", "") or "").strip()
         ),
         "firebase_service_account_configured": firebase_service_account_inline
-        or (bool(google_application_credentials) and Path(google_application_credentials).expanduser().exists()),
+        or bool(resolved_google_application_credentials and resolved_google_application_credentials.exists()),
         "social_login_enabled": bool(getattr(settings, "auth_social_login_enabled", False)),
     }
 

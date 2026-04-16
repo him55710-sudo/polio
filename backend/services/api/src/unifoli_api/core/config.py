@@ -107,6 +107,13 @@ class Settings(BaseSettings):
     auth_social_login_enabled: bool = False
     auth_social_state_secret: str | None = None
     auth_social_state_ttl_seconds: int = 600
+    firebase_project_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("FIREBASE_PROJECT_ID", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT"),
+    )
+    google_application_credentials: str | None = None
+    firebase_service_account_json: str | None = None
+    firebase_service_account_json_base64: str | None = None
     toss_payments_enabled: bool = False
     toss_payments_client_key: str | None = None
     toss_payments_secret_key: str | None = None

@@ -21,6 +21,12 @@ security = HTTPBearer()
 LOCAL_DEV_JWT_SECRET = "local-dev-secret-please-change-1234567890"
 
 
+def _get_auth_bootstrap_settings():
+    from unifoli_api.core.config import get_settings
+
+    return get_settings()
+
+
 def _resolve_firebase_project_id(certificate_payload: dict[str, Any] | None = None) -> str | None:
     if certificate_payload:
         project_id = str(certificate_payload.get("project_id") or "").strip()
@@ -32,11 +38,19 @@ def _resolve_firebase_project_id(certificate_payload: dict[str, Any] | None = No
         if value:
             return value
 
+    settings = _get_auth_bootstrap_settings()
+    configured_value = str(getattr(settings, "firebase_project_id", "") or "").strip()
+    if configured_value:
+        return configured_value
+
     return None
 
 
 def _resolve_google_application_credentials_path() -> str | None:
     raw_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if not raw_path:
+        settings = _get_auth_bootstrap_settings()
+        raw_path = str(getattr(settings, "google_application_credentials", "") or "").strip()
     if not raw_path:
         return None
 
@@ -59,8 +73,13 @@ def get_firebase_auth_client():
         ) from exc
 
     if not firebase_admin._apps:
-        inline_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
-        inline_json_b64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64", "").strip()
+        settings = _get_auth_bootstrap_settings()
+        inline_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip() or str(
+            getattr(settings, "firebase_service_account_json", "") or ""
+        ).strip()
+        inline_json_b64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64", "").strip() or str(
+            getattr(settings, "firebase_service_account_json_base64", "") or ""
+        ).strip()
         credential = None
         project_id = None
 

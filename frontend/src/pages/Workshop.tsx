@@ -536,7 +536,11 @@ async function streamFoliReply(
   onMeta: (meta: ChatStreamMetaPayload) => void,
   onPatch: (patch: any) => void,
 ): Promise<StreamFoliReplyResult> {
-  const endpoint = `${resolveApiBaseUrl()}/api/v1/workshop/chat/stream`;
+  if (!workshopId) {
+    throw new Error('Workshop chat session is not initialized.');
+  }
+
+  const endpoint = `${resolveApiBaseUrl()}/api/v1/workshops/${encodeURIComponent(workshopId)}/chat/stream`;
   try {
     const { response, authSource } = await openChatEventStream({
       endpoint,
