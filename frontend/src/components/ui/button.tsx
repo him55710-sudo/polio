@@ -12,12 +12,12 @@ interface ButtonStyleOptions {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'border-transparent bg-[linear-gradient(135deg,#3458ff_0%,#6170ff_55%,#2cb6ff_100%)] text-white shadow-[0_16px_34px_rgba(54,92,255,0.28)] hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(54,92,255,0.34)]',
+    'border-indigo-400/20 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 text-white shadow-xl shadow-indigo-200/50 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-indigo-300/60 active:scale-[0.98]',
   secondary:
-    'border-white/70 bg-white/82 text-[#20335e] shadow-[0_10px_24px_rgba(33,52,110,0.08)] backdrop-blur-md hover:border-[#cbd7ff] hover:bg-[#f8faff]',
-  tertiary: 'border-transparent bg-[#eef2ff] text-[#25408a] hover:bg-[#e4ebff]',
-  ghost: 'border-transparent bg-transparent text-slate-600 hover:bg-white/60 hover:text-[#15305f]',
-  danger: 'border-transparent bg-red-600 text-white shadow-md shadow-red-900/15 hover:bg-red-700',
+    'border-slate-200 bg-white text-slate-700 shadow-sm hover:border-indigo-200 hover:bg-slate-50 hover:text-indigo-700 active:scale-[0.98]',
+  tertiary: 'border-transparent bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
+  ghost: 'border-transparent bg-transparent text-slate-500 hover:bg-slate-100 hover:text-indigo-600',
+  danger: 'border-transparent bg-rose-600 text-white shadow-lg shadow-rose-100 hover:bg-rose-700 active:scale-[0.98]',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -32,7 +32,7 @@ export function buttonClassName(options: ButtonStyleOptions = {}) {
 
   return cn(
     'inline-flex items-center justify-center gap-2 border transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d4fff]/30 focus-visible:ring-offset-2',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600/30 focus-visible:ring-offset-2',
     variantClasses[variant],
     sizeClasses[size],
     fullWidth && 'w-full',

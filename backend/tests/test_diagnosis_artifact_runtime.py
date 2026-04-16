@@ -196,3 +196,53 @@ def test_copilot_brief_uses_persisted_artifact_bundle() -> None:
     assert "Grounded diagnosis headline" in brief
     assert "robotics ethics inquiry" in brief
     assert "Student record p.2" in brief
+
+
+def test_copilot_brief_fallback_text_is_readable_without_artifact_bundle() -> None:
+    payload = DiagnosisResult.model_validate(
+        {
+            "headline": "Grounded diagnosis headline",
+            "strengths": ["evidence-backed strength"],
+            "gaps": ["missing evidence gap"],
+            "recommended_focus": "next focus",
+            "risk_level": "warning",
+            "next_actions": ["build a better evidence trail"],
+            "recommended_topics": ["robotics ethics inquiry"],
+            "fallback_used": True,
+            "citations": [
+                {
+                    "source_label": "Student record",
+                    "page_number": 3,
+                    "excerpt": "Documented lab reflection",
+                    "relevance_score": 0.74,
+                }
+            ],
+            "document_quality": {
+                "source_mode": "mixed",
+                "parse_reliability_score": 62,
+                "parse_reliability_band": "medium",
+                "needs_review": True,
+                "needs_review_documents": 1,
+                "total_records": 12,
+                "total_word_count": 420,
+                "narrative_density": 0.58,
+                "evidence_density": 0.61,
+                "summary": "Document extraction needs manual review.",
+            },
+        }
+    )
+
+    class _FakeDB:
+        def scalar(self, stmt):  # noqa: ANN001, ARG002
+            return SimpleNamespace(result_payload=payload.model_dump_json())
+
+        def scalars(self, stmt):  # noqa: ANN001, ARG002
+            return []
+
+    brief = build_diagnosis_copilot_brief(_FakeDB(), project_id="project-2")
+
+    assert "[Diagnosis Copilot Brief]" in brief
+    assert "Grounded diagnosis headline" in brief
+    assert "manual review" in brief
+    assert "deterministic fallback mode" in brief
+    assert "Student record p.3" in brief

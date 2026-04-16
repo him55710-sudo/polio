@@ -4,7 +4,12 @@ import test from 'node:test';
 import { AxiosHeaders } from 'axios';
 
 import { api, applyAuthorizationHeader } from '../src/lib/api';
-import { ChatStreamError, openChatEventStream } from '../src/lib/chatStream';
+import {
+  ChatStreamError,
+  openChatEventStream,
+  resolveChatStreamFallbackHint,
+  resolveChatStreamToastMessage,
+} from '../src/lib/chatStream';
 import { getAuthorizationHeader } from '../src/lib/requestAuth';
 
 test('auth helper prefers Firebase token when available', async () => {
@@ -83,6 +88,32 @@ test('chat stream rejects non-event-stream content types and keeps auth header w
   );
 
   assert.equal(observedAuthorization, 'Bearer draft-token');
+});
+
+test('chat stream classifies backend startup failures separately from generic HTTP errors', async () => {
+  await assert.rejects(
+    () =>
+      openChatEventStream({
+        endpoint: 'https://api.example.com/api/v1/workshops/boot/chat/stream',
+        payload: { message: 'test' },
+        appAccessToken: 'stream-token',
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ detail: { code: 'BACKEND_STARTUP_FAILED' } }), {
+            status: 500,
+            headers: {
+              'content-type': 'application/json',
+              'x-vercel-error': 'FUNCTION_INVOCATION_FAILED',
+            },
+          }),
+      }),
+    (error: unknown) => {
+      assert(error instanceof ChatStreamError);
+      assert.equal(error.code, 'backend_startup_failed');
+      assert.match(resolveChatStreamToastMessage(error), /백엔드가 아직 준비되지 않았습니다/);
+      assert.match(resolveChatStreamFallbackHint(error) || '', /DATABASE_URL|마이그레이션|서버 상태/);
+      return true;
+    },
+  );
 });
 
 test('standard API surfaces misrouted HTML responses with backend diagnostics', async () => {

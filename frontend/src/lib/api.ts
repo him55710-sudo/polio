@@ -134,6 +134,57 @@ export interface RuntimeCapabilities {
   requires_explicit_process_kicking: boolean;
 }
 
+export interface BackendHealthStatus {
+  status: 'ok' | 'degraded';
+  boot_ok: boolean;
+  runtime: {
+    app_env: string;
+    serverless_runtime: boolean;
+    api_prefix: string;
+  };
+  storage: {
+    provider: string;
+    bucket?: string | null;
+  };
+  database: {
+    configured: boolean;
+    scheme?: string | null;
+    allow_production_sqlite: boolean;
+    auto_create_tables: boolean;
+    connected?: boolean | null;
+    error?: string | null;
+  };
+  llm: {
+    default_provider: string;
+    guided_chat_provider?: string | null;
+    diagnosis_provider?: string | null;
+    render_provider?: string | null;
+    gemini_api_key_configured?: boolean;
+    gemini_model?: string | null;
+    ollama_base_url?: string | null;
+    ollama_localhost_only?: boolean;
+    pdf_analysis_provider?: string | null;
+    pdf_analysis_gemini_api_key_configured?: boolean;
+    pdf_analysis_ollama_base_url?: string | null;
+    pdf_analysis_ollama_localhost_only?: boolean;
+    ollama_reachable?: boolean;
+    ollama_reason?: string | null;
+    ollama_cached?: boolean;
+  };
+  auth: {
+    jwt_configured: boolean;
+    firebase_project_configured: boolean;
+    firebase_service_account_configured: boolean;
+    social_login_enabled: boolean;
+  };
+  startup: {
+    stage: string;
+    error_code?: string | null;
+    message?: string | null;
+    remediation?: string | null;
+  };
+}
+
 export const api = {
   get<T = any>(url: string, config?: AxiosRequestConfig) {
     return request<T>({ ...config, method: 'GET', url });
@@ -152,6 +203,12 @@ export const api = {
   },
   getRuntimeCapabilities() {
     return api.get<RuntimeCapabilities>('/api/v1/runtime/capabilities');
+  },
+  getBackendHealth(params?: { check_db?: boolean; check_llm?: boolean }) {
+    return api.get<BackendHealthStatus>('/api/v1/health', { params });
+  },
+  getBackendReadiness(params?: { check_llm?: boolean }) {
+    return api.get<BackendHealthStatus>('/api/v1/readiness', { params });
   },
 };
 

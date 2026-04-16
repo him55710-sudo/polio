@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import time
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
 
 from unifoli_api.core.config import get_settings
 from unifoli_api.core.llm import probe_ollama_connectivity
+from unifoli_api.core.runtime_diagnostics import build_health_payload
 
 router = APIRouter()
 _OLLAMA_HEALTH_TTL_SECONDS = 30.0
@@ -19,9 +21,13 @@ _ollama_health_cache: dict[str, object] = {
 
 
 @router.get("/health")
-async def health_check(check_llm: bool = Query(default=False)) -> dict[str, object]:
+async def health_check(
+    request: Request,
+    check_llm: bool = Query(default=False),
+    check_db: bool = Query(default=False),
+) -> JSONResponse:
     settings = get_settings()
-    payload: dict[str, object] = {"status": "ok", "llm_provider": settings.llm_provider}
+    ollama_payload: dict[str, object] | None = None
     if check_llm and (settings.llm_provider or "").strip().lower() == "ollama":
         now = time.monotonic()
         checked_at = float(_ollama_health_cache["checked_at"])
@@ -38,9 +44,36 @@ async def health_check(check_llm: bool = Query(default=False)) -> dict[str, obje
 
         ok = bool(_ollama_health_cache["ok"])
         reason = _ollama_health_cache["reason"] if isinstance(_ollama_health_cache["reason"], str) else None
-        payload["ollama_reachable"] = ok
-        payload["ollama_reason"] = reason
-        payload["ollama_cached"] = (
+        ollama_payload = {
+            "ollama_reachable": ok,
+            "ollama_reason": reason,
+            "ollama_cached": (
             time.monotonic() - float(_ollama_health_cache["checked_at"]) <= _OLLAMA_HEALTH_TTL_SECONDS
-        )
-    return payload
+            ),
+        }
+
+    payload = build_health_payload(
+        settings,
+        app_state=request.app.state,
+        check_db=check_db,
+        check_llm=check_llm,
+        ollama_probe=ollama_payload,
+    )
+    status_code = 200 if payload["status"] == "ok" else 503
+    return JSONResponse(status_code=status_code, content=payload)
+
+
+@router.get("/readiness")
+async def readiness_check(
+    request: Request,
+    check_llm: bool = Query(default=False),
+) -> JSONResponse:
+    settings = get_settings()
+    payload = build_health_payload(
+        settings,
+        app_state=request.app.state,
+        check_db=True,
+        check_llm=check_llm,
+    )
+    status_code = 200 if payload["status"] == "ok" else 503
+    return JSONResponse(status_code=status_code, content=payload)

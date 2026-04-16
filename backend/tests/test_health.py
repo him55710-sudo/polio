@@ -1,8 +1,51 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 from fastapi.testclient import TestClient
 
 from unifoli_api.api.routes import health as health_route
 from unifoli_api.core.config import get_settings
 from unifoli_api.main import app, create_app
+
+
+def _clear_settings_cache() -> None:
+    get_settings.cache_clear()
+
+
+def _probe_boot_payload_in_subprocess(
+    *,
+    env: dict[str, str],
+    path: str,
+    repo_root: Path,
+) -> tuple[int, dict[str, object]]:
+    script = f"""
+import json
+import sys
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, "backend")
+import main
+
+with TestClient(main.app) as client:
+    response = client.get({path!r})
+    print(json.dumps({{"status_code": response.status_code, "payload": response.json()}}))
+"""
+    process = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    lines = [line for line in process.stdout.splitlines() if line.strip()]
+    payload = json.loads(lines[-1])
+    return int(payload["status_code"]), payload["payload"]
 
 
 def test_health_check() -> None:
@@ -11,7 +54,19 @@ def test_health_check() -> None:
         assert response.status_code == 200
         payload = response.json()
         assert payload["status"] == "ok"
-        assert "llm_provider" in payload
+        assert payload["boot_ok"] is True
+        assert payload["runtime"]["api_prefix"] == "/api/v1"
+        assert "database" in payload
+        assert "llm" in payload
+
+
+def test_readiness_reports_database_probe() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/readiness")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ok"
+        assert payload["database"]["connected"] is True
 
 
 def test_health_check_llm_probe_uses_ttl_cache(monkeypatch) -> None:
@@ -37,12 +92,92 @@ def test_health_check_llm_probe_uses_ttl_cache(monkeypatch) -> None:
             second = client.get("/api/v1/health?check_llm=true")
         assert first.status_code == 200
         assert second.status_code == 200
-        assert first.json()["ollama_reachable"] is True
-        assert second.json()["ollama_reachable"] is True
-        assert second.json()["ollama_cached"] is True
+        assert first.json()["llm"]["ollama_reachable"] is True
+        assert second.json()["llm"]["ollama_reachable"] is True
+        assert second.json()["llm"]["ollama_cached"] is True
         assert call_count == 1
     finally:
         settings.llm_provider = original_provider
+
+
+def test_create_app_returns_boot_failure_health_when_serverless_database_url_is_missing(monkeypatch) -> None:
+    _clear_settings_cache()
+    database_url = "sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30"
+
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("APP_DEBUG", "false")
+    monkeypatch.setenv("AUTH_ALLOW_LOCAL_DEV_BYPASS", "false")
+    monkeypatch.setenv("AUTH_SOCIAL_LOGIN_ENABLED", "false")
+    monkeypatch.setenv("CORS_ORIGINS", "https://uni-foli.vercel.app")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.delenv("ALLOW_PRODUCTION_SQLITE", raising=False)
+
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/api/v1/health")
+        assert response.status_code == 503
+        payload = response.json()
+        assert payload["status"] == "degraded"
+        assert payload["boot_ok"] is False
+        assert payload["startup"]["stage"] == "settings"
+        assert payload["startup"]["error_code"] == "DATABASE_URL_REQUIRED"
+        assert "DATABASE_URL" in (payload["startup"]["remediation"] or "")
+    finally:
+        _clear_settings_cache()
+
+
+def test_create_app_surfaces_schema_not_ready_without_crashing(monkeypatch, tmp_path: Path) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'serverless-runtime.db').as_posix()}?check_same_thread=False&timeout=30"
+    repo_root = Path(__file__).resolve().parents[2]
+
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("APP_DEBUG", "false")
+    monkeypatch.setenv("AUTH_ALLOW_LOCAL_DEV_BYPASS", "false")
+    monkeypatch.setenv("AUTH_SOCIAL_LOGIN_ENABLED", "false")
+    monkeypatch.setenv("CORS_ORIGINS", "https://uni-foli.vercel.app")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("ALLOW_PRODUCTION_SQLITE", "true")
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    env = dict(os.environ)
+    env.update(
+        {
+            "VERCEL": "1",
+            "VERCEL_ENV": "production",
+            "APP_ENV": "production",
+            "APP_DEBUG": "false",
+            "AUTH_ALLOW_LOCAL_DEV_BYPASS": "false",
+            "AUTH_SOCIAL_LOGIN_ENABLED": "false",
+            "CORS_ORIGINS": "https://uni-foli.vercel.app",
+            "LLM_PROVIDER": "gemini",
+            "ALLOW_PRODUCTION_SQLITE": "true",
+            "DATABASE_URL": database_url,
+        }
+    )
+
+    health_status, health_payload = _probe_boot_payload_in_subprocess(
+        env=env,
+        path="/api/v1/health",
+        repo_root=repo_root,
+    )
+    upload_status, upload_payload = _probe_boot_payload_in_subprocess(
+        env=env,
+        path="/api/v1/documents/upload",
+        repo_root=repo_root,
+    )
+
+    assert health_status == 503
+    assert health_payload["startup"]["stage"] == "database_initialization"
+    assert health_payload["startup"]["error_code"] == "DB_SCHEMA_MISMATCH"
+    assert "migrations" in (health_payload["startup"]["remediation"] or "").lower()
+
+    assert upload_status == 503
+    assert upload_payload["startup"]["error_code"] == "DB_SCHEMA_MISMATCH"
 
 
 def test_root_page_hides_docs_when_disabled_in_production() -> None:
@@ -91,4 +226,3 @@ def test_root_page_shows_backend_info_in_local() -> None:
             assert "Open API Docs" in response.text
     finally:
         settings.app_env, settings.api_docs_enabled, settings.api_root_redirect_enabled = original
-

@@ -157,7 +157,7 @@ export function Auth() {
             <h1 className="mt-5 text-3xl font-black leading-tight tracking-tight text-slate-900 sm:mt-6 sm:text-4xl lg:text-5xl break-keep">
               막연한 불안 대신
               <br />
-              <span className="bg-[linear-gradient(135deg,#1d4fff_0%,#27a6ff_100%)] bg-clip-text text-transparent">확인 가능한 준비 순서</span>
+              <span className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 bg-clip-text text-transparent">확인 가능한 준비 순서</span>
             </h1>
             <p className="mt-5 text-base font-medium leading-7 text-slate-600 sm:mt-6 sm:text-lg sm:leading-8 break-keep">
               학생부 기반 분석, 진단 확인, 문서 작성까지 한 화면 흐름으로 이어집니다.
@@ -367,11 +367,11 @@ export function Auth() {
                 type="button"
                 onClick={onGuestLogin}
                 disabled={isSigningIn !== null || !allRequiredAgreed}
-                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-[#bfd4ff] bg-[#edf4ff] px-5 py-3.5 text-sm font-black text-[#1d4fff] shadow-[0_10px_20px_rgba(24,66,170,0.08)] transition-colors hover:bg-[#e3eeff] disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
+                className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-5 py-3.5 text-sm font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
                 <User size={18} />
                 {isSigningIn === 'guest' ? '게스트 준비 중...' : '게스트로 둘러보기'}
-                <ArrowRight size={18} className="absolute right-5 text-[#1d4fff]/40 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
+                <ArrowRight size={18} className="absolute right-5 text-indigo-600/40 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
               </button>
             </div>
 

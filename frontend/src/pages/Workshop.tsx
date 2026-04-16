@@ -103,6 +103,111 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
         isUserMessage ? "prose-invert text-white" : "text-slate-900"
       )}
     >
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Loader2,
+  PenSquare,
+  Presentation,
+  Save,
+  Send,
+  ToggleLeft,
+  ToggleRight,
+  User,
+} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import confetti from 'canvas-confetti';
+import { auth } from '../lib/firebase';
+import { api, resolveApiBaseUrl } from '../lib/api';
+import {
+  ChatStreamError,
+  consumeChatEventStream,
+  openChatEventStream,
+  resolveChatStreamFallbackHint,
+  resolveChatStreamToastMessage,
+  type ChatStreamMetaPayload,
+} from '../lib/chatStream';
+import { cn } from '../lib/cn';
+import { saveArchiveItem } from '../lib/archiveStore';
+import { readQuestStart } from '../lib/questStart';
+import type { AuthTokenSource } from '../lib/requestAuth';
+import { AdvancedPreview } from '../components/AdvancedPreview';
+import { EvidenceDrawer } from '../components/EvidenceDrawer';
+import {
+  PageHeader,
+  PrimaryButton,
+  SecondaryButton,
+  SectionCard,
+  StatusBadge,
+  SurfaceCard,
+  WorkflowNotice,
+} from '../components/primitives';
+import { WorkshopProgress } from '../components/WorkshopProgress';
+import {
+  ensureThreeSuggestions,
+  type GuidedChoiceGroup,
+  type GuidedChoiceOption,
+  type GuidedConversationPhase,
+  type GuidedPageRangeSelectionResponse,
+  type GuidedStructureOption,
+  type GuidedStructureSelectionResponse,
+  type GuidedTopicSelectionResponse,
+  type GuidedTopicSuggestion,
+  type GuidedTopicSuggestionResponse,
+} from '../lib/guidedChat';
+import {
+  buildSpecificTopicCheckGroup,
+  buildSubjectQuickPickGroup,
+  inferGuidedPhase,
+  isRecommendationAffirmative,
+  isSpecificTopicAffirmative,
+  isGuidedSetupComplete,
+  looksLikeBroadSubject,
+  resolvePageRangeLabel,
+  resolveStructureOptionId,
+} from '../lib/guidedConversation';
+import {
+  BLOCK_DEFINITIONS,
+  WORKSHOP_MODE_OPTIONS,
+  applyDraftPatch,
+  createEmptyStructuredDraft,
+  isPatchAcceptanceMessage,
+  isSectionDraftIntent,
+  markdownToStructuredDraft,
+  normalizeStructuredDraft,
+  structuredDraftToMarkdown,
+  type WorkshopDraftAttribution,
+  type WorkshopDraftPatchProposal,
+
+  type WorkshopMode,
+  type WorkshopStructuredDraftState,
+} from '../lib/workshopCoauthoring';
+
+const MemoizedMarkdown = memo(function MemoizedMarkdown({
+  content,
+  role = 'foli',
+}: {
+  content: string;
+  role?: MessageRole | 'document';
+}) {
+  const isUserMessage = role === 'user';
+
+  return (
+    <div
+      className={cn(
+        "prose prose-slate max-w-none text-sm leading-relaxed",
+        isUserMessage ? "prose-invert text-white" : "text-slate-900"
+      )}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
         rehypePlugins={[rehypeKatex]}
@@ -115,9 +220,9 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             return (
               <h3
                 {...props}
-                className="mb-4 mt-8 flex items-center gap-2 rounded-xl border border-[#004aad]/5 bg-[#004aad]/5 px-3 py-2 text-sm font-bold text-[#004aad]"
+                className="mb-4 mt-8 flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2 text-sm font-bold text-indigo-700 shadow-sm"
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-[#004aad] text-[10px] font-black text-white">AI</span>
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-600 text-[10px] font-black text-white shadow-sm">AI</span>
                 {children}
               </h3>
             );
@@ -140,7 +245,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             return (
               <p
                 {...props}
-                className="mb-5 rounded-lg border-l-4 border-[#004aad]/20 bg-[#004aad]/5 px-3 py-2 text-sm font-medium italic text-slate-700"
+                className="mb-5 rounded-xl border-l-4 border-indigo-200/50 bg-indigo-50/30 px-4 py-3 text-[14px] font-medium italic text-slate-700 shadow-sm"
               />
             );
           }
@@ -154,7 +259,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
           const match = /language-(\w+)/.exec(className || '');
           const isInline = !match;
           return isInline ? (
-            <code {...props} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-bold text-[#004aad]">
+            <code {...props} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-bold text-indigo-600">
               {children}
             </code>
           ) : (
@@ -165,7 +270,7 @@ const MemoizedMarkdown = memo(function MemoizedMarkdown({
             </pre>
           );
         },
-        strong: ({ children }) => <strong className={cn("font-bold", isUserMessage ? "text-white" : "text-[#004aad]")}>{children}</strong>,
+        strong: ({ children }) => <strong className={cn("font-extrabold", isUserMessage ? "text-white" : "text-indigo-600")}>{children}</strong>,
         }}
       >
         {content}
@@ -478,242 +583,6 @@ function buildFoliFallback(message: string) {
     '',
     '아래 순서대로 보내 주시면 초안 작성 흐름을 계속 이어갈 수 있어요.',
     '1. 이번 글에서 다루려는 주제를 한 문장으로 적어 주세요.',
-    '2. 업로드한 기록에서 연관 정보나 근거를 2~3개 적어봅니다.',
-    '3. 도입-본론-결론 순서로 단락 뼈대를 먼저 잡습니다.',
-  ].join('\n');
-}
-
-function normalizeStructuredDraftPatch(value: unknown): WorkshopDraftPatchProposal | null {
-  if (!value || typeof value !== 'object') return null;
-  const candidate = value as Record<string, unknown>;
-  const mode = candidate.mode;
-  const blockId = candidate.block_id;
-  const content = String(candidate.content_markdown || '').trim();
-  const requiresApproval = Boolean(candidate.requires_approval ?? true);
-  if (
-    (mode !== 'planning' && mode !== 'outline' && mode !== 'section_drafting' && mode !== 'revision') ||
-    !(
-      blockId === 'title' ||
-      blockId === 'introduction_background' ||
-      blockId === 'body_section_1' ||
-      blockId === 'body_section_2' ||
-      blockId === 'body_section_3' ||
-      blockId === 'conclusion_reflection_next_step'
-    ) ||
-    !content
-  ) {
-    return null;
-  }
-
-  return {
-    mode,
-    block_id: blockId,
-    heading: candidate.heading ? String(candidate.heading) : undefined,
-    content_markdown: content,
-    rationale: candidate.rationale ? String(candidate.rationale) : undefined,
-    evidence_boundary_note: candidate.evidence_boundary_note ? String(candidate.evidence_boundary_note) : undefined,
-    requires_approval: requiresApproval,
-  };
-}
-
-function extractPatchTagFromRaw(raw: string): { cleaned: string; patch: WorkshopDraftPatchProposal | null } {
-  if (!raw) return { cleaned: '', patch: null };
-  const match = raw.match(/\[DRAFT_PATCH\]([\s\S]*?)\[\/DRAFT_PATCH\]/i);
-  if (!match?.[1]) {
-    return { cleaned: raw.trim(), patch: null };
-  }
-  let payload = match[1].trim();
-  if (payload.startsWith('```')) {
-    payload = payload.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-  }
-  let patch: WorkshopDraftPatchProposal | null = null;
-  try {
-    patch = normalizeStructuredDraftPatch(JSON.parse(payload));
-  } catch {
-    patch = null;
-  }
-  const cleaned = raw.replace(/\[DRAFT_PATCH\][\s\S]*?\[\/DRAFT_PATCH\]/gi, '').trim();
-  return { cleaned, patch };
-}
-
-async function streamFoliReply(
-  projectId: string | undefined,
-  workshopId: string | undefined,
-  message: string,
-  draftSnapshotMarkdown: string | undefined,
-  mode: WorkshopMode,
-  structuredDraft: WorkshopStructuredDraftState | null,
-  onDelta?: (delta: string) => void,
-  onMeta?: (meta: StreamMetaPayload) => void,
-  onDraftPatch?: (patch: WorkshopDraftPatchProposal) => void,
-): Promise<StreamFoliReplyResult> {
-  const fallbackText = buildFoliFallback(message);
-  const baseUrl = resolveApiBaseUrl();
-  const endpoint = workshopId
-    ? `${baseUrl}/api/v1/workshops/${workshopId}/chat/stream`
-    : `${baseUrl}/api/v1/drafts/chat/stream`;
-  const payload = workshopId
-    ? {
-        message,
-        draft_snapshot_markdown: draftSnapshotMarkdown,
-        mode,
-        structured_draft: structuredDraft ?? undefined,
-      }
-    : {
-        project_id: projectId,
-        message,
-        reference_materials: [],
-        draft_snapshot_markdown: draftSnapshotMarkdown,
-      };
-  const { response, authSource } = await openChatEventStream({
-    endpoint,
-    payload,
-    firebaseUser: auth?.currentUser,
-  });
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let full = '';
-  let buffer = '';
-  let serverError: string | null = null;
-  let streamDone = false;
-
-  const extractPayloadsFromEvent = (eventChunk: string): Array<Record<string, unknown>> => {
-    const dataLines = eventChunk
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.replace(/^data:\s*/, ''));
-
-    if (!dataLines.length) return [];
-
-    const serialized = dataLines.join('\n').trim();
-    if (!serialized) return [];
-
-    try {
-      const decoded = JSON.parse(serialized);
-      return typeof decoded === 'object' && decoded !== null ? [decoded as Record<string, unknown>] : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const consumePayload = (payload: Record<string, unknown>) => {
-    if (payload.done === true || payload.status === 'DONE') {
-      streamDone = true;
-      return;
-    }
-
-    if (typeof payload.error === 'string' && payload.error.trim()) {
-      serverError = payload.error.trim();
-      return;
-    }
-
-    if (payload.meta && typeof payload.meta === 'object') {
-      onMeta?.(payload.meta as StreamMetaPayload);
-    }
-
-    if (payload.draft_patch && typeof payload.draft_patch === 'object') {
-      onDraftPatch?.(payload.draft_patch as WorkshopDraftPatchProposal);
-    }
-
-    const tokenCandidate =
-      typeof payload.token === 'string'
-        ? payload.token
-        : typeof payload.delta === 'string'
-          ? payload.delta
-          : null;
-
-    if (tokenCandidate) {
-      full += tokenCandidate;
-      onDelta?.(tokenCandidate);
-    }
-  };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const chunks = buffer.split('\n\n');
-    buffer = chunks.pop() || '';
-
-    for (const event of chunks) {
-      const payloads = extractPayloadsFromEvent(event);
-      for (const payload of payloads) {
-        consumePayload(payload);
-        if (streamDone || serverError) {
-          break;
-        }
-      }
-      if (streamDone || serverError) {
-        break;
-      }
-    }
-
-    if (streamDone || serverError) {
-      break;
-    }
-  }
-
-  // Flush decoder tail bytes to avoid partial UTF-8 character truncation on stream end.
-  buffer += decoder.decode();
-  if (buffer.trim()) {
-    const chunks = buffer.split('\n\n');
-    for (const event of chunks) {
-      const payloads = extractPayloadsFromEvent(event);
-      for (const payload of payloads) {
-        consumePayload(payload);
-        if (streamDone || serverError) {
-          break;
-        }
-      }
-      if (streamDone || serverError) {
-        break;
-      }
-    }
-  }
-
-  if (serverError) {
-    throw new ChatStreamError('stream_payload_error', `Chat stream payload returned an error: ${serverError}`, {
-      endpoint,
-      status: response.status,
-      contentType: String(response.headers.get('content-type') || ''),
-      detail: serverError,
-      authSource,
-    });
-  }
-
-
-  const normalized = full.trim();
-  return { text: normalized || fallbackText, authSource };
-}
-
-const ChatBubble = memo(function ChatBubble({
-  message,
-  onApplyDraftPatch,
-  onGuidedChoiceSelect,
-  isGuidedActionLoading,
-  selectingTopicId,
-}: {
-  message: Message;
-  onApplyDraftPatch: (patch: WorkshopDraftPatchProposal) => void;
-  onGuidedChoiceSelect: (groupId: string, option: GuidedChoiceOption, message: Message) => void;
-  isGuidedActionLoading: boolean;
-  selectingTopicId: string | null;
-}) {
-  const isUser = message.role === 'user';
-  const isStreaming = !isUser && !message.content;
-  const topicSuggestions = message.topicSuggestions ?? [];
-
-  const interactiveGroups = useMemo(() => {
-    const groups = [...(message.choiceGroups ?? [])];
-    if (topicSuggestions.length > 0 && !groups.some((group) => group.id === 'topic-selection')) {
-      groups.push({
-        id: 'topic-selection',
-        title: '이 중에서 가장 마음에 드는 주제를 골라주세요.',
-        style: 'cards',
-        options: topicSuggestions.map((topic) => ({
           id: topic.id,
           label: topic.title,
           description: topic.why_fit_student,
@@ -1942,8 +1811,34 @@ export function Workshop() {
                 : '가이드 진행';
   const inputPlaceholder =
     isProjectBacked && !guidedSetupComplete
-      ? '가이드를 따라 과목/주제/분량/구성을 먼저 정해볼게요.'
-      : '메시지를 입력해 주세요...';
+      ? '과목 카드부터 고르면 바로 시작됩니다.'
+      : '예: 내 약점 3가지를 근거와 함께 정리해줘';
+  const quickPromptOptions = useMemo(() => {
+    if (isProjectBacked && !guidedSetupComplete) return [];
+
+    const prefix = diagnosisHeadline
+      ? '최근 진단 아티팩트를 기준으로 '
+      : '현재 기록과 대화 문맥을 기준으로 ';
+
+    return [
+      {
+        label: '강점 요약',
+        prompt: `${prefix}내 생기부의 핵심 강점 3가지를 근거와 함께 정리해줘.`,
+      },
+      {
+        label: '약점 보완',
+        prompt: `${prefix}내가 먼저 보완해야 할 약점 3가지를 근거와 함께 설명해줘.`,
+      },
+      {
+        label: '탐구 주제',
+        prompt: `${prefix}지금 바로 시도할 탐구 주제 3개를 추천해줘.`,
+      },
+      {
+        label: '다음 한 달',
+        prompt: `${prefix}다음 한 달 행동 계획을 주차별로 정리해줘.`,
+      },
+    ];
+  }, [diagnosisHeadline, guidedSetupComplete, isProjectBacked]);
 
   return (
     <div className={cn("mx-auto max-w-[1800px] space-y-4 px-2.5 py-3 transition-all duration-700 sm:space-y-6 sm:px-4 sm:py-6", advancedMode && "rounded-[32px] bg-[#004aad]/5 shadow-[inset_0_0_100px_rgba(0,74,173,0.02)] sm:rounded-[48px]")}>
@@ -1953,8 +1848,8 @@ export function Workshop() {
       >
         <PageHeader
           eyebrow="워크숍"
-          title="유니폴리 초안 작업"
-          description="업로드된 기록 근거를 바탕으로 초안을 안정적으로 이어서 작성해보세요."
+          title={isProjectBacked ? '근거 기반 초안 작업' : 'AI 초안 작업'}
+          description="질문하고 바로 수정하면서, 진단 결과와 학생 기록 근거를 같은 화면에서 이어서 씁니다."
           actions={
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <SecondaryButton
@@ -1988,6 +1883,22 @@ export function Workshop() {
             </div>
           }
         />
+
+        {quickPromptOptions.length > 0 && messages.length <= 4 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {quickPromptOptions.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => void handleSend(option.prompt)}
+                disabled={isTyping || !!isSelectingGuidedTopicId || isGuidedActionLoading}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-[#004aad]/30 hover:bg-[#004aad]/5 hover:text-[#004aad] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="mt-6 lg:hidden">
           <div className="inline-flex w-full items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -2082,7 +1993,7 @@ export function Workshop() {
                   <WorkflowNotice
                     tone="info"
                     title="가이드 설정을 먼저 진행해요"
-                    description="과목 → 주제 → 분량 → 구성을 카드로 고르면, 그다음부터는 자유 채팅으로 바로 초안을 함께 작성할 수 있어요."
+                    description="카드 4개만 고르면 바로 자유 채팅으로 넘어갑니다."
                     className="mb-4"
                   />
                 )}

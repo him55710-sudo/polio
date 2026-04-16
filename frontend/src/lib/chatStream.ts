@@ -9,6 +9,7 @@ const ERROR_SNIPPET_LIMIT = 280;
 export type ChatStreamErrorCode =
   | 'network_error'
   | 'auth_failure'
+  | 'backend_startup_failed'
   | 'backend_misroute'
   | 'sse_protocol_mismatch'
   | 'llm_unavailable'
@@ -79,13 +80,43 @@ function looksLikeLlmUnavailable(value: string | null | undefined): boolean {
   );
 }
 
-function resolveHttpErrorCode(status: number, detail: string | null): ChatStreamErrorCode {
+function looksLikeStartupFailure(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes('backend_startup_failed') ||
+    normalized.includes('database_url_required') ||
+    normalized.includes('database_unavailable') ||
+    normalized.includes('function_invocation_failed') ||
+    normalized.includes('app boot failed') ||
+    normalized.includes('startup failed') ||
+    normalized.includes('db schema mismatch')
+  );
+}
+
+function resolveHttpErrorCode(
+  status: number,
+  detail: string | null,
+  response: Response,
+): ChatStreamErrorCode {
+  const vercelError = response.headers.get('x-vercel-error');
+  if (looksLikeStartupFailure(vercelError) || looksLikeStartupFailure(detail)) {
+    return 'backend_startup_failed';
+  }
   if (status === 401 || status === 403) return 'auth_failure';
   if (looksLikeLlmUnavailable(detail)) return 'llm_unavailable';
   return 'http_error';
 }
 
-function resolveHttpErrorMessage(status: number, detail: string | null): string {
+function resolveHttpErrorMessage(
+  status: number,
+  detail: string | null,
+  response: Response,
+): string {
+  const vercelError = response.headers.get('x-vercel-error');
+  if (looksLikeStartupFailure(vercelError) || looksLikeStartupFailure(detail)) {
+    return `Chat backend startup failed before streaming (status ${status}).`;
+  }
   if (status === 401 || status === 403) {
     return `Chat stream authorization failed with status ${status}.`;
   }
@@ -137,8 +168,22 @@ export async function openChatEventStream(
   }
 
   const contentType = normalizeContentType(streamResponse.headers.get('content-type'));
+  const vercelError = streamResponse.headers.get('x-vercel-error');
   if (contentType.includes('text/html')) {
     const detail = await readErrorSnippet(streamResponse);
+    if (looksLikeStartupFailure(vercelError) || looksLikeStartupFailure(detail)) {
+      throw new ChatStreamError(
+        'backend_startup_failed',
+        'Chat stream backend failed during startup before returning a usable response.',
+        {
+          endpoint,
+          status: streamResponse.status,
+          contentType,
+          detail,
+          authSource,
+        },
+      );
+    }
     throw new ChatStreamError(
       'backend_misroute',
       'Chat stream request returned HTML. VITE_API_URL likely points to the frontend origin instead of the backend API.',
@@ -154,8 +199,8 @@ export async function openChatEventStream(
 
   if (!streamResponse.ok) {
     const detail = await readErrorSnippet(streamResponse);
-    const code = resolveHttpErrorCode(streamResponse.status, detail);
-    throw new ChatStreamError(code, resolveHttpErrorMessage(streamResponse.status, detail), {
+    const code = resolveHttpErrorCode(streamResponse.status, detail, streamResponse);
+    throw new ChatStreamError(code, resolveHttpErrorMessage(streamResponse.status, detail, streamResponse), {
       endpoint,
       status: streamResponse.status,
       contentType,
@@ -325,35 +370,41 @@ export async function consumeChatEventStream(params: ConsumeChatEventStreamParam
 
 export function resolveChatStreamToastMessage(error: ChatStreamError): string {
   if (error.code === 'auth_failure') {
-    return 'Chat authentication expired. Please sign in again and retry.';
+    return '채팅 인증이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.';
+  }
+  if (error.code === 'backend_startup_failed') {
+    return '채팅 백엔드가 아직 준비되지 않았습니다. 배포 상태와 데이터베이스 설정을 확인해 주세요.';
   }
   if (error.code === 'backend_misroute') {
-    return 'Chat request was routed to frontend HTML. Check VITE_API_URL points to the backend.';
+    return '채팅 요청이 프런트 HTML로 잘못 연결되었습니다. API 주소를 확인해 주세요.';
   }
   if (error.code === 'sse_protocol_mismatch') {
-    return 'Chat stream response type is invalid. Verify backend SSE configuration.';
+    return '채팅 응답 형식이 올바르지 않습니다. 백엔드 SSE 설정을 확인해 주세요.';
   }
   if (error.code === 'llm_unavailable') {
-    return 'AI model connectivity is unstable, so limited-mode guidance was used.';
+    return 'AI 모델 연결이 불안정하여 제한 모드 안내로 전환되었습니다.';
   }
   if (error.code === 'network_error') {
-    return 'Could not connect to the chat server. Check network or API URL.';
+    return '채팅 서버에 연결할 수 없습니다. 네트워크 또는 API 주소를 확인해 주세요.';
   }
-  return 'Chat request failed. Please retry shortly.';
+  return '채팅 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.';
 }
 
 export function resolveChatStreamFallbackHint(error: ChatStreamError): string | null {
   if (error.code === 'auth_failure') {
-    return 'Authorization token may be missing or expired.';
+    return '인증 토큰이 없거나 만료되었을 수 있습니다.';
+  }
+  if (error.code === 'backend_startup_failed') {
+    return '배포된 백엔드가 부팅에 실패했습니다. DATABASE_URL, 마이그레이션, 서버 상태를 확인해 주세요.';
   }
   if (error.code === 'backend_misroute') {
-    return 'VITE_API_URL may be pointing to the frontend origin instead of the backend API.';
+    return 'VITE_API_URL이 백엔드가 아니라 프런트 origin을 가리키고 있을 수 있습니다.';
   }
   if (error.code === 'sse_protocol_mismatch') {
-    return 'Backend returned a non-SSE response instead of text/event-stream.';
+    return '백엔드가 text/event-stream 대신 일반 응답을 반환했습니다.';
   }
   if (error.code === 'llm_unavailable') {
-    return 'LLM/Gemini connectivity is unstable and limited mode was applied.';
+    return 'LLM 또는 Gemini 연결이 불안정해 제한 모드가 적용되었습니다.';
   }
   return null;
 }

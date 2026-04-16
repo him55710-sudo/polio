@@ -1,4 +1,4 @@
-from __future__ import annotations
+ï»¿from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
@@ -39,7 +39,7 @@ def test_drafts_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> None:
         response = client.post(
             "/api/v1/drafts/chat/stream",
             headers=headers,
-            json={"project_id": project_id, "message": "±Ù°Å¸¦ Á¤¸®ÇØÁà", "reference_materials": []},
+            json={"project_id": project_id, "message": "draft fallback prompt", "reference_materials": []},
         )
 
     assert response.status_code == 200
@@ -66,7 +66,7 @@ def test_workshop_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> Non
         response = client.post(
             f"/api/v1/workshops/{workshop_id}/chat/stream",
             headers=headers,
-            json={"message": "°³¿ä¸¦ º¸°­ÇØÁà"},
+            json={"message": "workshop fallback prompt"},
         )
 
     assert response.status_code == 200
@@ -74,4 +74,3 @@ def test_workshop_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> Non
     assert '"limited_mode": true' in body
     assert '"limited_reason": "ollama_timeout"' in body
     assert '"status": "DONE"' in body
-

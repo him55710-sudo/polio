@@ -2,10 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDropzone } from 'react-dropzone';
-import { 
-  Sparkles, 
-  ArrowRight, 
-} from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 import toast from 'react-hot-toast';
 
@@ -30,8 +27,10 @@ import {
 } from '../lib/diagnosis';
 
 import {
+  PageHeader,
   PrimaryButton,
   SecondaryButton,
+  StatusBadge,
   StepIndicator,
   WorkflowNotice,
 } from '../components/primitives';
@@ -85,7 +84,7 @@ const PARSE_TERMINAL_STATUSES = TERMINAL_STATUSES;
 
 function createInitialTimingPhases(): TimingPhaseMap {
   return {
-    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '데이터 전송 준비 중' },
+    upload: { status: 'idle', startedAt: null, finishedAt: null, note: '업로드 준비 중' },
     parse: { status: 'idle', startedAt: null, finishedAt: null, note: '학생부 정보 추출 준비 중' },
     diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: '인공지능 맞춤 진단 준비 중' },
   };
@@ -494,8 +493,13 @@ export function Diagnosis() {
       const loadingId = toast.loading('생활기록부 파일 업로드와 진단 준비를 진행 중입니다...');
 
       try {
-        beginTimingPhase('upload', '파일 업로드 진행 중');
+        beginTimingPhase('upload', '서버 준비 상태 확인 중');
+        await api.getBackendReadiness();
         const formData = new FormData();
+        setTimingPhase('upload', (prev) => ({
+          ...prev,
+          note: 'PDF 업로드 중',
+        }));
         formData.append('file', file);
         const mainGoal = goalList[0];
         if (mainGoal) {
@@ -586,11 +590,11 @@ export function Diagnosis() {
   }, [beginTimingPhase, diagnosisRun, finishTimingPhase, isRetryingDiagnosis, setDiagnosisRunId, setStep, syncDiagnosisRun, triggerInlineDiagnosisProcessing, useSynchronousApiJobs]);
 
   const stepItems = [
-    { id: 'profile', label: '프로필 설정', description: '기본 정보 입력', state: step === 'PROFILE' ? 'active' : ['GOALS', 'UPLOAD', 'ANALYSING', 'RESULT', 'FAILED'].includes(step) ? 'done' : 'pending' },
-    { id: 'goals', label: '목표 설정', description: '지원 목표 확정', state: step === 'GOALS' ? 'active' : ['UPLOAD', 'ANALYSING', 'RESULT', 'FAILED'].includes(step) ? 'done' : 'pending' },
-    { id: 'upload', label: '기록 업로드', description: '학생부 파일 제출', state: step === 'UPLOAD' ? 'active' : ['ANALYSING', 'RESULT', 'FAILED'].includes(step) ? 'done' : 'pending' },
-    { id: 'analysis', label: '진단 실행', description: '근거 기반 분석', state: step === 'ANALYSING' ? 'active' : step === 'RESULT' ? 'done' : step === 'FAILED' ? 'error' : 'pending' },
-    { id: 'result', label: '결과 검토', description: '워크숍 진입', state: step === 'RESULT' ? 'active' : 'pending' },
+    { id: 'profile', label: '프로필', state: step === 'PROFILE' ? 'active' : ['GOALS', 'UPLOAD', 'ANALYSING', 'RESULT', 'FAILED'].includes(step) ? 'done' : 'pending' },
+    { id: 'goals', label: '목표', state: step === 'GOALS' ? 'active' : ['UPLOAD', 'ANALYSING', 'RESULT', 'FAILED'].includes(step) ? 'done' : 'pending' },
+    { id: 'upload', label: '업로드', state: step === 'UPLOAD' ? 'active' : ['ANALYSING', 'RESULT', 'FAILED'].includes(step) ? 'done' : 'pending' },
+    { id: 'analysis', label: '분석', state: step === 'ANALYSING' ? 'active' : step === 'RESULT' ? 'done' : step === 'FAILED' ? 'error' : 'pending' },
+    { id: 'result', label: '결과', state: step === 'RESULT' ? 'active' : 'pending' },
   ] as any;
 
   const onStepClick = (stepId: string) => {
@@ -607,40 +611,45 @@ export function Diagnosis() {
 
   const headerTitle = useMemo(() => {
     switch (step) {
-      case 'PROFILE': return '학생 프로필 설정';
-      case 'GOALS': return '목표 대학교 진단';
+      case 'PROFILE': return '진단 프로필 설정';
+      case 'GOALS': return '목표 기준 확인';
       case 'UPLOAD': return '생활기록부 업로드';
-      case 'ANALYSING': return '인공지능 정밀 분석 중';
-      case 'RESULT': return '인공지능 진단 결과';
-      case 'FAILED': return '진단 분석 실패';
-      default: return '진단 서비스';
+      case 'ANALYSING': return '진단 실행 중';
+      case 'RESULT': return '진단 결과';
+      case 'FAILED': return '진단 재시도';
+      default: return '학생부 진단';
     }
   }, [step]);
 
   const headerDescription = useMemo(() => {
     switch (step) {
-      case 'PROFILE': return '보다 정확한 진단을 위해 학년과 계열을 설정해 주세요.';
-      case 'GOALS': return '희망하는 대학교와 학과를 선택해 주세요. 목표에 맞춘 정밀 진단을 시작합니다.';
-      case 'UPLOAD': return '분석을 위해 본인의 생활기록부 파일을 업로드해 주세요.';
-      case 'ANALYSING': return '기록된 내용을 바탕으로 대학별 합격 가능성과 강점을 분석하고 있습니다.';
-      case 'RESULT': return '분석이 완료되었습니다. 결과 리포트와 추천 워크숍 내용을 확인하세요.';
-      case 'FAILED': return '분석 과정에서 문제가 발생했습니다. 내용을 확인하고 다시 시도해 주세요.';
-      default: return '사용자 맞춤형 대학 입시 진단 서비스입니다.';
+      case 'PROFILE': return '학년과 계열만 먼저 맞추면 됩니다.';
+      case 'GOALS': return '지원 기준이 정해져야 진단도 정확해집니다.';
+      case 'UPLOAD': return 'PDF 1개만 올리면 바로 파싱과 진단을 시작합니다.';
+      case 'ANALYSING': return '근거를 정리하고 진단 결과를 만드는 중입니다.';
+      case 'RESULT': return '결과를 확인한 뒤 바로 워크숍으로 넘어갈 수 있습니다.';
+      case 'FAILED': return '오류 코드를 확인하고 같은 화면에서 다시 시도할 수 있습니다.';
+      default: return '학생부 진단을 시작합니다.';
     }
   }, [step]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 py-8 animate-in fade-in duration-700">
-      <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#004aad] to-[#0070f3] p-8 md:p-12 shadow-2xl shadow-blue-500/20">
-        <div className="relative z-10 space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 backdrop-blur-md ring-1 ring-white/20">
-            <Sparkles size={14} className="text-cyan-300" />
-            <span className="text-sm font-bold tracking-tight text-cyan-50">프리미엄 인공지능 분석</span>
+      <PageHeader
+        eyebrow="Diagnosis"
+        title={headerTitle}
+        description={headerDescription}
+        className="border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(243,247,255,0.92)_100%)]"
+        evidence={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={step === 'FAILED' ? 'danger' : step === 'RESULT' ? 'success' : 'active'}>
+              현재 단계: {step === 'ANALYSING' ? '분석' : step === 'FAILED' ? '오류' : step === 'RESULT' ? '완료' : '입력'}
+            </StatusBadge>
+            <StatusBadge status="neutral">목표 {goalList.length}개</StatusBadge>
+            {projectId ? <StatusBadge status="neutral">프로젝트 연결됨</StatusBadge> : null}
           </div>
-          <h1 className="text-4xl font-black tracking-tight text-white md:text-5xl lg:leading-[1.15]">{headerTitle}</h1>
-          <p className="max-w-2xl text-lg font-medium leading-relaxed text-blue-100/80">{headerDescription}</p>
-        </div>
-      </div>
+        }
+      />
 
       <div className="px-4">
         <StepIndicator items={stepItems} onStepClick={onStepClick} />

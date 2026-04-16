@@ -272,7 +272,7 @@ class DiagnosisGenerationError(RuntimeError):
 
 
 MASKING_PIPELINE = MaskingPipeline()
-TOKEN_PATTERN = re.compile(r"[가-힣A-Z?-?0-9]{2,}")
+TOKEN_PATTERN = re.compile(r"[가-힣A-Za-z0-9]{2,}")
 OPEN_REVIEW_STATUSES = {"open", "pending"}
 AXIS_LABELS: dict[GapAxisKey, str] = dict(POSITIVE_AXIS_LABELS)
 POLICY_FLAG_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
@@ -340,6 +340,31 @@ def _tokenize_for_overlap(text: str) -> set[str]:
     return {token.lower() for token in TOKEN_PATTERN.findall(text or "")}
 
 
+def _keyword_signal_stats(
+    lowered_text: str,
+    sentences: list[str],
+    keywords: list[str],
+) -> tuple[int, int, int]:
+    unique_hits = 0
+    matched_sentence_indexes: set[int] = set()
+    repetition_bonus = 0
+
+    for keyword in keywords:
+        normalized = keyword.lower().strip()
+        if not normalized:
+            continue
+        occurrence_count = lowered_text.count(normalized)
+        if occurrence_count <= 0:
+            continue
+        unique_hits += 1
+        repetition_bonus += min(max(occurrence_count - 1, 0), 1)
+        for index, sentence in enumerate(sentences):
+            if normalized in sentence:
+                matched_sentence_indexes.add(index)
+
+    return unique_hits, len(matched_sentence_indexes), repetition_bonus
+
+
 def _trim_excerpt(text: str, *, limit: int = 240) -> str:
     normalized = _normalize_text(text)
     if len(normalized) <= limit:
@@ -383,6 +408,7 @@ def _infer_gap_axes(
     lowered = (full_text or "").lower()
     word_count = len((full_text or "").split())
     numeric_hits = len(re.findall(r"\b\d+(?:\.\d+)?%?\b", full_text or ""))
+    sentences = [segment.strip().lower() for segment in re.split(r"[.!?\n\r]+", full_text or "") if segment.strip()]
 
     # Korean educational context keywords
     conceptual_terms = ["원리", "개념", "이론", "모델", "이유", "메커니즘", "왜", "principle", "mechanism", "concept"]
@@ -391,35 +417,76 @@ def _infer_gap_axes(
     evidence_hits_terms = ["데이터", "측정", "결과", "관찰", "증거", "실증", "data", "evidence", "result"]
     process_terms = ["과정", "절차", "한계", "성찰", "피드백", "reflection", "process", "method"]
 
-    concept_hits = sum(1 for term in conceptual_terms if term in lowered)
-    application_hits = sum(1 for term in application_terms if term in lowered)
-    inquiry_hits = sum(1 for term in inquiry_terms if term in lowered)
-    evidence_hits = sum(1 for term in evidence_hits_terms if term in lowered)
-    process_hits = sum(1 for term in process_terms if term in lowered)
-    
-    all_targets = []
-    if target_university: all_targets.append(target_university)
-    if interest_universities: all_targets.extend(interest_universities)
-    
-    overlap_hits = sum(1 for term in _major_terms(target_major, career_direction, all_targets) if term in lowered)
+    concept_hits, concept_sentence_hits, concept_repeat_bonus = _keyword_signal_stats(lowered, sentences, conceptual_terms)
+    application_hits, _, _ = _keyword_signal_stats(lowered, sentences, application_terms)
+    inquiry_hits, inquiry_sentence_hits, inquiry_repeat_bonus = _keyword_signal_stats(lowered, sentences, inquiry_terms)
+    evidence_hits, evidence_sentence_hits, evidence_repeat_bonus = _keyword_signal_stats(lowered, sentences, evidence_hits_terms)
+    process_hits, process_sentence_hits, process_repeat_bonus = _keyword_signal_stats(lowered, sentences, process_terms)
 
-    conceptual_score = 45 + (concept_hits * 12) - max(0, application_hits - concept_hits) * 7
-    continuity_score = 40 + (inquiry_hits * 12) + (10 if word_count >= 220 else 0)
-    evidence_score = 35 + min(word_count // 12, 25) + min(evidence_hits * 8, 20) + min(numeric_hits * 3, 12)
-    process_score = 35 + (process_hits * 12) + (8 if "성찰" in lowered or "reflect" in lowered else 0)
-    depth_score = (
-        38
+    all_targets = []
+    if target_university:
+        all_targets.append(target_university)
+    if interest_universities:
+        all_targets.extend(interest_universities)
+
+    overlap_hits = sum(1 for term in _major_terms(target_major, career_direction, all_targets) if term in lowered)
+    short_text_penalty = 10 if word_count < 120 else 0
+
+    # Balance keyword presence with sentence dispersion and cap repetition bonuses to
+    # avoid rewarding keyword stuffing.
+    conceptual_score = (
+        44
         + (concept_hits * 8)
-        + (overlap_hits * 12)
-        + min(inquiry_hits * 4, 12)
+        + min(concept_sentence_hits * 3, 12)
+        + min(concept_repeat_bonus * 2, 4)
+        - max(0, application_hits - concept_hits) * 4
+        - short_text_penalty
+    )
+    continuity_score = (
+        42
+        + (inquiry_hits * 7)
+        + min(inquiry_sentence_hits * 4, 16)
+        + min(inquiry_repeat_bonus * 2, 4)
         + (6 if word_count >= 220 else 0)
+        - short_text_penalty
+    )
+    evidence_score = (
+        40
+        + min(word_count // 20, 14)
+        + (evidence_hits * 7)
+        + min(evidence_sentence_hits * 4, 12)
+        + min(evidence_repeat_bonus * 2, 4)
+        + min(numeric_hits * 2, 10)
+        - short_text_penalty
+    )
+    process_score = (
+        38
+        + (process_hits * 7)
+        + min(process_sentence_hits * 4, 12)
+        + min(process_repeat_bonus * 2, 4)
+        + (6 if process_sentence_hits >= 2 else 0)
+        - short_text_penalty
+    )
+    depth_score = (
+        40
+        + (concept_hits * 5)
+        + (overlap_hits * 11)
+        + min(inquiry_sentence_hits * 3, 10)
+        + (6 if word_count >= 220 else 0)
+        - short_text_penalty
     )
     if target_major and overlap_hits == 0:
-        depth_score -= 10
+        depth_score -= 12
 
     # Alignment score considering multiple targets
     target_count = (1 if target_university else 0) + len(interest_universities or [])
-    alignment_score = 40 + (overlap_hits * 15) + (min(target_count * 4, 12))
+    alignment_score = (
+        42
+        + (overlap_hits * 11)
+        + min(target_count * 3, 9)
+        + (6 if overlap_hits > 0 and (concept_sentence_hits + inquiry_sentence_hits + evidence_sentence_hits) >= 3 else 0)
+        - short_text_penalty
+    )
 
     return [
         _score_axis(

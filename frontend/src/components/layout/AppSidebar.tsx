@@ -149,16 +149,16 @@ export function AppSidebar({
                         className={cn(
                           'group flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm transition-all duration-200',
                           active
-                            ? 'bg-[linear-gradient(135deg,#3558ff_0%,#5e6fff_56%,#2cb4ff_100%)] text-white shadow-[0_18px_34px_rgba(54,92,255,0.24)] font-semibold'
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-200/50 font-bold'
                             : 'text-slate-500 hover:bg-white/72 hover:text-slate-900',
-                          !isOpen && 'mx-auto h-11 w-11 justify-center px-0',
+                          !isOpen && 'mx-auto h-11 w-11 justify-center px-0 transition-transform hover:scale-105',
                         )}
                       >
-                        <Icon size={18} className={cn(active ? 'text-white' : 'text-slate-400 group-hover:text-[#3559a8]')} />
+                        <Icon size={18} className={cn(active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-600')} />
                         {isOpen && (
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-bold">{item.label}</p>
-                            <p className={cn('mt-0.5 truncate text-[11px] font-medium', active ? 'text-white/78' : 'text-slate-400')}>
+                            <p className="truncate font-bold tracking-tight">{item.label}</p>
+                            <p className={cn('mt-0.5 truncate text-[11px] font-semibold', active ? 'text-white/80' : 'text-slate-400')}>
                               {item.hint}
                             </p>
                           </div>
@@ -172,7 +172,7 @@ export function AppSidebar({
           })}
         </nav>
 
-        <div className="mt-auto border-t border-white/70 p-4">
+        <div className="mt-auto border-t border-slate-100/50 p-4 bg-white/40 backdrop-blur-sm">
           <SidebarAccountBlock
             userName={userName}
             userPhotoUrl={userPhotoUrl}

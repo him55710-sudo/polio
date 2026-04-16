@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Flag, PlayCircle, School, Settings2, Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Flag, PlayCircle, School, Settings2, Sparkles, Target, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   type BlueprintQuest,
@@ -22,8 +22,7 @@ import { type QuestStartPayload, saveQuestStart } from '../lib/questStart';
 import { useAuthStore } from '../store/authStore';
 import {
   EmptyState,
-  PrimaryButton,
-  SecondaryButton,
+  PageHeader,
   SectionCard,
   StatusBadge,
   SurfaceCard,
@@ -377,76 +376,113 @@ export default function Dashboard() {
   }, [hasDiagnosis, hasPrimaryGoal, navigate, primaryQuest, storedDiagnosis]);
 
   const primaryGoal = allGoals[0] ?? null;
+  const quickActions = [
+    {
+      label: nextAction.primaryLabel,
+      onClick: nextAction.onPrimary,
+      tone: 'primary' as const,
+    },
+    {
+      label: hasPrimaryGoal ? '목표 수정' : '진단 가이드',
+      onClick: hasPrimaryGoal ? () => navigate('/app/diagnosis') : () => navigate('/help/student-record-pdf'),
+      tone: 'secondary' as const,
+    },
+    {
+      label: hasDiagnosis ? '워크숍 열기' : '학생부 업로드',
+      onClick: hasDiagnosis
+        ? () => navigate(storedDiagnosis?.projectId ? `/app/workshop/${storedDiagnosis.projectId}` : '/app/workshop')
+        : () => navigate('/app/record'),
+      tone: 'secondary' as const,
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-20 duration-1000 sm:space-y-12">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,#3257ff_0%,#5b6cff_46%,#2bb6ff_78%,#5eead4_100%)] p-6 shadow-[0_26px_54px_rgba(54,92,255,0.24)] sm:rounded-[2.5rem] sm:p-8 md:p-12">
-        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/16 blur-3xl animate-shine-pulse" />
-        <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#9edfff]/34 blur-3xl" />
-        <div className="absolute bottom-0 right-1/3 h-40 w-40 rounded-full bg-rose-300/20 blur-3xl" />
-        
-        <div className="relative z-10">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/16 px-3 py-1.5 backdrop-blur-md sm:px-4">
-            <TrendingUp size={14} className="text-[#bff0ff]" />
-            <span className="text-sm font-bold tracking-tight text-[#bff0ff]">준비율: {stats.completion_rate}%</span>
-          </div>
-
-          <div className="flex flex-col gap-5 sm:gap-8 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-4">
-              <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl md:text-5xl lg:leading-[1.15]">
-                {profile?.target_university ? (
-                  <>
-                    <span className="text-[#bbecff]">{profile.target_university}</span> {profile.target_major} <br className="hidden sm:block" />
-                    합격 플랜이 가동 중입니다
-                  </>
-                ) : (
-                  <>
-                    나만의 <span className="text-[#bbecff]">UniFoli</span> <br className="hidden sm:block" />
-                    합격 전략을 만드세요
-                  </>
-                )}
-              </h1>
-              <p className="max-w-xl text-sm font-medium leading-relaxed text-blue-100/88 sm:text-lg">
-                실시간 데이터와 AI가 분석한 나의 생기부 점수, <br className="hidden sm:block" />
-                그리고 합격을 위한 최적의 액션 플랜을 확인하세요.
-              </p>
-            </div>
-
-             <div className="flex shrink-0 flex-wrap gap-3.5">
+      <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+        <PageHeader
+          eyebrow="Dashboard"
+          title={nextAction.title}
+          description={nextAction.description}
+          className="border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(243,247,255,0.92)_100%)]"
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={nextAction.onPrimary}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 hover:-translate-y-0.5"
+              >
+                {nextAction.primaryLabel}
+                <ArrowRight size={16} />
+              </button>
               {hasPrimaryGoal && (
                 <button
                   onClick={() => navigate('/app/diagnosis')}
-                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/28 bg-white/14 px-4 text-sm font-bold text-white transition-all hover:bg-white/22 backdrop-blur-sm sm:h-12 sm:px-6 sm:text-base"
+                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
                 >
-                  <Settings2 size={18} />
-                  목표 정보 관리
+                  <Settings2 size={16} />
+                  목표 수정
                 </button>
               )}
-                <button
-                  onClick={nextAction.onPrimary}
-                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/70 bg-white px-5 text-sm font-black text-[#294cf0] shadow-xl shadow-[#1d4fff]/24 transition-all hover:scale-105 active:scale-95 sm:h-12 sm:px-8 sm:text-base"
-                >
-                  {nextAction.primaryLabel}
-                  <ArrowRight size={18} />
-              </button>
+            </div>
+          }
+          evidence={
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status="active">{progressLabel}</StatusBadge>
+              <StatusBadge status="neutral">준비율 {stats.completion_rate}%</StatusBadge>
+              <StatusBadge status="neutral">분석서 {stats.report_count}개</StatusBadge>
+              {storedDiagnosis ? (
+                <StatusBadge status={riskVariant(storedDiagnosis.diagnosis.risk_level)}>
+                  {storedDiagnosis.diagnosis.risk_level === 'danger'
+                    ? '집중 보완'
+                    : storedDiagnosis.diagnosis.risk_level === 'warning'
+                      ? '주의'
+                      : '안정'}
+                </StatusBadge>
+              ) : null}
+            </div>
+          }
+        />
+
+        <SectionCard
+          title="현재 기준"
+          subtitle={hasPrimaryGoal ? '지금 기준으로 적용되는 목표와 다음 단계입니다.' : '먼저 목표를 설정하면 다음 단계가 열립니다.'}
+          className="border-slate-200 bg-white/90"
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Target</p>
+              <p className="mt-1 text-lg font-black tracking-tight text-slate-950">
+                {primaryGoal ? `${primaryGoal.university} · ${primaryGoal.major}` : '목표 대학/학과 미설정'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Diagnosis</p>
+              <p className="mt-1 text-sm font-bold text-slate-800">
+                {hasDiagnosis ? toCompactDiagnosisSummary(storedDiagnosis?.diagnosis.headline) : '아직 진단 전입니다.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Next</p>
+              <p className="mt-1 text-sm font-bold text-slate-800">{nextAction.primaryLabel}</p>
             </div>
           </div>
+        </SectionCard>
+      </div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-2 sm:mt-10">
-            <StatusBadge status="active" className="border-white/28 bg-white/16 text-white backdrop-blur-md">
-              {progressLabel}
-            </StatusBadge>
-            <StatusBadge status="neutral" className="border-white/28 bg-white/16 text-white backdrop-blur-md">
-              보유 분석서 {stats.report_count}개
-            </StatusBadge>
-            {storedDiagnosis && (
-              <StatusBadge status={riskVariant(storedDiagnosis.diagnosis.risk_level)} className="backdrop-blur-md bg-white/20 border-white/20 text-white">
-                진단 리스크: {storedDiagnosis.diagnosis.risk_level === 'danger' ? '집중 보완' : storedDiagnosis.diagnosis.risk_level === 'warning' ? '주의' : '안정'}
-              </StatusBadge>
-            )}
-          </div>
-        </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {quickActions.map((action) => (
+          <button
+            key={action.label}
+            onClick={action.onClick}
+            className={`flex items-center justify-between rounded-[1.6rem] border px-5 py-4 text-left transition-all ${
+              action.tone === 'primary'
+                ? 'border-indigo-500 bg-indigo-600 text-white shadow-xl shadow-indigo-200 hover:-translate-y-0.5'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-100 hover:bg-slate-50'
+            }`}
+          >
+            <span className="text-sm font-black">{action.label}</span>
+            <ArrowRight size={16} className={action.tone === 'primary' ? 'text-white' : 'text-slate-400'} />
+          </button>
+        ))}
       </div>
 
       {/* Target & Progress Grid */}
@@ -487,7 +523,7 @@ export default function Dashboard() {
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button 
                         onClick={() => navigate('/app/diagnosis')}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#1d4fff] px-4 text-xs font-black text-white transition-all hover:bg-[#0039cb] active:scale-95"
+                        className="inline-flex h-9 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-xs font-black text-white transition-all hover:bg-indigo-700 active:scale-95"
                       >
                         지금 바로 설정하기
                         <ArrowRight size={14} />
@@ -557,8 +593,8 @@ export default function Dashboard() {
             {workflowSteps.map((step) => (
               <div key={step.key} className="flex gap-4 rounded-2xl bg-white/55 p-3">
                 <div className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
-                  step.status === 'done' ? 'bg-[#1d4fff] border-[#1d4fff] text-white' : 
-                  step.status === 'active' ? 'border-[#1d4fff] text-[#1d4fff]' : 'border-slate-200 text-slate-200'
+                  step.status === 'done' ? 'bg-indigo-600 border-indigo-600 text-white' : 
+                  step.status === 'active' ? 'border-indigo-600 text-indigo-600' : 'border-slate-200 text-slate-200'
                 }`}>
                   {step.status === 'done' ? <CheckCircle2 size={14} /> : <div className="h-1.5 w-1.5 rounded-full bg-current" />}
                 </div>

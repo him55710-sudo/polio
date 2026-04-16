@@ -154,7 +154,7 @@ export function Archive() {
 
       <div className="grid auto-rows-fr grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
-          <div key={item.id} className="group flex h-full min-h-[22rem] flex-col overflow-hidden sm:min-h-[26rem] clay-card">
+          <div key={item.id} className="group flex h-full min-h-[22rem] flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-100/50 sm:min-h-[26rem]">
             <div className={`relative w-full overflow-hidden rounded-t-3xl pt-[75%] ${item.color}`}>
               <div className="absolute inset-0 opacity-20 mix-blend-overlay bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]" />
               <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-7xl drop-shadow-xl transition-transform duration-500 group-hover:scale-110">
@@ -174,13 +174,13 @@ export function Archive() {
               <div className="mt-auto flex gap-2 border-t border-slate-100 pt-4">
                 <button
                   onClick={() => handleDownload(item, 'hwpx')}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#004aad] py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#003d8f]"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700 hover:-translate-y-0.5"
                 >
                   <FileText size={16} /> HWPX
                 </button>
                 <button
                   onClick={() => handleDownload(item, 'pdf')}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-900"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-900 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-200 transition-all hover:bg-black hover:-translate-y-0.5"
                 >
                   <Download size={16} /> PDF
                 </button>

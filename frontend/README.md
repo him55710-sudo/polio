@@ -28,11 +28,20 @@ npm run build
 
 ## Vercel
 
-Use a separate Vercel project whose Root Directory is `frontend/`.
+Two supported deployment shapes exist, and they are not interchangeable:
 
-- Set `VITE_API_URL` to the backend deployment URL. The frontend now warns when it falls back to the current origin without an explicit API URL.
-- If the backend is also on Vercel and you are not running a separate worker, set `VITE_SYNC_API_JOBS=true` so parse and diagnosis requests use the synchronous API paths.
-- Add the deployed frontend domain to Firebase Authorized domains and to the backend `CORS_ORIGINS` list.
+1. Shared monorepo Vercel project
+- Set the Vercel Root Directory to the repo root, not `frontend/`.
+- Keep the root [`vercel.json`](../vercel.json) active so `/api/v1/*` rewrites reach [`api/index.py`](../api/index.py).
+- Leave `VITE_API_URL` unset when the frontend and backend share the same Vercel origin.
+- Add the deployed frontend origin to backend `CORS_ORIGINS` and Firebase Authorized Domains.
+
+2. Separate frontend + backend projects
+- Use `frontend/` as the frontend project's Root Directory only when the backend is deployed elsewhere.
+- Set `VITE_API_URL` to the backend deployment origin.
+- If the backend is serverless and no dedicated worker is running, set `VITE_SYNC_API_JOBS=true`.
+
+If `VITE_API_URL` points to the wrong origin, frontend API requests can receive HTML instead of JSON. If the repo root is not used for the shared deployment shape, the Python API function is omitted entirely.
 
 ## Firebase Console Checklist
 

@@ -24,18 +24,18 @@ interface AppTopbarProps {
 
 const goalToneClasses = [
   {
-    shell: 'border-sky-200/90 bg-sky-50/88 text-sky-800 shadow-[0_12px_26px_rgba(14,165,233,0.12)]',
-    rank: 'text-sky-700',
+    shell: 'border-indigo-200/50 bg-indigo-50/80 text-indigo-700 shadow-lg shadow-indigo-100/50',
+    rank: 'text-indigo-600',
     logo: 'bg-white',
   },
   {
-    shell: 'border-violet-200/90 bg-violet-50/90 text-violet-800 shadow-[0_12px_26px_rgba(139,92,246,0.12)]',
-    rank: 'text-violet-700',
+    shell: 'border-purple-200/50 bg-purple-50/80 text-purple-700 shadow-lg shadow-purple-100/50',
+    rank: 'text-purple-600',
     logo: 'bg-white',
   },
   {
-    shell: 'border-emerald-200/90 bg-emerald-50/90 text-emerald-800 shadow-[0_12px_26px_rgba(16,185,129,0.12)]',
-    rank: 'text-emerald-700',
+    shell: 'border-pink-200/50 bg-pink-50/80 text-pink-700 shadow-lg shadow-pink-100/50',
+    rank: 'text-pink-600',
     logo: 'bg-white',
   },
 ];

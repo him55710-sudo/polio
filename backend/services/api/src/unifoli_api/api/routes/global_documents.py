@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -29,6 +30,7 @@ from unifoli_api.services.project_service import create_project, get_project
 from unifoli_api.services.upload_service import UploadValidationError, store_upload
 
 router = APIRouter()
+logger = logging.getLogger("unifoli.api.documents")
 
 
 @router.post("/upload", response_model=ParsedDocumentRead, status_code=status.HTTP_201_CREATED)
@@ -44,6 +46,13 @@ async def upload_global_document(
     current_user: User = Depends(get_current_user),
     _: None = Depends(rate_limit(bucket="global_document_uploads", limit=10, window_seconds=60)),
 ) -> ParsedDocumentRead:
+    logger.info(
+        "Global document upload requested. filename=%s project_id=%s auto_parse=%s content_type=%s",
+        file.filename,
+        project_id,
+        auto_parse,
+        getattr(file, "content_type", None),
+    )
     active_project_id = project_id
     if active_project_id:
         project = get_project(db, active_project_id, owner_user_id=current_user.id)
@@ -84,6 +93,11 @@ def parse_global_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ParsedDocumentRead:
+    logger.info(
+        "Global document parse requested. document_id=%s wait_for_completion=%s",
+        document_id,
+        wait_for_completion,
+    )
     document = get_document(db, document_id)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")

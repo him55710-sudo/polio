@@ -20,15 +20,15 @@ _MAX_KEY_POINTS = 5
 _MAX_EVIDENCE_GAPS = 5
 
 _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "student_info": ("student", "name", "school", "id", "profile"),
-    "attendance": ("attendance", "absence", "late", "tardy", "present"),
-    "awards": ("award", "prize", "competition"),
-    "creative_activities": ("creative", "club", "activity", "project"),
-    "volunteer": ("volunteer", "service", "hours"),
-    "grades_subjects": ("grade", "subject", "score", "evaluation"),
-    "subject_special_notes": ("special note", "subject note", "comment"),
-    "reading": ("reading", "book", "library"),
-    "behavior_general_comments": ("behavior", "general comment", "attitude"),
+    "student_info": ("student", "name", "school", "id", "profile", "인적사항", "학적사항", "학생명"),
+    "attendance": ("attendance", "absence", "late", "tardy", "present", "출결", "결석", "지각", "조퇴"),
+    "awards": ("award", "prize", "competition", "수상", "상장", "수상명"),
+    "creative_activities": ("creative", "club", "activity", "project", "창의적", "동아리", "자율활동", "진로활동"),
+    "volunteer": ("volunteer", "service", "hours", "봉사", "봉사시간"),
+    "grades_subjects": ("grade", "subject", "score", "evaluation", "교과", "성적", "발달상황"),
+    "subject_special_notes": ("special note", "subject note", "comment", "세부능력", "특기사항", "세특"),
+    "reading": ("reading", "book", "library", "독서", "도서명"),
+    "behavior_general_comments": ("behavior", "general comment", "attitude", "행동특성", "종합의견"),
 }
 
 _LEGACY_SECTION_LABELS: dict[str, str] = {

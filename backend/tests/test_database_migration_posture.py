@@ -95,11 +95,13 @@ def test_alembic_head_creates_operational_indexes_and_parsed_document_job_column
     }.issubset(table_names)
 
     parsed_document_columns = {column["name"] for column in runtime_inspector.get_columns("parsed_documents")}
+    diagnosis_run_columns = {column["name"] for column in runtime_inspector.get_columns("diagnosis_runs")}
     assert {
         "latest_async_job_id",
         "latest_async_job_status",
         "latest_async_job_error",
     }.issubset(parsed_document_columns)
+    assert "status_message" in diagnosis_run_columns
 
     user_columns = {column["name"] for column in runtime_inspector.get_columns("users")}
     project_columns = {column["name"] for column in runtime_inspector.get_columns("projects")}

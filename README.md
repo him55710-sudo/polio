@@ -221,6 +221,7 @@ npm run build
 ## Key Docs
 
 - `docs/getting-started.md`
+- `docs/vercel-production-checklist.md`
 - `docs/monorepo-structure.md`
 - `docs/00-principles/README.md`
 - `docs/07-diagnosis-engine/README.md`

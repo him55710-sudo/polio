@@ -169,8 +169,8 @@ export function Onboarding() {
             <h1 className="text-3xl font-black text-slate-900">{step === 1 ? TEXT.profileTitle : TEXT.goalTitle}</h1>
           </div>
           <div className="flex gap-2">
-             <div className={`h-2.5 w-16 rounded-full ${step >= 1 ? 'bg-[#004aad]' : 'bg-slate-200'}`} />
-             <div className={`h-2.5 w-16 rounded-full ${step >= 2 ? 'bg-[#004aad]' : 'bg-slate-200'}`} />
+             <div className={`h-2.5 w-16 rounded-full transition-all duration-500 ${step >= 1 ? 'bg-indigo-600 shadow-sm shadow-indigo-200' : 'bg-slate-200'}`} />
+             <div className={`h-2.5 w-16 rounded-full transition-all duration-500 ${step >= 2 ? 'bg-indigo-600 shadow-sm shadow-indigo-200' : 'bg-slate-200'}`} />
           </div>
         </div>
 
@@ -180,7 +180,7 @@ export function Onboarding() {
           {step === 1 ? (
             <div className="space-y-10">
               <div className="flex gap-4">
-                <div className="h-16 w-16 bg-[#004aad]/5 text-[#004aad] flex items-center justify-center rounded-2xl"><User size={32}/></div>
+                <div className="h-16 w-16 bg-indigo-50 text-indigo-600 flex items-center justify-center rounded-2xl shadow-inner"><User size={32}/></div>
                 <div><h2 className="text-xl font-black text-slate-800">{TEXT.profileSectionTitle}</h2><p className="text-slate-500 font-medium">{TEXT.profileSectionDescription}</p></div>
               </div>
               {goalList.length > 0 ? (
@@ -211,7 +211,7 @@ export function Onboarding() {
                 <label className="text-sm font-black text-slate-700">{TEXT.careerLabel}</label>
                 <input type="text" value={profile.career} onChange={e => setProfile({ career: e.target.value })} placeholder={TEXT.careerPlaceholder} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-[#004aad]" />
               </div>
-              <button onClick={submitProfile} disabled={!profile.grade || !profile.track || isLoading} className="w-full py-5 bg-[#004aad] text-white rounded-2xl font-black text-xl flex items-center justify-center gap-2 hover:bg-[#003882] disabled:opacity-40 shadow-lg shadow-[#004aad]/20">
+              <button onClick={submitProfile} disabled={!profile.grade || !profile.track || isLoading} className="w-full py-5 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-black text-xl flex items-center justify-center gap-2 hover:shadow-2xl hover:shadow-indigo-200 hover:-translate-y-0.5 disabled:opacity-40 shadow-xl shadow-indigo-100 transition-all">
                 {isLoading ? <Loader2 className="animate-spin"/> : <>{TEXT.next} <ArrowRight/></>}
               </button>
             </div>
@@ -280,7 +280,7 @@ export function Onboarding() {
 
                        <div className="pt-4 border-t border-slate-200">
                           <label className="text-xs font-black text-slate-400 mb-2 block">{TEXT.admissionTypeLabel}</label>
-                          <select value={goals.admission_type} onChange={e => setGoals({ admission_type: e.target.value })} className="w-full p-4 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-[#004aad]">
+                          <select value={goals.admission_type} onChange={e => setGoals({ admission_type: e.target.value })} className="w-full p-4 bg-white border-2 border-slate-100 rounded-xl font-bold outline-none focus:border-indigo-600">
                              <option value="">{TEXT.choose}</option>
                              {[TEXT.academic, TEXT.general, TEXT.essay, TEXT.regular, TEXT.practical].map(o => <option key={o} value={o}>{o}</option>)}
                           </select>

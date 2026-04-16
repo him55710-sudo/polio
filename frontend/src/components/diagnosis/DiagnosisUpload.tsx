@@ -33,7 +33,7 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
     >
       <SectionCard
         title="생활기록부 PDF 등록"
-        description="생기부 1개(최대 50MB)를 등록하시면 개인정보 보호 처리 후 AI가 꼼꼼히 읽어봅니다."
+        description="PDF 1개만 등록하면 바로 파싱과 진단을 시작합니다."
         className="overflow-hidden border-none bg-white/60 shadow-xl backdrop-blur-2xl ring-1 ring-white/50"
         actions={
           <SecondaryButton
@@ -46,25 +46,16 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
           </SecondaryButton>
         }
       >
-        <div className="grid gap-3 rounded-2xl bg-blue-50/50 p-6 sm:grid-cols-3 ring-1 ring-blue-100">
-          <div className="flex flex-col gap-1 items-center text-center">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#004aad] text-xs font-bold text-white shadow-lg shadow-blue-500/20">
-              1
-            </div>
-            <p className="text-sm font-black text-slate-800">기록 등록</p>
-          </div>
-          <div className="flex flex-col gap-1 items-center text-center">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-500">
-              2
-            </div>
-            <p className="text-sm font-bold text-slate-400">정밀 분석</p>
-          </div>
-          <div className="flex flex-col gap-1 items-center text-center">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-500">
-              3
-            </div>
-            <p className="text-sm font-bold text-slate-400">결과 확인</p>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600">
+            PDF 1개
+          </span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600">
+            최대 50MB
+          </span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600">
+            업로드 후 자동 분석
+          </span>
         </div>
 
         <div
@@ -101,11 +92,10 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
             </div>
 
             <h3 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-              생활기록부를 <span className="text-[#004aad]">이곳에 놓아주세요</span>
+              PDF를 <span className="text-[#004aad]">바로 올려주세요</span>
             </h3>
-            <p className="mt-4 max-w-md text-lg font-medium text-slate-500 leading-relaxed">
-              파일을 드래그하거나 버튼을 클릭하여 업로드하면 <br className="hidden sm:block" />
-              즉시 AI 맞춤 진단이 시작됩니다.
+            <p className="mt-4 max-w-md text-base font-medium leading-7 text-slate-500 sm:text-lg">
+              드래그해서 놓거나 버튼을 눌러 선택하면 됩니다.
             </p>
 
             <button
@@ -119,8 +109,14 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
               className="mt-10 flex items-center gap-3 rounded-2xl bg-slate-900 px-8 py-4 text-base font-bold text-white shadow-xl shadow-slate-200 ring-offset-2 transition-all hover:bg-slate-800 hover:ring-2 hover:ring-slate-900 active:scale-95 disabled:opacity-50"
             >
               <Plus size={20} />
-              컴퓨터에서 파일 찾기
+              PDF 선택하기
             </button>
+
+            <div className="mt-5 flex flex-wrap justify-center gap-2 text-xs font-bold text-slate-500">
+              <span className="rounded-full bg-slate-100 px-3 py-1">텍스트 추출</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1">근거 정리</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1">진단 생성</span>
+            </div>
           </div>
         </div>
 

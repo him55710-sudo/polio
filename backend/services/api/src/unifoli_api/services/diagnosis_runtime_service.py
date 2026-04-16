@@ -322,26 +322,25 @@ def _update_run_status(
 
 def _diagnosis_runtime_failure_message(exc: Exception) -> str:
     detail = exc.detail if isinstance(exc, HTTPException) else None
-    fallback = "Diagnosis failed while processing the student record. Please verify the uploaded document and try again."
+    fallback_en = "Diagnosis failed while processing the student record. Please verify the uploaded document and try again."
     normalized = extract_error_message(detail)
-    if normalized:
-        normalized = sanitize_public_error(normalized, fallback=fallback)
-    else:
-        normalized = sanitize_public_error(str(exc), fallback=fallback)
+    if not normalized:
+        normalized = sanitize_public_error(str(exc), fallback=fallback_en)
+
+    # 한국어 환경 지원을 위한 폴백 메시지 결합
+    fallback_ko = "진단 작업이 실패했습니다. 프로젝트 근거를 확인한 뒤 다시 시도해 주세요."
+    
     lowered = normalized.lower()
-    if "database is locked" in lowered:
-        return "Diagnosis storage is temporarily busy. Please try again shortly."
-    if "database or disk is full" in lowered:
-        return "Diagnosis storage is temporarily full. Please try again shortly."
-    return normalized
-    fallback = "진단 작업이 실패했습니다. 프로젝트 근거를 확인한 뒤 다시 시도해 주세요."
-    normalized = sanitize_public_error(str(exc), fallback=fallback)
-    lowered = normalized.lower()
-    if "database is locked" in lowered:
+    if "database is locked" in lowered or "locked" in lowered:
         return "진단 저장소가 일시적으로 사용 중입니다. 잠시 후 다시 시도해 주세요."
-    if "database or disk is full" in lowered:
+    if "database or disk is full" in lowered or "full" in lowered:
         return "진단 저장소 용량이 일시적으로 포화 상태입니다. 잠시 후 다시 시도해 주세요."
-    return normalized
+    
+    # 기본적으로 한국어 메시지를 반환하도록 시도 (또는 원본이 한글이면 유지)
+    if any(ord(c) > 0x7F for c in normalized):
+        return normalized
+    
+    return fallback_ko
 
 
 def _resolve_diagnosis_generation_timeout_seconds() -> float:
@@ -639,11 +638,10 @@ async def run_diagnosis_run(
 
         run.result_payload = result.model_dump_json()
         run.status = "COMPLETED"
-        run.status_message = "진단이 완료되었습니다."
         run.status_message = (
-            "Diagnosis completed with stored artifacts."
+            "진단이 완료되었습니다 (인용 데이터 포함)."
             if result.response_trace_id
-            else "Diagnosis completed, but evidence trace persistence was degraded."
+            else "진단이 완료되었으나, 근거 추적 데이터 저장에 지연이 발생했습니다."
         )
         run.error_message = None
         _persist_run(db, run)

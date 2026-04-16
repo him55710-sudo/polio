@@ -45,6 +45,12 @@ function mapErrorCodeToUserMessage(code: string): string | null {
   switch (code) {
     case 'AUTH_MISSING':
       return '인증 정보가 없습니다. 다시 로그인해 주세요.';
+    case 'BACKEND_STARTUP_FAILED':
+      return '백엔드 서버가 정상적으로 기동하지 못했습니다. 배포 설정과 DB 연결 상태를 확인해 주세요.';
+    case 'DATABASE_URL_REQUIRED':
+      return '배포 환경의 DATABASE_URL이 비어 있어 백엔드가 시작되지 못했습니다. 운영자에게 문의해 주세요.';
+    case 'DATABASE_UNAVAILABLE':
+      return '백엔드가 데이터베이스에 연결하지 못했습니다. DB 접속 정보와 네트워크 설정을 확인해 주세요.';
     case 'PROJECT_NOT_FOUND':
       return '요청한 프로젝트를 찾을 수 없습니다.';
     case 'DOCUMENT_NOT_FOUND':
@@ -61,21 +67,21 @@ function mapErrorCodeToUserMessage(code: string): string | null {
     case 'PARSE_TIMEOUT':
       return '문서 분석 시간이 오래 걸려 중단되었습니다. 잠시 후 다시 시도해 주세요.';
     case 'CANONICAL_SCHEMA_EMPTY':
-      return '구조화된 학생부 항목을 충분히 만들지 못했습니다. 원문 텍스트 기준 분석으로 다시 시도해 주세요.';
+      return '구조화된 학생부 항목을 충분히 만들지 못했습니다. 원문 텍스트 기반 분석으로 다시 시도해 주세요.';
     case 'DIAGNOSIS_INPUT_EMPTY':
       return '진단에 사용할 학생부 내용이 아직 없습니다. 업로드와 파싱을 먼저 완료해 주세요.';
     case 'DIAGNOSIS_TRACE_PERSIST_FAILED':
-      return '진단은 생성되었지만 근거 추적 저장이 일부 누락되었습니다. 다시 시도하면 복구될 수 있습니다.';
+      return '진단은 생성되었지만 근거 추적 데이터 저장이 일부 누락되었습니다. 다시 시도하면 복구될 수 있습니다.';
     case 'REPORT_ARTIFACT_FAILED':
-      return '진단서는 만들지 못했지만 진단 결과는 보존되었습니다.';
+      return '진단 결과는 생성되었지만 진단서 아티팩트 저장에 실패했습니다.';
     case 'CHATBOT_CONTEXT_BUILD_FAILED':
-      return '챗봇용 컨텍스트를 만드는 중 문제가 생겼습니다. 진단 결과는 그대로 사용할 수 있습니다.';
+      return '챗봇 컨텍스트를 만드는 중 문제가 생겼습니다. 진단 결과 자체는 사용할 수 있습니다.';
     case 'DB_SCHEMA_MISMATCH':
-      return '서버 데이터 구조가 최신 상태가 아닙니다. 관리자에게 점검을 요청해 주세요.';
+      return '서버 데이터베이스 스키마가 최신 상태가 아닙니다. 운영자에게 마이그레이션 적용을 요청해 주세요.';
     case 'DIAGNOSIS_FAILED':
       return '생기부 진단 생성에 실패했습니다.';
     case 'INTERNAL_ERROR':
-      return '서버 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+      return '서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
     default:
       return null;
   }
@@ -93,22 +99,32 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
     }
 
     const status = error.response.status;
-    const data = error.response.data as Record<string, unknown> | undefined;
+    const data = error.response.data as Record<string, unknown> | string | undefined;
     const rootRecord = extractRecord(data);
-    const detailRecord = extractRecord(data?.detail);
-    const debugCode =
+    const detailRecord = extractRecord(rootRecord?.detail);
+    const responseHeaders = error.response.headers as Record<string, unknown> | undefined;
+    const responseText = typeof data === 'string' ? data : null;
+    const vercelError = coerceString(responseHeaders?.['x-vercel-error']);
+
+    let debugCode =
       coerceString(rootRecord?.code) ||
       coerceString(rootRecord?.error_code) ||
       coerceString(detailRecord?.code) ||
       coerceString(detailRecord?.error_code);
+
+    if (!debugCode && (vercelError === 'FUNCTION_INVOCATION_FAILED' || responseText?.includes('FUNCTION_INVOCATION_FAILED'))) {
+      debugCode = 'BACKEND_STARTUP_FAILED';
+    }
+
     const detailMessage =
       toDetailMessage(detailRecord) ||
-      toDetailMessage(data?.detail) ||
+      toDetailMessage(rootRecord?.detail) ||
       toDetailMessage(rootRecord) ||
       toDetailMessage(data);
     const debugDetail =
       coerceString(detailRecord?.debug_detail) ||
       coerceString(rootRecord?.debug_detail) ||
+      vercelError ||
       detailMessage;
     const mappedMessage = debugCode ? mapErrorCodeToUserMessage(debugCode) : null;
 
