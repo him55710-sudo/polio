@@ -10,94 +10,17 @@ interface TrendItem {
   id: number;
   type: TrendType;
   icon: React.ComponentType<{ size?: number }>;
-  const trendItems: TrendItem[] = [
+  title: string;
+  desc: string;
+}
+
+const trendItems: TrendItem[] = [
   { id: 121, type: "탐구 아이디어", icon: Lightbulb, title: "[AI/SW] 생성형 AI의 윤리적 가이드라인 탐구", desc: "컴퓨터공학 지망생을 위한 최신 AI 윤리 탐구 주제입니다." },
   { id: 122, type: "탐구 아이디어", icon: Lightbulb, title: "[바이오] 유전자 편집 기술의 규제 현황 분석", desc: "의생명공학 지망생을 위한 심화 생명윤리 주제입니다." },
   { id: 123, type: "합격 가이드", icon: GraduationCap, title: "[경영] ESG 경영 지표의 실효성 검증 모델", desc: "경영학과 지망생을 위한 사회과학 탐구 로드맵입니다." },
   { id: 124, type: "도서 추천", icon: BookOpen, title: "[반도체] 칩 전쟁: 세계 경제의 새로운 무기", desc: "전자공학 지망생을 위한 추천 도서 및 독후 활동 가이드입니다." },
   { id: 125, type: "탐구 아이디어", icon: Lightbulb, title: "[미디어] 딥페이크 기술이 저널리즘에 미치는 영향", desc: "미디어학 지망생을 위한 뉴미디어 비판적 탐구 주제입니다." },
   { id: 126, type: "탐구 아이디어", icon: Lightbulb, title: "[경제] 블록체인 기반의 중앙은행 디지털화폐(CBDC) 연구", desc: "경제학과 지망생을 위한 금융 혁신 탐구 로드맵입니다." },
-];
-
-const baseFilters = ['전체', '탐구 아이디어', '도서 추천', '입시 이슈', '합격 가이드', '경영', '컴공', '의예'] as const;
-
-export function Trends() {
-  const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState<string>('전체');
-  const [extraFilters, setExtraFilters] = useState<string[]>([]);
-  const [selectedTrend, setSelectedTrend] = useState<TrendItem | null>(null);
-
-  const allFilters = useMemo(() => [...baseFilters, ...extraFilters], [extraFilters]);
-
-  const visibleItems = useMemo(() => {
-    if (activeFilter === '전체') return trendItems;
-    if (baseFilters.includes(activeFilter as any)) {
-        return trendItems.filter((item) => item.type === activeFilter);
-    }
-    // Major specific filter
-    return trendItems.filter((item) => item.title.includes(`[${activeFilter}]`));
-  }, [activeFilter]);
-n: Newspaper, title: "[컴공] 혁신 탐구 로드맵", desc: "컴공 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 312, type: "탐구 아이디어", icon: Lightbulb, title: "[컴공] 실전 탐구 로드맵", desc: "컴공 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 313, type: "합격 가이드", icon: GraduationCap, title: "[의예과] 심화 탐구 로드맵", desc: "의예과 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 314, type: "도서 추천", icon: BookOpen, title: "[법학] 글로벌 탐구 로드맵", desc: "법학 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 315, type: "탐구 아이디어", icon: Lightbulb, title: "[정외] 심화 탐구 로드맵", desc: "정외 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 316, type: "탐구 아이디어", icon: Lightbulb, title: "[통계] 심화 탐구 로드맵", desc: "통계 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 317, type: "합격 가이드", icon: GraduationCap, title: "[정외] 심화 탐구 로드맵", desc: "정외 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 318, type: "도서 추천", icon: BookOpen, title: "[정외] 글로벌 탐구 로드맵", desc: "정외 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 319, type: "탐구 아이디어", icon: Lightbulb, title: "[생명] 혁신 탐구 로드맵", desc: "생명 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 320, type: "탐구 아이디어", icon: Lightbulb, title: "[미디어] 글로벌 탐구 로드맵", desc: "미디어 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 321, type: "도서 추천", icon: BookOpen, title: "[심리] 혁신 탐구 로드맵", desc: "심리 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 322, type: "합격 가이드", icon: GraduationCap, title: "[생명] 글로벌 탐구 로드맵", desc: "생명 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 323, type: "탐구 아이디어", icon: Lightbulb, title: "[미디어] 글로벌 탐구 로드맵", desc: "미디어 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 324, type: "입시 이슈", icon: Newspaper, title: "[약학과] 혁신 탐구 로드맵", desc: "약학과 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 325, type: "입시 이슈", icon: Newspaper, title: "[도시] 실전 탐구 로드맵", desc: "도시 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 326, type: "입시 이슈", icon: Newspaper, title: "[법학] 실전 탐구 로드맵", desc: "법학 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 327, type: "입시 이슈", icon: Newspaper, title: "[생명] 실전 탐구 로드맵", desc: "생명 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 328, type: "탐구 아이디어", icon: Lightbulb, title: "[경영] 실전 탐구 로드맵", desc: "경영 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 329, type: "입시 이슈", icon: Newspaper, title: "[교육] 혁신 탐구 로드맵", desc: "교육 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 330, type: "도서 추천", icon: BookOpen, title: "[도시] 실전 탐구 로드맵", desc: "도시 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 331, type: "합격 가이드", icon: GraduationCap, title: "[치의예과] 실전 탐구 로드맵", desc: "치의예과 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 332, type: "도서 추천", icon: BookOpen, title: "[의예과] 실전 탐구 로드맵", desc: "의예과 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 333, type: "입시 이슈", icon: Newspaper, title: "[교육] 실전 탐구 로드맵", desc: "교육 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 334, type: "탐구 아이디어", icon: Lightbulb, title: "[경영] 글로벌 탐구 로드맵", desc: "경영 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 335, type: "입시 이슈", icon: Newspaper, title: "[경영] 심화 탐구 로드맵", desc: "경영 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 336, type: "탐구 아이디어", icon: Lightbulb, title: "[경영] 심화 탐구 로드맵", desc: "경영 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 337, type: "합격 가이드", icon: GraduationCap, title: "[교육] 혁신 탐구 로드맵", desc: "교육 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 338, type: "탐구 아이디어", icon: Lightbulb, title: "[경영] 심화 탐구 로드맵", desc: "경영 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 339, type: "탐구 아이디어", icon: Lightbulb, title: "[의예과] 심화 탐구 로드맵", desc: "의예과 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 340, type: "도서 추천", icon: BookOpen, title: "[미디어] 심화 탐구 로드맵", desc: "미디어 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 341, type: "합격 가이드", icon: GraduationCap, title: "[약학과] 심화 탐구 로드맵", desc: "약학과 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 342, type: "입시 이슈", icon: Newspaper, title: "[교육] 혁신 탐구 로드맵", desc: "교육 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 343, type: "입시 이슈", icon: Newspaper, title: "[경영] 혁신 탐구 로드맵", desc: "경영 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 344, type: "입시 이슈", icon: Newspaper, title: "[도시] 심화 탐구 로드맵", desc: "도시 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 345, type: "도서 추천", icon: BookOpen, title: "[심리] 글로벌 탐구 로드맵", desc: "심리 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 346, type: "도서 추천", icon: BookOpen, title: "[교육] 실전 탐구 로드맵", desc: "교육 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 347, type: "입시 이슈", icon: Newspaper, title: "[약학과] 혁신 탐구 로드맵", desc: "약학과 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 348, type: "도서 추천", icon: BookOpen, title: "[통계] 심화 탐구 로드맵", desc: "통계 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 349, type: "입시 이슈", icon: Newspaper, title: "[경영] 글로벌 탐구 로드맵", desc: "경영 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 350, type: "입시 이슈", icon: Newspaper, title: "[약학과] 심화 탐구 로드맵", desc: "약학과 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 351, type: "탐구 아이디어", icon: Lightbulb, title: "[심리] 글로벌 탐구 로드맵", desc: "심리 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 352, type: "도서 추천", icon: BookOpen, title: "[생명] 실전 탐구 로드맵", desc: "생명 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 353, type: "탐구 아이디어", icon: Lightbulb, title: "[통계] 글로벌 탐구 로드맵", desc: "통계 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 354, type: "탐구 아이디어", icon: Lightbulb, title: "[의예과] 글로벌 탐구 로드맵", desc: "의예과 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 355, type: "도서 추천", icon: BookOpen, title: "[약학과] 글로벌 탐구 로드맵", desc: "약학과 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 356, type: "도서 추천", icon: BookOpen, title: "[전자] 심화 탐구 로드맵", desc: "전자 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 357, type: "입시 이슈", icon: Newspaper, title: "[의예과] 혁신 탐구 로드맵", desc: "의예과 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 358, type: "탐구 아이디어", icon: Lightbulb, title: "[치의예과] 혁신 탐구 로드맵", desc: "치의예과 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 359, type: "도서 추천", icon: BookOpen, title: "[정외] 글로벌 탐구 로드맵", desc: "정외 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 360, type: "탐구 아이디어", icon: Lightbulb, title: "[경영] 실전 탐구 로드맵", desc: "경영 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 361, type: "합격 가이드", icon: GraduationCap, title: "[의예과] 실전 탐구 로드맵", desc: "의예과 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 362, type: "입시 이슈", icon: Newspaper, title: "[생명] 글로벌 탐구 로드맵", desc: "생명 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 363, type: "도서 추천", icon: BookOpen, title: "[컴공] 글로벌 탐구 로드맵", desc: "컴공 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 364, type: "도서 추천", icon: BookOpen, title: "[심리] 글로벌 탐구 로드맵", desc: "심리 지망생을 위한 글로벌 핵심 전략 자료입니다." },
-  { id: 365, type: "합격 가이드", icon: GraduationCap, title: "[생명] 실전 탐구 로드맵", desc: "생명 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 366, type: "도서 추천", icon: BookOpen, title: "[심리] 실전 탐구 로드맵", desc: "심리 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 367, type: "탐구 아이디어", icon: Lightbulb, title: "[생명] 실전 탐구 로드맵", desc: "생명 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 368, type: "도서 추천", icon: BookOpen, title: "[의예과] 실전 탐구 로드맵", desc: "의예과 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 369, type: "입시 이슈", icon: Newspaper, title: "[심리] 심화 탐구 로드맵", desc: "심리 지망생을 위한 심화 핵심 전략 자료입니다." },
-  { id: 370, type: "도서 추천", icon: BookOpen, title: "[컴공] 실전 탐구 로드맵", desc: "컴공 지망생을 위한 실전 핵심 전략 자료입니다." },
-  { id: 371, type: "입시 이슈", icon: Newspaper, title: "[미디어] 혁신 탐구 로드맵", desc: "미디어 지망생을 위한 혁신 핵심 전략 자료입니다." },
   { id: 372, type: "탐구 아이디어", icon: Lightbulb, title: "[정외] 혁신 탐구 로드맵", desc: "정외 지망생을 위한 혁신 핵심 전략 자료입니다." },
   { id: 373, type: "도서 추천", icon: BookOpen, title: "[심리] 글로벌 탐구 로드맵", desc: "심리 지망생을 위한 글로벌 핵심 전략 자료입니다." },
   { id: 374, type: "탐구 아이디어", icon: Lightbulb, title: "[의예과] 실전 탐구 로드맵", desc: "의예과 지망생을 위한 실전 핵심 전략 자료입니다." },
@@ -146,9 +69,10 @@ n: Newspaper, title: "[컴공] 혁신 탐구 로드맵", desc: "컴공 지망생
   { id: 417, type: "탐구 아이디어", icon: Lightbulb, title: "[법학] 실전 탐구 로드맵", desc: "법학 지망생을 위한 실전 핵심 전략 자료입니다." },
   { id: 418, type: "탐구 아이디어", icon: Lightbulb, title: "[정외] 혁신 탐구 로드맵", desc: "정외 지망생을 위한 혁신 핵심 전략 자료입니다." },
   { id: 419, type: "탐구 아이디어", icon: Lightbulb, title: "[의예과] 혁신 탐구 로드맵", desc: "의예과 지망생을 위한 혁신 핵심 전략 자료입니다." },
-  { id: 420, type: "입시 이슈", icon: Newspaper, title: "[도시] 실전 탐구 로드맵", desc: "도시 지망생을 위한 실전 핵심 전략 자료입니다." },];
+  { id: 420, type: "입시 이슈", icon: Newspaper, title: "[도시] 실전 탐구 로드맵", desc: "도시 지망생을 위한 실전 핵심 전략 자료입니다." },
+];
 
-const baseFilters = ['전체', '도서 추천', '입시 이슈', '합격 가이드', '탐구 아이디어'] as const;
+const baseFilters = ['전체', '탐구 아이디어', '도서 추천', '입시 이슈', '합격 가이드', '경영', '컴공', '의예'] as const;
 
 export function Trends() {
   const navigate = useNavigate();
@@ -160,7 +84,11 @@ export function Trends() {
 
   const visibleItems = useMemo(() => {
     if (activeFilter === '전체') return trendItems;
-    return trendItems.filter((item) => item.type === activeFilter);
+    if (baseFilters.includes(activeFilter as any)) {
+      return trendItems.filter((item) => item.type === activeFilter);
+    }
+    // Major specific filter or items containing the keyword in title
+    return trendItems.filter((item) => item.title.includes(`[${activeFilter}]`) || item.title.includes(activeFilter));
   }, [activeFilter]);
 
   const handleAddFilter = () => {
@@ -172,7 +100,7 @@ export function Trends() {
       return;
     }
     setExtraFilters((prev) => [...prev, value]);
-    setActiveFilter('전체');
+    setActiveFilter(value);
     toast.success(`"${value}" 필터를 추가했습니다.`);
   };
 
@@ -223,31 +151,21 @@ export function Trends() {
             onClick={() => setSelectedTrend(item)}
             className="group flex h-auto min-h-[290px] w-full self-start cursor-pointer flex-col overflow-hidden p-5 text-left sm:h-[320px] sm:p-8 clay-card"
           >
-            <div
-              className={`mb-4 inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-extrabold ${
-                item.type === '도서 추천'
-                  ? 'border-[#004aad]/10 bg-[#004aad]/5 text-[#004aad]'
-                  : item.type === '입시 이슈'
-                    ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
-                    : item.type === '합격 가이드'
-                      ? 'border-[#004aad]/20 bg-[#004aad]/10 text-[#004aad]'
-                      : 'border-amber-100 bg-amber-50 text-amber-600'
-              }`}
-            >
-              <item.icon size={16} />
-              {item.type}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 rounded-lg bg-[#004aad]/5 px-3 py-1 text-xs font-bold text-[#004aad]">
+                <item.icon size={14} />
+                {item.type}
+              </div>
             </div>
-            <h3 className="mb-2 h-[2.75rem] line-clamp-2 text-lg font-extrabold leading-tight text-slate-800 transition-colors group-hover:text-[#004aad]">
+            <h3 className="mb-3 text-lg font-extrabold leading-tight text-slate-800 transition-colors group-hover:text-[#004aad] sm:text-xl">
               {item.title}
             </h3>
-            <p className="mb-4 h-[4.5rem] line-clamp-3 text-sm font-medium leading-relaxed text-slate-500">
+            <p className="text-sm font-medium leading-relaxed text-slate-500 line-clamp-3 sm:text-base">
               {item.desc}
             </p>
-
-            <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
-              <span className="rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-400">조회수 1.2k</span>
-              <span className="flex items-center gap-1.5 rounded-xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-extrabold text-slate-800 shadow-sm transition-colors group-hover:border-[#004aad]/20 group-hover:text-[#004aad]">
-                자세히 <span className="transition-transform group-hover:translate-x-1 text-[#004aad]">→</span>
+            <div className="mt-auto pt-6">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#004aad]/60 transition-colors group-hover:text-[#004aad]">
+                내용 보기 →
               </span>
             </div>
           </motion.button>
@@ -255,57 +173,65 @@ export function Trends() {
       </div>
 
       <AnimatePresence>
-        {selectedTrend ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSelectedTrend(null)}
-            className="fixed inset-0 z-50 flex items-end bg-slate-900/40 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4"
-          >
+        {selectedTrend && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
-              initial={{ opacity: 0, y: 60 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 60 }}
-              onClick={(event) => event.stopPropagation()}
-              className="relative w-full max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[80dvh] sm:max-w-2xl sm:rounded-3xl sm:p-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedTrend(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-2xl overflow-hidden rounded-3xl bg-white p-6 shadow-2xl sm:p-10"
             >
               <button
                 onClick={() => setSelectedTrend(null)}
-                className="absolute right-4 top-4 rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-slate-700"
+                className="absolute right-6 top-6 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
               >
-                <X size={18} />
+                <X size={24} />
               </button>
-              <div className="mb-5 inline-flex items-center gap-2 rounded-xl border border-[#004aad]/10 bg-[#004aad]/5 px-3 py-1.5 text-xs font-extrabold text-[#004aad]">
-                <selectedTrend.icon size={16} />
+
+              <div className="mb-6 inline-flex items-center gap-2 rounded-xl bg-[#004aad]/5 px-4 py-1.5 text-sm font-bold text-[#004aad]">
+                <selectedTrend.icon size={18} />
                 {selectedTrend.type}
               </div>
-              <h3 className="mb-3 text-2xl font-extrabold leading-snug text-slate-800">{selectedTrend.title}</h3>
-              <p className="mb-6 text-[15px] font-medium leading-relaxed text-slate-600">{selectedTrend.desc}</p>
-              <div className="flex flex-wrap gap-3">
+
+              <h2 className="mb-4 text-2xl font-extrabold leading-tight text-slate-800 sm:text-3xl">
+                {selectedTrend.title}
+              </h2>
+              
+              <div className="mb-8 space-y-4 text-base font-medium leading-relaxed text-slate-600 sm:text-lg">
+                <p>{selectedTrend.desc}</p>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6">
+                  <h4 className="mb-2 text-sm font-bold text-slate-400">보고서 연계 아이디어</h4>
+                  <p className="text-slate-700">이 주제를 나의 생기부와 어떻게 연결하면 좋을까요? 인공지능이 분석한 심화 탐구 로드맵을 워크숍에서 지금 바로 확인해보세요.</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(selectedTrend.title);
-                    toast.success('주제 제목을 클립보드에 복사했습니다.');
+                    navigate('/workshop');
+                    toast.success('워크숍으로 이동합니다.');
                   }}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                  className="flex-1 rounded-2xl bg-[#004aad] py-4 text-lg font-extrabold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 shadow-[#004aad]/20"
                 >
-                  제목 복사
+                  이 주제로 보고서 쓰기
                 </button>
                 <button
-                  onClick={() => {
-                    navigate(`/app/workshop?major=${encodeURIComponent(selectedTrend.type)}`);
-                    toast.success('선택한 주제로 워크숍을 열었습니다.');
-                    setSelectedTrend(null);
-                  }}
-                  className="rounded-xl bg-[#004aad] px-4 py-2.5 font-bold text-white transition-colors hover:bg-[#003882]"
+                  onClick={() => setSelectedTrend(null)}
+                  className="rounded-2xl border border-slate-200 bg-white px-8 py-4 text-lg font-extrabold text-slate-600 transition-colors hover:bg-slate-50"
                 >
-                  이 주제로 작성 시작
+                  닫기
                 </button>
               </div>
             </motion.div>
-          </motion.div>
-        ) : null}
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );
