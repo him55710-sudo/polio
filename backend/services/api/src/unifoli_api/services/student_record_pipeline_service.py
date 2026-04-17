@@ -7,6 +7,12 @@ from .student_record_section_parser_service import StudentRecordSectionParserSer
 from .student_record_normalizer_service import StudentRecordNormalizerService
 from .student_record_quality_service import StudentRecordQualityService
 from .student_record_chunking_service import StudentRecordChunkingService
+from .student_record_ir_service import StudentRecordIRService
+from .student_record_block_registry_service import StudentRecordBlockRegistryService
+from .student_record_audit_service import StudentRecordAuditService
+from .student_record_block_fact_service import StudentRecordBlockFactService
+from .student_record_link_graph_service import StudentRecordLinkGraphService
+from .student_record_judgement_service import StudentRecordJudgementService
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,7 @@ class StudentAnalysisArtifact(BaseModel):
     parsing_metadata: Dict[str, Any]
     stages_success: Dict[str, bool] = {}
     stage_errors: Dict[str, str] = {}
+    sr_full_fidelity: Optional[Dict[str, Any]] = None
 
 class StudentRecordPipelineService:
     """
@@ -36,6 +43,12 @@ class StudentRecordPipelineService:
         self.normalizer = StudentRecordNormalizerService()
         self.quality_service = StudentRecordQualityService()
         self.chunker = StudentRecordChunkingService()
+        self.ir_service = StudentRecordIRService()
+        self.registry_service = StudentRecordBlockRegistryService()
+        self.audit_service = StudentRecordAuditService()
+        self.fact_service = StudentRecordBlockFactService()
+        self.graph_service = StudentRecordLinkGraphService()
+        self.judgement_service = StudentRecordJudgementService()
 
     def process_document(
         self,
@@ -58,7 +71,13 @@ class StudentRecordPipelineService:
             "parsing": False,
             "normalization": False,
             "quality": False,
-            "chunking": False
+            "chunking": False,
+            "ir_generation": False,
+            "registry_building": False,
+            "fact_extraction": False,
+            "graph_building": False,
+            "judgement_generation": False,
+            "fidelity_audit": False
         }
         stage_errors = {}
         
@@ -126,6 +145,47 @@ class StudentRecordPipelineService:
                 stage_errors["chunking"] = str(e)
                 logger.error(f"Step 5 Failed: {str(e)}")
 
+        # 6. Full-Fidelity IR Generation
+        ir_doc = None
+        sr_full_fidelity = None
+        try:
+            ir_doc = self.ir_service.create_ir(pages)
+            stages_success["ir_generation"] = True
+            
+            # 7. Block Registry Building
+            registry = self.registry_service.build_registry(ir_doc)
+            stages_success["registry_building"] = True
+            
+            # 8. Block Fact Extraction
+            facts = self.fact_service.extract_facts(registry.blocks)
+            stages_success["fact_extraction"] = True
+            
+            # 9. Link Graph Building
+            graph = self.graph_service.build_graph(registry.blocks, facts)
+            stages_success["graph_building"] = True
+            
+            # 10. Judgement Generation (Preliminary)
+            judgements = self.judgement_service.generate_judgements(registry, graph)
+            stages_success["judgement_generation"] = True
+            
+            # 11. Fidelity Audit
+            audit = self.audit_service.generate_coverage_audit(registry, set([b.id for b in registry.blocks]))
+            stages_success["fidelity_audit"] = True
+            
+            sr_full_fidelity = {
+                "ir_document": ir_doc.dict(),
+                "block_registry": registry.dict(),
+                "block_facts": [f.dict() for f in facts],
+                "link_graph": graph.dict(),
+                "judgements": [j.dict() for j in judgements],
+                "full_coverage_audit": audit.dict(),
+                "version": "1.1.0"
+            }
+            logger.info("Steps 6-11: Full-fidelity pipeline steps complete")
+        except Exception as e:
+            stage_errors["full_fidelity"] = str(e)
+            logger.error(f"Full-fidelity stages failed: {str(e)}")
+
         # Construct final artifact
         artifact = StudentAnalysisArtifact(
             canonical_data=canonical_data,
@@ -136,8 +196,10 @@ class StudentRecordPipelineService:
             parsing_metadata={
                 "page_count": len(pages),
                 "section_count": len(sections),
-                "classification_summary": self._get_classification_summary(classified_pages) if classified_pages else {}
-            }
+                "classification_summary": self._get_classification_summary(classified_pages) if classified_pages else {},
+                "block_count": sr_full_fidelity["block_registry"]["total_blocks"] if sr_full_fidelity else 0
+            },
+            sr_full_fidelity=sr_full_fidelity
         )
 
         return artifact.dict()

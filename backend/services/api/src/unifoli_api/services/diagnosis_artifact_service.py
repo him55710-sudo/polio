@@ -122,6 +122,8 @@ def _build_evidence_references(result_payload: dict[str, Any], *, limit: int = 8
         references.append(
             {
                 "source_label": source_label or "Document evidence",
+                "section_label": _normalize_text(item.get("section_label")),
+                "item_label": _normalize_text(item.get("item_label")),
                 "page_number": page_number,
                 "excerpt": excerpt,
                 "relevance_score": float(item.get("relevance_score") or 0.0),
@@ -278,13 +280,21 @@ def _build_report_markdown(
             if not isinstance(item, dict):
                 continue
             source_label = _normalize_text(item.get("source_label")) or "Document evidence"
+            section_label = _normalize_text(item.get("section_label"))
             excerpt = _normalize_text(item.get("excerpt"))
             page_number = item.get("page_number")
+            
+            label_parts = []
+            if section_label:
+                label_parts.append(f"[{section_label}]")
+            label_parts.append(source_label)
+            full_label = " ".join(label_parts)
+            
             page_suffix = f" (p.{page_number})" if isinstance(page_number, int) else ""
             if excerpt:
-                lines.append(f"- {source_label}{page_suffix}: {excerpt}")
+                lines.append(f"- {full_label}{page_suffix}: {excerpt}")
             else:
-                lines.append(f"- {source_label}{page_suffix}")
+                lines.append(f"- {full_label}{page_suffix}")
         lines.append("")
 
     return "\n".join(lines).strip()

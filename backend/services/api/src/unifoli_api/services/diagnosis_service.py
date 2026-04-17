@@ -40,8 +40,11 @@ class DiagnosisCitation(BaseModel):
     id: str | None = None
     document_id: str | None = None
     document_chunk_id: str | None = None
+    block_id: str | None = None
     provenance_type: str = EvidenceProvenance.STUDENT_RECORD.value
     source_label: str
+    section_label: str | None = None
+    item_label: str | None = None
     page_number: int | None = None
     excerpt: str
     relevance_score: float
@@ -249,6 +252,7 @@ class DiagnosisResult(BaseModel):
     fallback_used: bool | None = None
     fallback_reason: str | None = None
     processing_duration_ms: int | None = None
+    record_completion_state: Literal["ongoing", "finalized", "unknown"] = "unknown"
     diagnosis_result_json: dict[str, Any] | None = None
     diagnosis_report_markdown: str | None = None
     diagnosis_summary_json: dict[str, Any] | None = None
@@ -1123,6 +1127,7 @@ async def evaluate_student_record(
     project_title: str | None = None,
     scope_key: str = "global",
     evidence_keys: list[str] | None = None,
+    record_completion_state: str = "unknown",
     bypass_cache: bool = False,
     raise_on_llm_failure: bool = False,
     llm_client: LLMClient | None = None,
@@ -1145,6 +1150,7 @@ async def evaluate_student_record(
     system_instruction = _build_diagnosis_system_instruction(
         target_context=target_context,
         user_major=user_major,
+        record_completion_state=record_completion_state,
         masked_text=masked_text,
     )
     prompt = _build_diagnosis_prompt()
@@ -1667,15 +1673,33 @@ def _build_diagnosis_system_instruction(
     target_context: str,
     user_major: str,
     masked_text: str,
+    record_completion_state: str = "unknown",
 ) -> str:
     template_catalog = _template_catalog_prompt_block()
     base_instruction = get_prompt_registry().compose_prompt("diagnosis.grounded-analysis")
+    
+    completion_instruction = ""
+    if record_completion_state == "finalized":
+        completion_instruction = (
+            "\n### Stage: Finalized Record\n"
+            "- The student record appears already completed (likely Grade 3 or graduation stage).\n"
+            "- DO NOT prioritize recommended activities or exploration for future records.\n"
+            "- DO prioritize current-level diagnosis, likely interview topics, and interview preparation advice.\n"
+        )
+    elif record_completion_state == "ongoing":
+        completion_instruction = (
+            "\n### Stage: Ongoing Record\n"
+            "- The student record is still open for improvement (likely Grade 1 or 2).\n"
+            "- DO prioritize recommended activities, inquiry topics, and specific improvement actions to fill gaps.\n"
+            "- Mention long-term exploration directions that the student can still document.\n"
+        )
     
     return (
         base_instruction.replace("{{target_context}}", target_context)
         .replace("{{user_major}}", user_major)
         .replace("{{template_catalog}}", template_catalog)
         .replace("{{masked_text}}", masked_text)
+        + completion_instruction
     )
 
 

@@ -67,6 +67,28 @@ DIAGNOSIS_FALLBACK_REASON_UNEXPECTED = "diagnosis_generation_unexpected_error"
 logger = logging.getLogger("unifoli.api.diagnosis_runtime")
 
 
+def _infer_record_completion_state(full_text: str) -> str:
+    """
+    Infers whether the student record is likely finalized or still ongoing.
+    """
+    if not full_text:
+        return "unknown"
+    
+    lowered = full_text.lower()
+    
+    # Finalization cues
+    finalized_cues = ["3학년", "졸업", "정규과정 완료", "3-2"]
+    if any(cue in lowered for cue in finalized_cues):
+        return "finalized"
+    
+    # Ongoing cues (1-2 grades, or missing 3rd grade)
+    ongoing_cues = ["1학년", "2학년", "진행 중"]
+    if any(cue in lowered for cue in ongoing_cues):
+        return "ongoing"
+        
+    return "ongoing"  # Default to ongoing to be safe
+
+
 def _is_sqlite_disk_full_error(exc: Exception) -> bool:
     return "database or disk is full" in str(exc).lower()
 
@@ -84,6 +106,21 @@ def _extract_document_text(document: Any) -> str:
     if not isinstance(metadata, dict):
         return ""
 
+    # Priority 1: Full-Fidelity Block Registry
+    analysis_artifact = metadata.get("analysis_artifact")
+    if isinstance(analysis_artifact, dict):
+        fidelity = analysis_artifact.get("sr_full_fidelity")
+        if isinstance(fidelity, dict):
+            registry = fidelity.get("block_registry")
+            if isinstance(registry, dict):
+                blocks = registry.get("blocks")
+                if isinstance(blocks, list):
+                    block_parts = [str(b.get("text") or "").strip() for b in blocks if b.get("text")]
+                    block_text = "\n".join(block_parts).strip()
+                    if block_text:
+                        return block_text[:MAX_DOC_TEXT_CHARS]
+
+    # Priority 2: Student Record Canonical Metadata
     canonical = metadata.get("student_record_canonical")
     if isinstance(canonical, dict):
         canonical_parts: list[str] = []
@@ -443,6 +480,8 @@ async def run_diagnosis_run(
         policy_scan_text = build_policy_scan_text(documents) or full_text
         diagnosis_input_text = full_text[:MAX_DIAGNOSIS_LLM_INPUT_CHARS]
         semantic_input_text = full_text[:MAX_SEMANTIC_INPUT_CHARS]
+        completion_state = _infer_record_completion_state(full_text)
+        
         llm_strategy = _diagnosis_llm_strategy()
         resolved_llm_client = llm_strategy.get("resolved_client")
         resolved_llm_resolution = llm_strategy.get("resolved_resolution")
@@ -522,6 +561,7 @@ async def run_diagnosis_run(
                         project_title=project.title,
                         scope_key=f"project:{project.id}",
                         evidence_keys=evidence_keys,
+                        record_completion_state=completion_state,
                         raise_on_llm_failure=True,
                         llm_client=resolved_llm_client,
                         llm_resolution=resolved_llm_resolution,
@@ -594,6 +634,7 @@ async def run_diagnosis_run(
                 full_text=diagnosis_input_text or full_text,
             )
 
+        result.record_completion_state = completion_state
         _apply_structured_backbone(result=result, sheet=scoring_sheet)
         processing_duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
         result.requested_llm_provider = str(llm_strategy.get("requested_llm_provider") or "")
