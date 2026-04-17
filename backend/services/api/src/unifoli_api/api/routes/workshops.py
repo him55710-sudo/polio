@@ -233,6 +233,110 @@ def _build_state_response(
     )
 
 
+def _fallback_quality_payload(level: str | None) -> dict[str, object]:
+    normalized = normalize_quality_level(level)
+    presets = {
+        QualityLevel.LOW.value: {
+            "label": "안전형",
+            "emoji": "🛡️",
+            "color": "emerald",
+            "minimum_turn_count": 2,
+            "minimum_reference_count": 0,
+            "render_threshold": 45,
+            "advanced_features_allowed": False,
+        },
+        QualityLevel.MID.value: {
+            "label": "표준형",
+            "emoji": "📝",
+            "color": "blue",
+            "minimum_turn_count": 3,
+            "minimum_reference_count": 0,
+            "render_threshold": 60,
+            "advanced_features_allowed": False,
+        },
+        QualityLevel.HIGH.value: {
+            "label": "심화형",
+            "emoji": "🔬",
+            "color": "violet",
+            "minimum_turn_count": 4,
+            "minimum_reference_count": 1,
+            "render_threshold": 75,
+            "advanced_features_allowed": True,
+        },
+    }
+    preset = presets.get(normalized, presets[QualityLevel.MID.value])
+    return {
+        "level": normalized,
+        "label": preset["label"],
+        "emoji": preset["emoji"],
+        "color": preset["color"],
+        "description": "워크숍 품질 레벨 안내",
+        "detail": "일시적인 안내 로딩 문제가 있어 기본 정보를 표시합니다.",
+        "student_fit": preset["label"],
+        "safety_posture": "학생 맥락 중심으로 보수적으로 작성합니다.",
+        "authenticity_policy": "학생이 제공한 사실과 근거를 우선합니다.",
+        "hallucination_guardrail": "검증되지 않은 내용을 차단합니다.",
+        "starter_mode": "핵심 질문부터 수집",
+        "followup_mode": "다음 행동 중심",
+        "reference_policy": "recommended",
+        "reference_intensity": "light",
+        "render_depth": "기본 깊이",
+        "expression_policy": "간결하고 사실 중심",
+        "advanced_features_allowed": preset["advanced_features_allowed"],
+        "minimum_turn_count": preset["minimum_turn_count"],
+        "minimum_reference_count": preset["minimum_reference_count"],
+        "render_threshold": preset["render_threshold"],
+    }
+
+
+def _build_state_response_safe(
+    *,
+    session: WorkshopSession,
+    db: Session,
+    message: str | None = None,
+) -> WorkshopStateResponse:
+    try:
+        return _build_state_response(session=session, db=db, message=message)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to build workshop state response. session_id=%s", session.id)
+        fallback_quality = _fallback_quality_payload(session.quality_level)
+        turn_count = len(session.turns)
+        reference_count = len(session.pinned_references)
+        threshold = int(fallback_quality["render_threshold"])
+        min_turn_count = int(fallback_quality["minimum_turn_count"])
+        min_reference_count = int(fallback_quality["minimum_reference_count"])
+        missing: list[str] = []
+        if session.context_score < threshold:
+            missing.append(f"context score +{threshold - session.context_score} needed")
+        if turn_count < min_turn_count:
+            missing.append(f"turns +{min_turn_count - turn_count} needed")
+        if reference_count < min_reference_count:
+            missing.append(f"references +{min_reference_count - reference_count} needed")
+
+        return WorkshopStateResponse(
+            session=WorkshopSessionResponse.model_validate(session),
+            starter_choices=[],
+            followup_choices=[],
+            message=message or "워크숍 상태를 불러왔습니다. 일부 추천 문구는 잠시 숨겨졌습니다.",
+            quality_level_info=QualityLevelInfo.model_validate(fallback_quality),
+            available_quality_levels=[
+                QualityLevelInfo.model_validate(_fallback_quality_payload(level))
+                for level in (QualityLevel.LOW.value, QualityLevel.MID.value, QualityLevel.HIGH.value)
+            ],
+            render_requirements={
+                "required_context_score": threshold,
+                "minimum_turn_count": min_turn_count,
+                "minimum_reference_count": min_reference_count,
+                "current_context_score": session.context_score,
+                "current_turn_count": turn_count,
+                "current_reference_count": reference_count,
+                "can_render": not missing,
+                "missing": missing,
+            },
+            latest_artifact=None,
+        )
+
+
 def _validate_quest_belongs_to_project(quest: Quest | None, project_id: str) -> None:
     if quest is None:
         return
@@ -325,7 +429,7 @@ def create_workshop_route(
 
     loaded_session = _get_session_loaded(session.id, db)
     profile = get_quality_profile(loaded_session.quality_level)
-    return _build_state_response(
+    return _build_state_response_safe(
         session=loaded_session,
         db=db,
         message=f"[{profile.label}] 어떤 방식으로 시작할지 고르면, 상황에 맞는 안전한 워크숍 흐름으로 이어집니다.",
@@ -341,7 +445,7 @@ def get_workshop_route(
     session = _get_session_loaded_for_user(workshop_id, db, current_user.id)
     _sync_session_status(session)
     db.commit()
-    return _build_state_response(session=session, db=db)
+    return _build_state_response_safe(session=session, db=db)
 
 
 @router.patch("/{workshop_id}/quality-level", response_model=WorkshopStateResponse)
@@ -358,7 +462,7 @@ def update_quality_level_route(
     db.refresh(session)
     loaded_session = _get_session_loaded(workshop_id, db)
     profile = get_quality_profile(loaded_session.quality_level)
-    return _build_state_response(
+    return _build_state_response_safe(
         session=loaded_session,
         db=db,
         message=f"[{profile.label}] 워크숍 레벨 설정을 반영했습니다. 다음 제안은 현재 레벨 기준으로 다시 구성됩니다.",
@@ -475,7 +579,7 @@ def update_visual_approval_route(
 
     db.commit()
     db.refresh(artifact)
-    return _build_state_response(session=session, db=db, message="시각 자료 확인 상태가 업데이트되었습니다.")
+    return _build_state_response_safe(session=session, db=db, message="시각 자료 확인 상태가 업데이트되었습니다.")
 
 
 @router.post("/{workshop_id}/artifacts/{artifact_id}/visuals/{visual_id}/replace", response_model=WorkshopStateResponse)
@@ -526,7 +630,7 @@ def replace_visual_route(
 
     db.commit()
     db.refresh(artifact)
-    return _build_state_response(session=session, db=db, message="새로운 시각 자료를 생성했습니다.")
+    return _build_state_response_safe(session=session, db=db, message="새로운 시각 자료를 생성했습니다.")
 
 
 @router.post("/{workshop_id}/choices", response_model=WorkshopStateResponse)
@@ -562,7 +666,7 @@ def record_choice_route(
     loaded_session = _get_session_loaded(workshop_id, db)
     _sync_session_status(loaded_session)
     db.commit()
-    return _build_state_response(session=loaded_session, db=db, message=turn.response)
+    return _build_state_response_safe(session=loaded_session, db=db, message=turn.response)
 
 
 @router.post("/{workshop_id}/chat/stream")
@@ -720,7 +824,7 @@ def pin_reference_route(
     loaded_session = _get_session_loaded(workshop_id, db)
     _sync_session_status(loaded_session)
     db.commit()
-    return _build_state_response(
+    return _build_state_response_safe(
         session=loaded_session,
         db=db,
         message="참고 자료를 고정했습니다. 현재 맥락 점수와 참고자료 활용 강도에 맞춰 로드맵에 반영됩니다.",
