@@ -161,20 +161,37 @@ def _build_state_response(
     starter_choices: list[StarterChoice] = []
     followup_choices: list[FollowupChoice] = []
     if turn_count == 0:
-        starter_choices = [
-            StarterChoice.model_validate(item)
-            for item in build_starter_choices(
-                quality_level=session.quality_level,
-                quest_title=getattr(quest, "title", None),
-                target_major=getattr(project, "target_major", None),
-                recommended_output_type=getattr(quest, "recommended_output_type", None),
+        try:
+            starter_choices = [
+                StarterChoice.model_validate(item)
+                for item in build_starter_choices(
+                    quality_level=session.quality_level,
+                    quest_title=getattr(quest, "title", None),
+                    target_major=getattr(project, "target_major", None),
+                    recommended_output_type=getattr(quest, "recommended_output_type", None),
+                )
+            ]
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to build workshop starter choices. session_id=%s quality=%s",
+                session.id,
+                session.quality_level,
             )
-        ]
+            starter_choices = []
     else:
-        followup_choices = [
-            FollowupChoice.model_validate(item)
-            for item in build_followup_choices(quality_level=session.quality_level, turn_count=turn_count)
-        ]
+        try:
+            followup_choices = [
+                FollowupChoice.model_validate(item)
+                for item in build_followup_choices(quality_level=session.quality_level, turn_count=turn_count)
+            ]
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to build workshop followup choices. session_id=%s quality=%s turn_count=%s",
+                session.id,
+                session.quality_level,
+                turn_count,
+            )
+            followup_choices = []
 
     requirements = build_render_requirements(
         quality_level=session.quality_level,
