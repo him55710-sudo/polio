@@ -69,24 +69,26 @@ logger = logging.getLogger("unifoli.api.diagnosis_runtime")
 
 def _infer_record_completion_state(full_text: str) -> str:
     """
-    Infers whether the student record is likely finalized or still ongoing.
+    Infers whether the student record is effectively finalized or ongoing.
+    Conservative to ensure Grade 3 students don't miss improvement guidance.
     """
     if not full_text:
-        return "unknown"
-    
-    lowered = full_text.lower()
-    
-    # Finalization cues
-    finalized_cues = ["3학년", "졸업", "정규과정 완료", "3-2"]
-    if any(cue in lowered for cue in finalized_cues):
-        return "finalized"
-    
-    # Ongoing cues (1-2 grades, or missing 3rd grade)
-    ongoing_cues = ["1학년", "2학년", "진행 중"]
-    if any(cue in lowered for cue in ongoing_cues):
         return "ongoing"
+    
+    # Graduation indicators (Very strong completion cues)
+    must_be_finalized = ["졸업", "입시 완료", "최종 기록"]
+    if any(marker in full_text for marker in must_be_finalized):
+        return "finalized"
         
-    return "ongoing"  # Default to ongoing to be safe
+    # Grade 3 check: Only finalize if there's evidence of late-stage status
+    if "3학년" in full_text:
+        # If it's pure 3rd grade without graduation markers, it might still be ongoing (1st semester)
+        # We only treat as finalized if it explicitly mentions 2nd semester or late stage.
+        if "3-2" in full_text or "3학년 2학기" in full_text:
+            return "finalized"
+            
+    # Default to ongoing to prioritize improvement coaching
+    return "ongoing"
 
 
 def _is_sqlite_disk_full_error(exc: Exception) -> bool:

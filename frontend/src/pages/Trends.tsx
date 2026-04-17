@@ -87,8 +87,11 @@ export function Trends() {
     if (baseFilters.includes(activeFilter as any)) {
       return trendItems.filter((item) => item.type === activeFilter);
     }
-    // Major specific filter or items containing the keyword in title
-    return trendItems.filter((item) => item.title.includes(`[${activeFilter}]`) || item.title.includes(activeFilter));
+    // Deeply match specific tags [Major] if available
+    const tagMatch = `[${activeFilter}]`;
+    return trendItems.filter((item) => 
+      item.title.includes(tagMatch) || item.title.includes(activeFilter)
+    );
   }, [activeFilter]);
 
   const handleAddFilter = () => {
