@@ -1578,6 +1578,8 @@ export function Workshop() {
         });
         if (streamLimitedReason === 'llm_unavailable') {
           toast.error('AI 모델 연결이 불안정하여 제한 모드 안내로 전환되었어요.');
+        } else if (streamLimitedReason === 'llm_not_configured') {
+          toast.error('AI 모델 키가 서버에 설정되지 않아 제한 모드로 전환되었습니다.');
         }
       }
 

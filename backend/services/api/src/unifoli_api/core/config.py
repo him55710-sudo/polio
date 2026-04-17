@@ -156,7 +156,10 @@ class Settings(BaseSettings):
     guided_chat_llm_provider: str | None = None
     diagnosis_llm_provider: str | None = None
     render_llm_provider: str | None = None
-    gemini_api_key: str | None = None
+    gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY", "GENAI_API_KEY"),
+    )
     gemini_model: str = "gemini-2.0-flash"
     ollama_base_url: str = "http://localhost:11434/v1"
     ollama_model: str = "gemma4"
@@ -174,7 +177,15 @@ class Settings(BaseSettings):
     diagnosis_generation_timeout_seconds: float = 45.0
     pdf_analysis_llm_enabled: bool = True
     pdf_analysis_llm_provider: str = "ollama"
-    pdf_analysis_gemini_api_key: str | None = None
+    pdf_analysis_gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "PDF_ANALYSIS_GEMINI_API_KEY",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GENAI_API_KEY",
+        ),
+    )
     pdf_analysis_gemini_model: str | None = None
     pdf_analysis_ollama_base_url: str | None = None
     pdf_analysis_ollama_model: str = "gemma4"

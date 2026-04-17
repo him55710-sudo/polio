@@ -53,6 +53,14 @@ def remediation_for_error_code(code: str | None) -> str | None:
     return None
 
 
+def _read_first_env(*keys: str) -> str | None:
+    for key in keys:
+        value = (os.getenv(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
 def snapshot_settings_from_env(api_prefix: str | None = None) -> Any:
     llm_provider = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower() or "gemini"
     pdf_provider = (os.getenv("PDF_ANALYSIS_LLM_PROVIDER") or "ollama").strip().lower() or "ollama"
@@ -66,11 +74,16 @@ def snapshot_settings_from_env(api_prefix: str | None = None) -> Any:
         guided_chat_llm_provider=(os.getenv("GUIDED_CHAT_LLM_PROVIDER") or "").strip().lower() or None,
         diagnosis_llm_provider=(os.getenv("DIAGNOSIS_LLM_PROVIDER") or "").strip().lower() or None,
         render_llm_provider=(os.getenv("RENDER_LLM_PROVIDER") or "").strip().lower() or None,
-        gemini_api_key=(os.getenv("GEMINI_API_KEY") or "").strip() or None,
+        gemini_api_key=_read_first_env("GEMINI_API_KEY", "GOOGLE_API_KEY", "GENAI_API_KEY"),
         gemini_model=(os.getenv("GEMINI_MODEL") or "gemini-2.0-flash").strip() or "gemini-2.0-flash",
         ollama_base_url=(os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434/v1").strip() or "http://localhost:11434/v1",
         pdf_analysis_llm_provider=pdf_provider,
-        pdf_analysis_gemini_api_key=(os.getenv("PDF_ANALYSIS_GEMINI_API_KEY") or "").strip() or None,
+        pdf_analysis_gemini_api_key=_read_first_env(
+            "PDF_ANALYSIS_GEMINI_API_KEY",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GENAI_API_KEY",
+        ),
         pdf_analysis_ollama_base_url=(os.getenv("PDF_ANALYSIS_OLLAMA_BASE_URL") or "").strip() or None,
         auth_social_login_enabled=(os.getenv("AUTH_SOCIAL_LOGIN_ENABLED") or "").strip().lower() == "true",
         auth_jwt_secret=(os.getenv("AUTH_JWT_SECRET") or "").strip() or None,

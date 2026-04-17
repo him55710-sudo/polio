@@ -143,6 +143,7 @@ Backend env (`.env` or deployment secret manager):
 ```dotenv
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=<SET_IN_BACKEND_ENV_ONLY>
+# Optional aliases also supported: GOOGLE_API_KEY or GENAI_API_KEY
 ```
 
 Frontend env (`frontend/.env`):
@@ -153,6 +154,8 @@ VITE_API_URL=<YOUR_BACKEND_URL>
 
 - Keep `GEMINI_API_KEY` backend-only. Never expose it in frontend env or browser code.
 - `VITE_API_URL` must be the backend origin. If it points to the frontend origin, workshop chat stream returns HTML instead of SSE.
+- After deploy, verify `gemini_api_key_configured` is true:
+  - `GET /api/v1/readiness?check_llm=true`
 
 5. Guided chat API flow:
 - `POST /api/v1/guided-chat/start`

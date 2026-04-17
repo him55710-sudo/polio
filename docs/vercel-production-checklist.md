@@ -67,6 +67,7 @@ Gemini path:
 
 - `LLM_PROVIDER=gemini`
 - `GEMINI_API_KEY=<backend-only secret>`
+- Accepted aliases: `GOOGLE_API_KEY` or `GENAI_API_KEY`
 
 Optional PDF analysis Gemini override:
 
@@ -109,6 +110,7 @@ Expected success signals:
 - `"status":"ok"`
 - `"boot_ok":true`
 - `database.connected=true` on `/api/v1/readiness`
+- `llm.gemini_api_key_configured=true` on `/api/v1/readiness?check_llm=true`
 
 Common failure signals:
 

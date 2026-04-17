@@ -1025,9 +1025,33 @@ def _resolve_gemini_model_name(settings: Any, *, concern: LLMConcern) -> str:
     return normalized or DEFAULT_GEMINI_MODEL
 
 
+def _resolve_gemini_api_key(
+    settings: Any,
+    *,
+    include_pdf_override: bool = False,
+) -> str:
+    candidates: list[str | None] = []
+    if include_pdf_override:
+        candidates.append(getattr(settings, "pdf_analysis_gemini_api_key", None))
+    candidates.extend(
+        [
+            getattr(settings, "gemini_api_key", None),
+            os.environ.get("PDF_ANALYSIS_GEMINI_API_KEY") if include_pdf_override else None,
+            os.environ.get("GEMINI_API_KEY"),
+            os.environ.get("GOOGLE_API_KEY"),
+            os.environ.get("GENAI_API_KEY"),
+        ]
+    )
+    for value in candidates:
+        normalized = str(value or "").strip()
+        if normalized:
+            return normalized
+    return ""
+
+
 def _maybe_build_gemini_client(*, concern: LLMConcern) -> tuple[GeminiClient | None, str | None]:
     settings = get_settings()
-    api_key = (settings.gemini_api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
+    api_key = _resolve_gemini_api_key(settings)
     if not api_key or api_key == "DUMMY_KEY":
         return None, "gemini_api_key_missing"
     try:
@@ -1053,12 +1077,7 @@ def _maybe_build_runtime_ollama_client(*, profile: LLMProfile) -> tuple[OllamaCl
 
 def _maybe_build_pdf_analysis_gemini_client() -> tuple[GeminiClient | None, str | None]:
     settings = get_settings()
-    api_key = (
-        settings.pdf_analysis_gemini_api_key
-        or settings.gemini_api_key
-        or os.environ.get("GEMINI_API_KEY")
-        or ""
-    ).strip()
+    api_key = _resolve_gemini_api_key(settings, include_pdf_override=True)
     if not api_key or api_key == "DUMMY_KEY":
         return None, "gemini_api_key_missing"
     try:
