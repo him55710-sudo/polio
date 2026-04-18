@@ -60,7 +60,7 @@ function SettingToggleRow({
           aria-pressed={enabled}
           className={`inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-bold transition-colors sm:w-[96px] ${
             enabled
-              ? 'bg-[#004aad] text-white shadow-sm shadow-[#004aad]/20'
+              ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#06b6d4_100%)] text-white shadow-sm shadow-violet-200'
               : 'border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
           }`}
         >
@@ -177,8 +177,8 @@ export function Settings() {
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <PageHeader
         eyebrow="설정"
-        title="계정과 작업 환경 설정"
-        description="계정 연결 상태와 앱 사용 환경을 한 화면에서 관리할 수 있어요."
+        title="계정 · 환경 설정"
+        description="계정 상태와 작업 환경을 관리합니다."
         evidence={
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={user && !user.isAnonymous ? 'success' : 'warning'}>{accountLabel}</StatusBadge>
@@ -188,9 +188,9 @@ export function Settings() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SectionCard title="계정" description="로그인 상태와 연결 계정을 관리해요." eyebrow="프로필">
+        <SectionCard title="계정" description="로그인/연결 관리" eyebrow="프로필">
           <SurfaceCard padding="sm" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#004aad]/5 text-[#004aad]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
               <UserCircle2 size={22} />
             </div>
             <div>
@@ -211,35 +211,35 @@ export function Settings() {
           </div>
         </SectionCard>
 
-        <SectionCard title="작업 환경" description="초안 작성과 알림 방식을 조절해요." eyebrow="환경설정">
+        <SectionCard title="작업 환경" description="작성/알림 옵션" eyebrow="환경설정">
           <SettingToggleRow
             title="초안 자동 저장"
-            description="작성 중인 내용을 자동으로 임시 저장해요."
+            description="작성 중 자동 저장"
             enabled={settings.autoSaveDrafts}
             onToggle={() => toggle('autoSaveDrafts')}
           />
           <SettingToggleRow
             title="컴팩트 보기"
-            description="좁은 화면에 맞게 목록 간격을 줄여 보여줘요."
+            description="목록 간격 축소"
             enabled={settings.compactView}
             onToggle={() => toggle('compactView')}
           />
           <SettingToggleRow
             title="내보내기 완료 알림"
-            description="파일 내보내기가 끝나면 알림을 표시해요."
+            description="내보내기 완료 시 알림"
             enabled={settings.notifyOnExport}
             onToggle={() => toggle('notifyOnExport')}
           />
           <SettingToggleRow
             title="마케팅 정보 수신"
-            description="새로운 기능과 혜택 소식을 받아볼 수 있어요."
+            description="기능/이벤트 소식 수신"
             enabled={backendUser?.marketing_agreed || false}
             onToggle={() => handleToggleMarketing(!backendUser?.marketing_agreed)}
           />
         </SectionCard>
       </div>
 
-      <SectionCard title="법적 안내 및 약관" description="UniFoli의 서비스 운영 정책과 개인정보 보호 원칙을 확인할 수 있어요." eyebrow="정책">
+      <SectionCard title="법적 안내" description="약관/정책 바로가기" eyebrow="정책">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <SecondaryButton onClick={() => window.open('/legal/terms', '_blank')} className="justify-start">
             <FileText size={16} />
@@ -268,8 +268,8 @@ export function Settings() {
         </div>
       </SectionCard>
 
-      <SectionCard title="진단 및 데이터 관리" description="서버 상태 확인과 로컬 데이터 정리를 할 수 있어요." eyebrow="관리">
-        <WorkflowNotice tone="info" title="중요 안내" description="보관함 초기화는 내 기기(브라우저)에 저장된 데이터만 지워요." />
+      <SectionCard title="데이터 관리" description="서버 확인 및 로컬 정리" eyebrow="관리">
+        <WorkflowNotice tone="info" title="중요 안내" description="보관함 초기화는 이 브라우저 데이터만 삭제합니다." />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <SecondaryButton onClick={handleHealthCheck} disabled={isCheckingHealth}>
@@ -297,7 +297,7 @@ export function Settings() {
         <SurfaceCard tone="muted" padding="sm">
           <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-700 break-keep">
             <CheckCircle2 size={16} className="text-emerald-600" />
-            설정 변경 내용은 즉시 저장돼요.
+            설정은 즉시 저장됩니다.
           </p>
         </SurfaceCard>
       </SectionCard>

@@ -1966,7 +1966,7 @@ export function Workshop() {
   }, [chatbotMode, diagnosisHeadline, guidedSetupComplete, isProjectBacked]);
 
   return (
-    <div className={cn("mx-auto max-w-[1800px] space-y-4 px-2.5 py-3 transition-all duration-700 sm:space-y-6 sm:px-4 sm:py-6", advancedMode && "rounded-[32px] bg-[#004aad]/5 shadow-[inset_0_0_100px_rgba(0,74,173,0.02)] sm:rounded-[48px]")}>
+    <div className={cn("mx-auto max-w-[1800px] space-y-4 px-2.5 py-3 transition-all duration-700 sm:space-y-6 sm:px-4 sm:py-6", advancedMode && "rounded-[32px] bg-[linear-gradient(145deg,rgba(124,58,237,0.06)_0%,rgba(6,182,212,0.05)_100%)] shadow-[inset_0_0_100px_rgba(124,58,237,0.06)] sm:rounded-[48px]")}>
       <motion.div
         animate={advancedMode ? { y: [0, -2, 0] } : {}}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
@@ -1974,7 +1974,7 @@ export function Workshop() {
         <PageHeader
           eyebrow="워크숍"
           title={isProjectBacked ? '근거 기반 초안 작업' : 'AI 초안 작업'}
-          description="질문하고 바로 수정하면서, 진단 결과와 학생 기록 근거를 같은 화면에서 이어서 씁니다."
+          description="질문과 수정을 한 화면에서 바로 진행합니다."
           actions={
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <SecondaryButton
@@ -2017,7 +2017,7 @@ export function Workshop() {
                 type="button"
                 onClick={() => void handleSend(option.prompt)}
                 disabled={isTyping || !!isSelectingGuidedTopicId || isGuidedActionLoading}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-[#004aad]/30 hover:bg-[#004aad]/5 hover:text-[#004aad] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {option.label}
               </button>
@@ -2032,7 +2032,7 @@ export function Workshop() {
               onClick={() => setMobileView('chat')}
               className={cn(
                 'h-10 flex-1 rounded-xl px-3 text-sm font-bold transition-all',
-                mobileView === 'chat' ? 'bg-[#004aad] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
+                mobileView === 'chat' ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#06b6d4_100%)] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
               )}
             >
               채팅
@@ -2042,7 +2042,7 @@ export function Workshop() {
               onClick={() => setMobileView('draft')}
               className={cn(
                 'h-10 flex-1 rounded-xl px-3 text-sm font-bold transition-all',
-                mobileView === 'draft' ? 'bg-[#004aad] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
+                mobileView === 'draft' ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#06b6d4_100%)] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
               )}
             >
               문서
@@ -2052,7 +2052,7 @@ export function Workshop() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
           <SectionCard
-            title="유니폴리 채팅"
+            title="워크숍 코파일럿"
             eyebrow="대화"
             className={cn(
               'flex min-h-0 flex-col min-h-[68dvh] max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-15rem)] lg:min-h-[520px] lg:max-h-[800px]',
@@ -2072,14 +2072,14 @@ export function Workshop() {
                 )}
 
                 {diagnosisReport && (
-                  <SurfaceCard tone="muted" padding="none" className="mb-4 overflow-hidden border-[#004aad]/10 bg-[#004aad]/5">
+                  <SurfaceCard tone="muted" padding="none" className="mb-4 overflow-hidden border-violet-200/60 bg-violet-50/60">
                     <button
                       type="button"
                       onClick={() => setShowDiagnosis(prev => !prev)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-[#004aad]/10"
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-violet-100/60"
                     >
                       <span className="inline-flex items-center gap-2">
-                        <div className="h-1.5 w-1.5 rounded-full bg-[#004aad] shadow-sm shadow-[#004aad]/50" />
+                        <div className="h-1.5 w-1.5 rounded-full bg-violet-600 shadow-sm shadow-violet-500/50" />
                         최근 진단 요약
                       </span>
                       {showDiagnosis ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -2090,7 +2090,7 @@ export function Workshop() {
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden border-t border-[#004aad]/10 px-4 pb-4"
+                          className="overflow-hidden border-t border-violet-200/70 px-4 pb-4"
                         >
                           <SurfaceCard padding="sm" className="mt-3 space-y-2 border-none bg-white/60">
                             <p className="text-sm font-bold text-slate-900">{diagnosisHeadline}</p>
@@ -2118,7 +2118,7 @@ export function Workshop() {
                   <WorkflowNotice
                     tone="info"
                     title="가이드 설정을 먼저 진행해요"
-                    description="카드 4개만 고르면 바로 자유 채팅으로 넘어갑니다."
+                    description="카드 4개 선택 후 자유 채팅이 열립니다."
                     className="mb-4"
                   />
                 )}
@@ -2139,7 +2139,7 @@ export function Workshop() {
                   </div>
                 ) : (
                   <div className="flex h-full items-center justify-center py-20">
-                    <Loader2 size={24} className="animate-spin text-[#004aad]" />
+                    <Loader2 size={24} className="animate-spin text-violet-600" />
                   </div>
                 )}
               </div>
@@ -2157,13 +2157,13 @@ export function Workshop() {
                     }}
                     placeholder={inputPlaceholder}
                     disabled={isTyping || !!isSelectingGuidedTopicId || isGuidedActionLoading}
-                    className="flex-1 h-12 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-[15px] font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#004aad] disabled:opacity-50"
+                    className="flex-1 h-12 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-[15px] font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-violet-400 disabled:opacity-50"
                   />
                   <button
                     type="button"
                     onClick={() => void handleSend()}
                     disabled={!input.trim() || isTyping || !!isSelectingGuidedTopicId || isGuidedActionLoading}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#004aad] text-white shadow-lg shadow-[#004aad]/20 transition-all hover:bg-[#003a8a] disabled:bg-slate-200"
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#7c3aed_0%,#06b6d4_100%)] text-white shadow-lg shadow-violet-200 transition-all hover:brightness-110 disabled:bg-slate-200"
                   >
                     {isTyping ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                   </button>
@@ -2174,7 +2174,7 @@ export function Workshop() {
 
           <SectionCard
             title="초안 문서"
-            description="유니폴리가 제안한 내용을 바탕으로 구성한 문서입니다. 자유롭게 수정하고 보강해 주세요."
+            description="제안 초안을 바로 수정해 완성하세요."
             eyebrow="초안 작성"
             className={cn(
               'flex min-h-0 flex-col min-h-[68dvh] max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-15rem)] lg:min-h-[520px] lg:max-h-[800px]',
@@ -2219,14 +2219,14 @@ export function Workshop() {
                   <WorkflowNotice
                     tone="warning"
                     title="초안 동기화 충돌이 감지되었습니다"
-                    description="서버 최신본과 자동 병합한 뒤 다시 저장했습니다. 병합된 내용을 빠르게 확인해 주세요."
+                    description="최신본으로 자동 병합되었습니다. 변경 내용을 확인해 주세요."
                     className="mb-3"
                   />
               ) : null}
 
               {pendingDraftPatch ? (
-                <SurfaceCard tone="muted" className="mb-3 border-[#004aad]/10 bg-[#004aad]/5 p-3">
-                  <p className="text-xs font-black uppercase tracking-wide text-[#004aad]">섹션 제안 대기</p>
+                <SurfaceCard tone="muted" className="mb-3 border-violet-200/60 bg-violet-50/60 p-3">
+                  <p className="text-xs font-black uppercase tracking-wide text-violet-700">섹션 제안 대기</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">
                     {pendingDraftPatch.heading || pendingDraftPatch.block_id}
                   </p>
@@ -2263,7 +2263,7 @@ export function Workshop() {
                         className={cn(
                           'p-2.5 rounded-xl border transition-all text-xs font-semibold text-left',
                           workshopMode === option.id
-                            ? 'border-[#004aad]/20 bg-[#004aad]/5 shadow-sm'
+                            ? 'border-violet-300/70 bg-violet-50 shadow-sm'
                             : 'border-slate-200 bg-white hover:border-slate-300',
                         )}
                       >
@@ -2321,7 +2321,7 @@ export function Workshop() {
                         <input
                           value={block.heading}
                           onChange={(event) => updateDraftHeading(definition.id, event.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-violet-400 focus:bg-white"
                         />
                         <StatusBadge status={attributionStatus}>
                           {formatDraftAttributionLabel(block.attribution)}
@@ -2332,14 +2332,14 @@ export function Workshop() {
                           value={block.content_markdown}
                           onChange={(event) => updateDraftBlock(definition.id, event.target.value)}
                           placeholder="제목"
-                          className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400 focus:bg-white"
                         />
                       ) : (
                         <textarea
                           value={block.content_markdown}
                           onChange={(event) => updateDraftBlock(definition.id, event.target.value)}
                           placeholder={`${block.heading} 내용을 작성해 주세요.`}
-                          className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-[#004aad] focus:bg-white"
+                          className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-violet-400 focus:bg-white"
                         />
                       )}
                     </SurfaceCard>
@@ -2361,7 +2361,7 @@ export function Workshop() {
                   {showAdvancedTools ? (
                     <div className="flex flex-col gap-4 overflow-y-auto pr-1 custom-scrollbar">
                       <EvidenceDrawer evidenceMap={renderArtifact?.evidence_map ?? null} />
-                      <SurfaceCard className="border-[#004aad]/5 bg-[#004aad]/5 p-4 shadow-sm">
+                      <SurfaceCard className="border-violet-200/50 bg-violet-50/60 p-4 shadow-sm">
                         <AdvancedPreview
                           workshopId={workshopState?.session.id || ''}
                           artifactId={workshopState?.latest_artifact?.id || ''}

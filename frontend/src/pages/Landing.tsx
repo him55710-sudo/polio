@@ -4,8 +4,6 @@ import { motion } from 'motion/react';
 import { ArrowDown, ArrowRight, Compass, FileSearch, Layers3, Rocket, Sparkles, Target } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import orbitIllustration from '../assets/illustration-orbit.svg';
-import cardIllustration from '../assets/illustration-cards.svg';
-import depthIllustration from '../assets/illustration-depth-grid.svg';
 
 const quickMajors = ['건축', '컴공', '바이오', '경영', '사회과학', '디자인'];
 
@@ -38,12 +36,6 @@ const quickFeatures = [
     accent: 'from-amber-500 via-orange-500 to-rose-500',
     href: '/app/workshop',
   },
-];
-
-const quickFlow = [
-  { title: '업로드', tag: 'PDF 1개', image: orbitIllustration, href: '/app/diagnosis' },
-  { title: '트렌드', tag: '전공칩 이동', image: depthIllustration, href: '/app/trends' },
-  { title: '워크숍', tag: '실행 초안', image: cardIllustration, href: '/app/workshop' },
 ];
 
 export function Landing() {
@@ -118,18 +110,7 @@ export function Landing() {
           >
             <div className="tilt-3d relative rounded-[2.2rem] border border-white/70 bg-white/78 p-4 shadow-[0_38px_64px_-28px_rgba(79,70,229,0.35)] backdrop-blur-xl sm:p-6">
               <img src={orbitIllustration} alt="기능 흐름 일러스트" className="tilt-depth h-auto w-full rounded-2xl object-cover" />
-
-              <img
-                src={cardIllustration}
-                alt="기능 카드 일러스트"
-                className="absolute -bottom-4 right-4 w-[45%] rounded-2xl border border-white/70 bg-white/80 shadow-[0_20px_38px_-24px_rgba(15,23,42,0.45)] sm:right-6"
-              />
-
-              <img
-                src={depthIllustration}
-                alt="입체 그리드 일러스트"
-                className="absolute -left-3 top-5 w-[34%] rounded-2xl border border-white/60 bg-white/84 shadow-[0_18px_32px_-20px_rgba(15,23,42,0.45)]"
-              />
+              <div className="absolute inset-x-8 -bottom-6 h-16 rounded-full bg-[linear-gradient(90deg,rgba(236,72,153,0.2)_0%,rgba(6,182,212,0.24)_100%)] blur-xl" />
             </div>
           </motion.div>
         </div>
@@ -166,42 +147,6 @@ export function Landing() {
                 <div className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-slate-700 transition group-hover:text-slate-900">
                   열기
                   <ArrowRight size={14} />
-                </div>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-4 md:grid-cols-3">
-          {quickFlow.map((step, index) => (
-            <motion.div
-              key={step.title}
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.35 }}
-              transition={{ duration: 0.42, delay: index * 0.08 }}
-            >
-              <Link
-                to={step.href}
-                onClick={scrollToTop}
-                className="group block overflow-hidden rounded-[1.8rem] border border-white/70 bg-white/80 shadow-[0_26px_48px_-34px_rgba(15,23,42,0.55)]"
-              >
-                <div className="relative aspect-[4/3] overflow-hidden">
-                  <img
-                    src={step.image}
-                    alt={`${step.title} 일러스트`}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-slate-900/5 to-transparent" />
-                </div>
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="text-base font-black text-slate-900">{step.title}</p>
-                    <p className="text-xs font-bold text-slate-500">{step.tag}</p>
-                  </div>
-                  <ArrowRight size={16} className="text-slate-600" />
                 </div>
               </Link>
             </motion.div>

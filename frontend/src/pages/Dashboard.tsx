@@ -72,7 +72,7 @@ function toCompactDiagnosisSummary(headline?: string | null): string {
   const cleaned = (headline || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return 'AI 진단 실행';
   if (cleaned.includes('AI diagnosis fallback applied after')) {
-    return '상세 진단 요약은 진단 페이지에서 확인할 수 있어요.';
+    return '상세 요약은 진단 페이지에서 확인하세요.';
   }
   if (cleaned.length > 120) {
     return `${cleaned.slice(0, 96)}...`;
@@ -340,7 +340,7 @@ export default function Dashboard() {
     if (!hasPrimaryGoal) {
       return {
         title: '목표 대학과 학과를 설정하세요',
-        description: '합격 전략의 첫 번째 단추입니다.',
+        description: '입시 준비 시작 단계',
         primaryLabel: '목표 설정하기',
         onPrimary: () => navigate('/app/diagnosis'),
         secondaryLabel: '진단 가이드',
@@ -350,7 +350,7 @@ export default function Dashboard() {
     if (!hasDiagnosis) {
       return {
         title: '학생부를 업로드하고 진단을 받으세요',
-        description: '현재 생기부의 강점과 약점을 AI가 분석합니다.',
+        description: '업로드 후 즉시 진단',
         primaryLabel: '학생부 업로드',
         onPrimary: () => navigate('/app/record'),
         secondaryLabel: '진단 시작하기',
@@ -360,7 +360,7 @@ export default function Dashboard() {
     if (primaryQuest) {
       return {
         title: `다음 추천 퀘스트: ${primaryQuest.title}`,
-        description: '합격 확률을 높이는 가장 효율적인 액션입니다.',
+        description: '지금 바로 실행할 과제',
         primaryLabel: '퀘스트 시작하기',
         onPrimary: () => void handleStartQuest(primaryQuest),
         secondaryLabel: '워크숍 이동',
@@ -369,7 +369,7 @@ export default function Dashboard() {
     }
     return {
       title: '워크숍에서 기록을 완성하세요',
-      description: '진단 결과를 바탕으로 최고의 초안을 만듭니다.',
+      description: '진단 기반 초안 작성',
       primaryLabel: '워크숍 열기',
       onPrimary: () => navigate(storedDiagnosis?.projectId ? `/app/workshop/${storedDiagnosis.projectId}` : '/app/workshop'),
     };
@@ -444,7 +444,7 @@ export default function Dashboard() {
 
         <SectionCard
           title="현재 기준"
-          subtitle={hasPrimaryGoal ? '지금 기준으로 적용되는 목표와 다음 단계입니다.' : '먼저 목표를 설정하면 다음 단계가 열립니다.'}
+          subtitle={hasPrimaryGoal ? '현재 목표/다음 단계 요약' : '목표 설정 후 다음 단계가 열립니다.'}
           className="border-slate-200 bg-white/90"
         >
           <div className="space-y-4">
@@ -579,8 +579,8 @@ export default function Dashboard() {
                   <Sparkles size={18} />
                 </div>
                 <p>
-                  목표 설정이 완료되었습니다! 이제 <span className="font-black text-[#1d4fff]">학생부 PDF</span>를 업로드하여 <br className="hidden sm:block" />
-                  {primaryGoal?.university} 합격 가능성 상세 진단을 받아보세요.
+                  목표 설정 완료. 이제 <span className="font-black text-[#1d4fff]">학생부 PDF</span>를 업로드해
+                  {` ${primaryGoal?.university}`} 진단을 시작하세요.
                 </p>
               </div>
             )}
@@ -612,7 +612,7 @@ export default function Dashboard() {
       <div id="action-plan">
         <SectionCard 
           title="맞춤형 액션 플랜" 
-          subtitle="내 생기부 기반으로 추천된 퀘스트입니다"
+          subtitle="진단 기반 추천 퀘스트"
           badge={blueprint ? "AI 추천 가동 중" : "준비 중"}
         >
           {isLoadingBlueprint ? (
@@ -665,7 +665,7 @@ export default function Dashboard() {
           ) : (
             <EmptyState
               title="아직 생성된 플랜이 없습니다"
-              description={blueprintError || "목표 설정과 생기부 진단을 완료하면 맞춤형 합격 퀘스트가 열립니다."}
+              description={blueprintError || "목표 설정과 진단을 완료하면 퀘스트가 생성됩니다."}
               actionLabel={nextAction.primaryLabel}
               onAction={nextAction.onPrimary}
               icon={<Target size={32} className="text-slate-300" />}

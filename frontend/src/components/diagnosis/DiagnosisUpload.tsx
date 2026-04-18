@@ -113,8 +113,8 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
       exit={{ opacity: 0, scale: 0.98 }}
     >
       <SectionCard
-        title="학생부 PDF 등록"
-        description="PDF 1개만 업로드하면 자동으로 파싱과 진단이 시작됩니다."
+        title="학생부 PDF 업로드"
+        description="PDF 1개 업로드 후 바로 분석"
         className="overflow-hidden border-none bg-white/60 shadow-xl backdrop-blur-2xl ring-1 ring-white/50"
         actions={(
           <SecondaryButton
@@ -141,14 +141,14 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
 
         <div className="rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-[#004aad]/20 bg-[#004aad]/5 px-3 py-1 text-xs font-bold text-[#004aad]">
-              업로드 전 사전 가이드
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
+              업로드 전 가이드
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-              목표 전공: {targetMajor?.trim() ? targetMajor : '아직 미설정'}
+              목표 전공: {targetMajor?.trim() ? targetMajor : '미설정'}
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-              현재 고민: {currentConcern?.trim() ? currentConcern : '아직 미입력'}
+              현재 고민: {currentConcern?.trim() ? currentConcern : '미입력'}
             </span>
           </div>
 
@@ -159,7 +159,7 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
                 className={`rounded-xl px-3 py-2 text-sm leading-6 ${
                   message.role === 'assistant'
                     ? 'border border-slate-200 bg-white text-slate-700'
-                    : 'border border-[#004aad]/30 bg-[#004aad] text-white'
+                    : 'border border-violet-300/40 bg-violet-600 text-white'
                 }`}
               >
                 <p className="mb-1 text-[11px] font-black uppercase tracking-wide opacity-70">
@@ -177,7 +177,7 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
                 type="button"
                 onClick={() => handleQuickAction(action)}
                 disabled={isUploading}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-[#004aad]/30 hover:bg-[#004aad]/5 hover:text-[#004aad] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {action.label}
               </button>
@@ -195,13 +195,13 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
               }}
               placeholder="현재 고민을 한 줄로 입력하세요."
               disabled={isUploading}
-              className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-[#004aad]"
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-violet-400"
             />
             <button
               type="button"
               onClick={handleGuideSend}
               disabled={!guideInput.trim() || isUploading}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#004aad] text-white transition-colors hover:bg-[#00398f] disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Send size={16} />
             </button>
@@ -219,8 +219,8 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
           })}
           className={`group relative mt-6 cursor-pointer overflow-hidden rounded-[2rem] border-2 border-dashed transition-all duration-300 ${
             isDragActive
-              ? 'scale-[0.99] border-[#004aad] bg-[#004aad]/5'
-              : 'border-slate-200 bg-white hover:border-[#004aad]/40 hover:shadow-2xl hover:shadow-blue-500/10'
+              ? 'scale-[0.99] border-violet-500 bg-violet-50'
+              : 'border-slate-200 bg-white hover:border-violet-300 hover:shadow-2xl hover:shadow-violet-200/30'
           } ${isUploading ? 'pointer-events-none opacity-60' : ''}`}
         >
           <input data-testid="diagnosis-upload-input" {...getInputProps()} />
@@ -228,7 +228,7 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
           <div className="flex flex-col items-center px-6 py-12 text-center sm:py-20">
             <div className="relative mb-8">
               <div className="absolute inset-0 animate-ping rounded-full bg-blue-400 opacity-20" />
-              <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-[#004aad] to-[#0070f3] text-white shadow-lg shadow-blue-500/20">
+              <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-600 to-fuchsia-500 text-white shadow-lg shadow-violet-500/20">
                 {isUploading ? (
                   <div className="w-12">
                     <div className="h-2 overflow-hidden rounded-full bg-white/20">
@@ -246,10 +246,10 @@ export const DiagnosisUpload: React.FC<DiagnosisUploadProps> = ({
             </div>
 
             <h3 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-              PDF를 <span className="text-[#004aad]">바로 올려 주세요</span>
+              PDF를 <span className="text-violet-600">바로 올려 주세요</span>
             </h3>
-            <p className="mt-4 max-w-md text-base font-medium leading-7 text-slate-500 sm:text-lg">
-              드래그하거나 버튼을 눌러 파일을 선택하면 즉시 진단 파이프라인이 시작됩니다.
+            <p className="mt-4 max-w-md text-sm font-medium leading-6 text-slate-500 sm:text-base">
+              드래그 또는 버튼 선택 후 즉시 진단이 시작됩니다.
             </p>
 
             <button

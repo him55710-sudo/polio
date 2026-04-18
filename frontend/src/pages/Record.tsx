@@ -2,11 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone';
 import {
   ArrowRight,
-  CheckCircle2,
   FileSearch,
   FileText,
   FileUp,
-  ShieldCheck,
   TimerReset,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -26,7 +24,6 @@ import {
   SectionCard,
   StatusBadge,
   StepIndicator,
-  SurfaceCard,
   WorkflowNotice,
 } from '../components/primitives';
 import { 
@@ -428,12 +425,12 @@ export function Record() {
   const maskingSummary = document?.parse_metadata?.masking;
   const stepItems = [
     { id: 'upload', label: '업로드', description: '파일 등록', state: getStepState(document, 'upload') },
-    { id: 'masking', label: '보안 처리', description: '개인정보 안전 보호', state: getStepState(document, 'masking') },
-    { id: 'parsing', label: '문서 읽기', description: '문서 내용을 꼼꼼히 확인', state: getStepState(document, 'parsing') },
+    { id: 'masking', label: '보안 처리', description: '개인정보 보호', state: getStepState(document, 'masking') },
+    { id: 'parsing', label: '문서 읽기', description: '내용 추출', state: getStepState(document, 'parsing') },
     {
       id: 'done',
-      label: '다음 단계 이동',
-      description: '진단 또는 워크숍으로 이동',
+      label: '다음 단계',
+      description: '진단/워크숍 이동',
       state: canContinue ? 'done' : document?.status === 'failed' ? 'error' : 'pending' as 'done' | 'active' | 'pending' | 'error',
     },
   ] as Array<{ id: string; label: string; description: string; state: 'done' | 'active' | 'pending' | 'error' }>;
@@ -447,290 +444,247 @@ export function Record() {
     : '/app/diagnosis';
 
   return (
-    <div className="mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      <div className="relative mb-10 overflow-hidden rounded-[2.5rem] bg-[#004aad] p-8 md:p-12">
-        {/* Background Decorative Elements */}
-        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#00c2ff]/20 blur-3xl" />
-        
-        <div className="relative z-10">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 backdrop-blur-md">
-            <ShieldCheck size={14} className="text-[#00c2ff]" />
-            <span className="text-sm font-bold tracking-tight text-[#00c2ff]">기능: 기록 업로드</span>
-          </div>
-          
-          <h1 className="text-3xl font-black tracking-tight text-white md:text-5xl lg:leading-[1.15]">
-            학생부 PDF를 <br className="hidden sm:block" />
-            <span className="text-[#00c2ff]">안전하게</span> 분석할게요
-          </h1>
-          
-          <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <p className="max-w-xl text-lg font-medium leading-relaxed text-blue-100/80">
-              업로드한 문서는 개인정보 숨김 처리 후 AI가 꼼꼼히 읽어봅니다.<br />
-              분석이 끝나면 곧바로 대학 합격 진단과 세특 작성을 시작할 수 있어요.
-            </p>
-            
-            <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
-              <div className="flex gap-2">
-                <StatusBadge status={document?.status === 'failed' ? 'danger' : document && SUCCESS_STATUSES.has(document.status) ? 'success' : 'active'}>
-                  {document ? formatStatusLabel(document.status) : '업로드 대기 중'}
-                </StatusBadge>
-                {document && (
-                  <div className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 font-bold text-white/90 backdrop-blur-sm">
-                    <TimerReset size={12} />
-                    <span className="text-xs">분석 시도 {document.parse_attempts}회</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SectionCard
-          title="빠른 업로드 가이드"
-          description="정확한 분석을 위해 아래 항목을 확인해 주세요."
-          eyebrow="체크리스트"
-          className="h-full border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
-        >
-          <div className="space-y-4">
-            <div className="rounded-2xl bg-emerald-50/50 p-6 ring-1 ring-inset ring-emerald-500/20">
-              <p className="flex items-center gap-2 text-base font-black text-emerald-900">
-                <CheckCircle2 size={18} className="text-emerald-600" />
-                업로드 전 필수 체크리스트
-              </p>
-              <ul className="mt-4 space-y-3">
-                {UPLOAD_READY_CHECKLIST.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-3 text-sm font-semibold leading-relaxed text-emerald-800/80">
-                    <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            
-            <button
-              type="button"
-              onClick={() => navigate('/app/help/student-record-pdf')}
-              className="group flex w-full items-center justify-between rounded-xl bg-white p-4 font-bold text-[#004aad] shadow-sm transition-all hover:bg-[#004aad] hover:text-white"
-            >
-              <span className="text-sm">학생부 PDF 다운로드/저장 방법 보기</span>
-              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-            </button>
-          </div>
-        </SectionCard>
-
-        {shouldShowTimingDashboard ? (
-          <div className="h-full animate-in fade-in zoom-in-95 duration-500">
-            <ProcessTimingDashboard
-              phases={timingPhaseItems}
-              title="분석 리포트 생성 타임라인"
-              description="데이터 마스킹과 내용 추출이 현재 진행 중입니다."
-            />
-          </div>
-        ) : (
-          <SectionCard
-            title="다음 단계 안내"
-            description="분석이 완료되면 무엇을 할 수 있나요?"
-            eyebrow="다음 단계"
-            className="h-full border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
+    <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-4 space-y-6 py-6 duration-700">
+      <PageHeader
+        eyebrow="Record"
+        title="학생부 PDF 업로드"
+        description="파일 1개 업로드 후 바로 분석이 시작됩니다."
+        className="border-slate-200 bg-[linear-gradient(130deg,rgba(255,255,255,0.95)_0%,rgba(243,247,255,0.9)_52%,rgba(238,252,250,0.92)_100%)]"
+        actions={(
+          <button
+            type="button"
+            onClick={() => navigate('/app/help/student-record-pdf')}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
-            <div className="space-y-4">
-              <div className="flex gap-4 rounded-2xl bg-slate-50 p-4 transition-colors hover:bg-white">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
-                  <FileSearch size={20} />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900">목표 대학 진단</p>
-                  <p className="mt-1 text-sm text-slate-500">지망 학과와 내 학생부의 일치도를 분석합니다.</p>
-                </div>
-              </div>
-              <div className="flex gap-4 rounded-2xl bg-slate-50 p-4 transition-colors hover:bg-white">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
-                  <FileText size={20} />
-                </div>
-                <div>
-                  <p className="font-bold text-slate-900">AI 세특 워크숍</p>
-                  <p className="mt-1 text-sm text-slate-500">부족한 활동을 채우고 매력적인 세특을 작성합니다.</p>
-                </div>
-              </div>
-            </div>
-          </SectionCard>
+            업로드 도움말
+            <ArrowRight size={14} />
+          </button>
         )}
-      </div>
-
-      <div className="my-10 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+        evidence={(
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={document?.status === 'failed' ? 'danger' : document && SUCCESS_STATUSES.has(document.status) ? 'success' : 'active'}>
+              {document ? formatStatusLabel(document.status) : '업로드 대기'}
+            </StatusBadge>
+            <StatusBadge status="neutral">PDF 1개 · 50MB 이하</StatusBadge>
+            {document ? (
+              <StatusBadge status="neutral">
+                분석 시도 {document.parse_attempts}회
+              </StatusBadge>
+            ) : null}
+          </div>
+        )}
+      />
 
       <StepIndicator items={stepItems} />
 
-      <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_0.8fr]">
-        <div className="space-y-6">
-          <SectionCard 
-            title="문서 업로드" 
-            description="PDF 1개(최대 50MB) 업로드를 지원합니다." 
-            eyebrow="문서"
-            className="border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
-          >
-            <div className="space-y-8">
-              <CatalogAutocompleteInput
-                label="목표 학과 설정 (선별 분석용)"
-                value={targetMajor}
-                onChange={setTargetMajor}
-                onSelect={suggestion => setTargetMajor(suggestion.label)}
-                placeholder="예: 경영학과, 인공지능공학과"
-                suggestions={majorSuggestions}
-                helperText={goalList.length > 0 ? `현재 설정된 목표: ${goalList[0].university} ${goalList[0].major}` : "학과를 입력하면 해당 분야에 최적화된 분석 결과를 제공해 드려요."}
-                emptyText="일치하는 학과가 없지만, 그대로 입력하고 진행하실 수 있어요."
-                inputClassName="bg-white/50 border-slate-200 focus:bg-white"
-              />
+      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <SectionCard
+          title="문서 업로드"
+          description="드래그하거나 파일을 선택하세요."
+          eyebrow="Upload"
+          className="border-white/70 bg-white/84 shadow-[0_24px_46px_-34px_rgba(15,23,42,0.55)] backdrop-blur-sm"
+        >
+          <div className="space-y-6">
+            <CatalogAutocompleteInput
+              label="목표 학과"
+              value={targetMajor}
+              onChange={setTargetMajor}
+              onSelect={suggestion => setTargetMajor(suggestion.label)}
+              placeholder="예: 경영학과, 인공지능공학과"
+              suggestions={majorSuggestions}
+              helperText={goalList.length > 0 ? `현재 목표: ${goalList[0].university} ${goalList[0].major}` : '학과 입력 시 선별 분석이 적용됩니다.'}
+              emptyText="일치 학과가 없어도 그대로 진행할 수 있습니다."
+              inputClassName="bg-white border-slate-200 focus:bg-white"
+            />
 
-              <div
-                {...getRootProps({
-                  onClick: handleOpenFileDialog,
-                  onKeyDown: handleDropzoneKeyDown,
-                })}
-                className={`group relative overflow-hidden rounded-[2rem] border-2 border-dashed p-8 transition-all md:p-12 ${
-                  isDragActive 
-                    ? 'border-[#004aad] bg-[#004aad]/5 scale-[1.01]' 
-                    : 'border-slate-200 bg-slate-50/50 hover:border-[#004aad]/30 hover:bg-white hover:shadow-2xl hover:shadow-blue-900/5'
-                } ${isBusy ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-              >
-                <input {...getInputProps({ 'aria-label': '학생부 PDF 업로드' })} />
-                
-                <div className="relative z-10 flex flex-col items-center text-center">
-                  <div className={`mb-6 flex h-20 w-20 items-center justify-center rounded-[2.5rem] transition-all duration-500 ${
-                    isBusy ? 'bg-slate-100 text-slate-400 animate-pulse' : 'bg-white text-[#004aad] shadow-xl group-hover:scale-110 group-hover:rotate-12'
-                  }`}>
-                    <FileUp size={32} />
-                  </div>
-                  
-                  <h2 className="text-2xl font-black text-slate-900">PDF 파일을 여기에 놓아주세요</h2>
-                  <p className="mt-3 text-lg font-medium text-slate-500">
-                    또는 <span className="text-[#004aad] underline decoration-2 underline-offset-4">파일 선택</span> 버튼을 눌러주세요.
-                  </p>
-                  
-                  <div className="mt-8 flex flex-wrap justify-center gap-3">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/50 px-3 py-1 text-xs font-bold text-slate-600 backdrop-blur-sm">
-                      최대 50MB
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/50 px-3 py-1 text-xs font-bold text-slate-600 backdrop-blur-sm">
-                      PDF 전용
-                    </span>
-                  </div>
-                </div>
-
-                {isBusy && (
-                  <div className="absolute inset-0 bg-white/20 backdrop-blur-[2px]" />
-                )}
-              </div>
-
-              {document && (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  {[
-                    { label: '파일명', value: document.original_filename || '-', full: true },
-                    { label: '파일 용량', value: formatBytes(document.file_size_bytes ?? null) },
-                    { label: '전체 페이지', value: `${document.page_count ?? 0}p` },
-                    { label: '데이터 항목', value: `${document.parse_metadata?.chunk_count ?? 0}개` },
-                  ].map((stat, idx) => (
-                    <div key={idx} className={`rounded-2xl bg-slate-50/50 p-4 ring-1 ring-inset ring-slate-200/50 ${stat.full ? 'col-span-2' : ''}`}>
-                      <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
-                      <p className="mt-1 truncate text-sm font-bold text-slate-700">{stat.value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-4 pt-4">
-                <PrimaryButton 
-                  size="lg"
-                  className="px-8 shadow-xl shadow-blue-600/20"
-                  onClick={() => navigate(diagnosisPath)} 
-                  disabled={!canContinue}
+            <div className="flex flex-wrap gap-2">
+              {UPLOAD_READY_CHECKLIST.map((item, idx) => (
+                <span
+                  key={idx}
+                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
                 >
-                  기록 진단 시작하기
-                  <ArrowRight size={18} />
-                </PrimaryButton>
-                
-                <SecondaryButton
-                  size="lg"
-                  variant="secondary"
-                  onClick={() => navigate(`/app/workshop/${document?.project_id}?major=${encodeURIComponent((targetMajor || '').trim())}`)}
-                  disabled={!canContinue}
-                >
-                  워크숍으로 이동
-                </SecondaryButton>
-
-                {document?.status === 'failed' && (
-                  <button
-                    onClick={() => startParse(document.id, 'retry')}
-                    disabled={isBusy}
-                    className="ml-auto inline-flex items-center gap-2 font-bold text-rose-600 hover:text-rose-700 disabled:opacity-50"
-                  >
-                    <TimerReset size={16} />
-                    다시 시도
-                  </button>
-                )}
-              </div>
+                  {item}
+                </span>
+              ))}
             </div>
-          </SectionCard>
-        </div>
 
-        <div className="flex flex-col gap-6">
-          <SectionCard 
-            title="보호 및 보안 설정" 
-            description="데이터는 안전하게 보호됩니다." 
-            eyebrow="보안" 
-            className="border-none bg-white/40 shadow-xl shadow-blue-900/5 backdrop-blur-xl"
-            collapsible
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50/50 p-4 ring-1 ring-inset ring-slate-200/50">
-                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
-                  <ShieldCheck size={12} className="text-blue-500" />
-                  보안 처리 건수
-                </p>
-                <p className="mt-2 text-lg font-black text-slate-700">{maskingSummary?.replacement_count ?? 0}<span className="text-xs font-medium text-slate-400 ml-1">건 처리됨</span></p>
+            <div
+              {...getRootProps({
+                onClick: handleOpenFileDialog,
+                onKeyDown: handleDropzoneKeyDown,
+              })}
+              className={`group relative overflow-hidden rounded-[1.8rem] border-2 border-dashed p-8 transition-all md:p-10 ${
+                isDragActive
+                  ? 'scale-[0.99] border-cyan-500 bg-cyan-50/70'
+                  : 'border-slate-200 bg-slate-50/70 hover:border-fuchsia-300 hover:bg-white'
+              } ${isBusy ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+            >
+              <input {...getInputProps({ 'aria-label': '학생부 PDF 업로드' })} />
+
+              <div className="flex flex-col items-center text-center">
+                <div className={`mb-4 flex h-16 w-16 items-center justify-center rounded-2xl transition-all ${
+                  isBusy
+                    ? 'bg-slate-100 text-slate-400'
+                    : 'bg-white text-violet-600 shadow-[0_14px_28px_-18px_rgba(124,58,237,0.5)] group-hover:-translate-y-0.5'
+                }`}>
+                  <FileUp size={28} />
+                </div>
+
+                <h2 className="text-xl font-black text-slate-900 sm:text-2xl">PDF 업로드</h2>
+                <p className="mt-2 text-sm font-semibold text-slate-500">드래그 또는 파일 선택</p>
+
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleOpenFileDialog();
+                  }}
+                  disabled={isBusy}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-50"
+                >
+                  파일 선택
+                  <ArrowRight size={14} />
+                </button>
               </div>
-              <div className="rounded-2xl bg-slate-50/50 p-4 ring-1 ring-inset ring-slate-200/50">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400">문서 인식 지표</p>
-                <p className="mt-2 text-lg font-black text-slate-700">{document?.parse_metadata?.table_count ?? 0}<span className="text-xs font-medium text-slate-400 ml-1">개 객체 인식</span></p>
+
+              {isBusy ? <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px]" /> : null}
+            </div>
+
+            {document ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: '파일명', value: document.original_filename || '-', full: true },
+                  { label: '용량', value: formatBytes(document.file_size_bytes ?? null) },
+                  { label: '페이지', value: `${document.page_count ?? 0}p` },
+                  { label: '추출 항목', value: `${document.parse_metadata?.chunk_count ?? 0}개` },
+                ].map((stat, idx) => (
+                  <div
+                    key={idx}
+                    className={`rounded-xl border border-slate-200 bg-white px-3 py-3 ${stat.full ? 'col-span-2' : ''}`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{stat.label}</p>
+                    <p className="mt-1 truncate text-sm font-bold text-slate-700">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <PrimaryButton
+                size="lg"
+                className="px-6 shadow-lg shadow-indigo-200"
+                onClick={() => navigate(diagnosisPath)}
+                disabled={!canContinue}
+              >
+                기록 진단 시작
+                <ArrowRight size={16} />
+              </PrimaryButton>
+
+              <SecondaryButton
+                size="lg"
+                variant="secondary"
+                onClick={() => navigate(`/app/workshop/${document?.project_id}?major=${encodeURIComponent((targetMajor || '').trim())}`)}
+                disabled={!canContinue}
+              >
+                워크숍 이동
+              </SecondaryButton>
+
+              {document?.status === 'failed' ? (
+                <button
+                  type="button"
+                  onClick={() => startParse(document.id, 'retry')}
+                  disabled={isBusy}
+                  className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                >
+                  <TimerReset size={14} />
+                  다시 시도
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </SectionCard>
+
+        <div className="space-y-6">
+          {shouldShowTimingDashboard ? (
+            <ProcessTimingDashboard
+              phases={timingPhaseItems}
+              title="실시간 분석 상태"
+              description="업로드/문서 읽기 진행 중"
+            />
+          ) : (
+            <SectionCard
+              title="업로드 후 다음 작업"
+              description="분석 완료 후 바로 이동"
+              eyebrow="Next"
+              className="border-white/70 bg-white/84 shadow-[0_24px_46px_-34px_rgba(15,23,42,0.55)]"
+            >
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => navigate(diagnosisPath)}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm font-bold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50/40"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <FileSearch size={15} className="text-violet-600" />
+                    목표 대학 진단
+                  </span>
+                  <ArrowRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/app/workshop/${document?.project_id || ''}`)}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm font-bold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50/40"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <FileText size={15} className="text-cyan-600" />
+                    세특 워크숍
+                  </span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </SectionCard>
+          )}
+
+          <SectionCard
+            title="보안 상태"
+            description="개인정보 보호 요약"
+            eyebrow="Security"
+            className="border-white/70 bg-white/84 shadow-[0_24px_46px_-34px_rgba(15,23,42,0.55)]"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">보안 처리</p>
+                <p className="mt-1 text-lg font-black text-slate-800">{maskingSummary?.replacement_count ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">인식 객체</p>
+                <p className="mt-1 text-lg font-black text-slate-800">{document?.parse_metadata?.table_count ?? 0}</p>
               </div>
             </div>
           </SectionCard>
 
           {document?.parse_metadata?.warnings?.length ? (
-            <SectionCard 
-              title="분석 리포트 알림" 
-              description="내용 확인 과정에서 참조가 필요한 사항입니다." 
-              eyebrow="알림"
-              className="border-none bg-amber-50 shadow-xl shadow-amber-900/5 backdrop-blur-xl"
+            <SectionCard
+              title="검토 알림"
+              description="확인 권장 항목"
+              eyebrow="Warning"
+              className="border-amber-200 bg-amber-50/70 shadow-[0_20px_36px_-28px_rgba(245,158,11,0.45)]"
             >
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {document.parse_metadata.warnings.map((warning, idx) => (
-                  <div key={idx} className="flex gap-3 rounded-xl bg-white/60 p-4 ring-1 ring-inset ring-amber-200">
-                    <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
-                    <p className="text-sm font-semibold leading-relaxed text-amber-900">{warning}</p>
-                  </div>
+                  <WorkflowNotice key={idx} tone="warning" title={warning} />
                 ))}
               </div>
             </SectionCard>
-          ) : (
-            <div className="rounded-[2rem] bg-emerald-50 p-8 shadow-xl shadow-emerald-900/5 ring-1 ring-inset ring-emerald-100">
-              <div className="flex gap-5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-200">
-                  <CheckCircle2 size={24} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-emerald-900">분석이 완벽하게 완료되었어요!</h3>
-                  <p className="mt-1 text-sm font-semibold leading-relaxed text-emerald-800/70">
-                    문서에서 어떠한 결함도 발견되지 않았습니다. <br className="hidden sm:block" />
-                    이제 목표 대학 합격 가능성을 정밀하게 진단할 준비가 되었습니다.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          ) : document && SUCCESS_STATUSES.has(document.status) ? (
+            <WorkflowNotice
+              tone="success"
+              title="분석 완료"
+              description="진단 또는 워크숍으로 바로 이동할 수 있습니다."
+              className="shadow-[0_18px_34px_-24px_rgba(16,185,129,0.5)]"
+            />
+          ) : null}
         </div>
       </div>
     </div>
