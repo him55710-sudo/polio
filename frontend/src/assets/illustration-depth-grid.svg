@@ -1,0 +1,47 @@
+﻿<svg width="640" height="420" viewBox="0 0 640 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="surface" x1="66" y1="72" x2="596" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F472B6"/>
+      <stop offset="0.5" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="planeA" x1="132" y1="124" x2="322" y2="246" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.54"/>
+    </linearGradient>
+    <linearGradient id="planeB" x1="240" y1="96" x2="470" y2="266" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.48"/>
+    </linearGradient>
+    <linearGradient id="planeC" x1="330" y1="142" x2="530" y2="298" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.5"/>
+    </linearGradient>
+    <filter id="depthShadow" x="56" y="48" width="560" height="356" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="18"/>
+      <feGaussianBlur stdDeviation="18"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.184314 0 0 0 0 0.14902 0 0 0 0 0.47451 0 0 0 0.25 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_2201_4"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_2201_4" result="shape"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#depthShadow)">
+    <rect x="92" y="74" width="456" height="272" rx="42" fill="url(#surface)"/>
+  </g>
+
+  <path d="M132 258L332 196L332 110L132 172V258Z" fill="url(#planeA)"/>
+  <path d="M238 292L466 232L466 122L238 182V292Z" fill="url(#planeB)"/>
+  <path d="M330 300L530 250L530 148L330 198V300Z" fill="url(#planeC)"/>
+
+  <path d="M132 172L332 110L466 122L238 182L132 172Z" fill="white" fill-opacity="0.44"/>
+  <path d="M238 182L466 122L530 148L330 198L238 182Z" fill="white" fill-opacity="0.36"/>
+
+  <circle cx="162" cy="130" r="12" fill="white" fill-opacity="0.86"/>
+  <circle cx="502" cy="118" r="16" fill="white" fill-opacity="0.82"/>
+  <circle cx="476" cy="296" r="22" fill="white" fill-opacity="0.78"/>
+  <circle cx="216" cy="306" r="18" fill="white" fill-opacity="0.8"/>
+</svg>

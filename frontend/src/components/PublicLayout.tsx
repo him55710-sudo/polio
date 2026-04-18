@@ -21,8 +21,8 @@ function PublicNavItem({ to, label, onClick }: { to: string; label: string; onCl
         cn(
           'rounded-2xl px-3.5 py-2.5 text-sm font-bold transition-all',
           isActive
-            ? 'bg-[linear-gradient(135deg,#3558ff_0%,#5f6fff_56%,#2cb6ff_100%)] text-white shadow-[0_14px_30px_rgba(54,92,255,0.24)]'
-            : 'text-slate-600 hover:bg-white/70 hover:text-[#21478d]',
+            ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#ec4899_48%,#06b6d4_100%)] text-white shadow-[0_14px_30px_rgba(124,58,237,0.24)]'
+            : 'text-slate-600 hover:bg-white/70 hover:text-[#6d28d9]',
         )
       }
     >
@@ -117,10 +117,10 @@ export function PublicLayout() {
           <div className="space-y-4">
             <UniFoliLogo
               size="md"
-              subtitle="기록 기반 진단과 실행 중심 워크플로를 제공하는 학생부 준비 도구"
+              subtitle="진단 · 트렌드 · 워크숍"
             />
-            <p className="max-w-3xl text-sm font-medium leading-7 text-slate-500">
-              공개 페이지는 서비스 철학과 사용 흐름을 설명합니다. 앱 내부에서는 홍보 톤을 줄이고, 다음 행동 중심의 워크플로 UI로 전환됩니다.
+            <p className="max-w-2xl text-sm font-medium leading-7 text-slate-500">
+              필요한 기능만 고르면 바로 실행됩니다.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link to="/faq" onClick={handleDesktopNavClick} className={buttonClassName({ variant: 'secondary', size: 'sm' })}>
@@ -136,12 +136,12 @@ export function PublicLayout() {
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">지원</p>
               <p className="mt-2">
-                <a className="font-semibold text-[#274b92] hover:text-[#1d4fff]" href="mailto:mongben@naver.com">
+                <a className="font-semibold text-[#6d28d9] hover:text-[#0e7490]" href="mailto:mongben@naver.com">
                   mongben@naver.com
                 </a>
               </p>
               <p className="mt-1">
-                <a className="font-semibold text-[#274b92] hover:text-[#1d4fff]" href="tel:01076142633">
+                <a className="font-semibold text-[#6d28d9] hover:text-[#0e7490]" href="tel:01076142633">
                   010-7614-2633
                 </a>
               </p>

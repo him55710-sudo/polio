@@ -1,51 +1,50 @@
-import React from 'react';
+﻿import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import {
-  ArrowDown,
-  ArrowRight,
-  Compass,
-  FileSearch,
-  Layers3,
-  Rocket,
-  Sparkles,
-  Target,
-} from 'lucide-react';
+import { ArrowDown, ArrowRight, Compass, FileSearch, Layers3, Rocket, Sparkles, Target } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import foliDuo from '../assets/foli-duo.png';
+import orbitIllustration from '../assets/illustration-orbit.svg';
+import cardIllustration from '../assets/illustration-cards.svg';
+import depthIllustration from '../assets/illustration-depth-grid.svg';
 
-const featureCards = [
+const quickMajors = ['건축', '컴공', '바이오', '경영', '사회과학', '디자인'];
+
+const quickFeatures = [
   {
     title: 'PDF 진단',
-    tag: 'Evidence',
+    subtitle: '파일 업로드',
     icon: FileSearch,
-    visual: 'from-[#3b82f6] via-[#8b5cf6] to-[#ec4899]',
-    bullets: ['업로드 후 핵심만 추출', '진단 요약 바로 확인'],
+    accent: 'from-fuchsia-500 via-violet-500 to-indigo-500',
+    href: '/app/diagnosis',
   },
   {
-    title: '전공별 트렌드',
-    tag: 'Trend Copilot',
+    title: '트렌드 탐색',
+    subtitle: '전공 주제칩',
     icon: Compass,
-    visual: 'from-[#06b6d4] via-[#10b981] to-[#84cc16]',
-    bullets: ['건축·컴공·바이오 칩 탐색', '탐구주제 흐름 즉시 선택'],
+    accent: 'from-cyan-500 via-sky-500 to-blue-500',
+    href: '/app/trends',
   },
   {
     title: '워크숍 설계',
-    tag: 'Action',
+    subtitle: '실행 계획',
     icon: Layers3,
-    visual: 'from-[#fb7185] via-[#f97316] to-[#facc15]',
-    bullets: ['주제 → 질문 → 활동 계획', '실행 중심 구조 자동 정리'],
+    accent: 'from-emerald-500 via-teal-500 to-cyan-500',
+    href: '/app/workshop',
   },
   {
-    title: '최종 실행',
-    tag: 'Output',
+    title: '결과 출력',
+    subtitle: '문서 정리',
     icon: Target,
-    visual: 'from-[#6366f1] via-[#14b8a6] to-[#22c55e]',
-    bullets: ['보고서 흐름 고도화', '면접/세특 포인트 연결'],
+    accent: 'from-amber-500 via-orange-500 to-rose-500',
+    href: '/app/workshop',
   },
 ];
 
-const quickMajors = ['건축', '컴공', '바이오', '경영', '사회과학', '디자인'];
+const quickFlow = [
+  { title: '업로드', tag: 'PDF 1개', image: orbitIllustration, href: '/app/diagnosis' },
+  { title: '트렌드', tag: '전공칩 이동', image: depthIllustration, href: '/app/trends' },
+  { title: '워크숍', tag: '실행 초안', image: cardIllustration, href: '/app/workshop' },
+];
 
 export function Landing() {
   const { isAuthenticated } = useAuth();
@@ -58,6 +57,9 @@ export function Landing() {
   return (
     <div className="bg-transparent text-slate-900 selection:bg-fuchsia-100">
       <section className="relative overflow-hidden pt-14 sm:pt-20 lg:pt-24">
+        <div className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full bg-fuchsia-300/35 blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 top-20 h-72 w-72 rounded-full bg-cyan-300/30 blur-3xl" />
+
         <div className="mx-auto grid max-w-7xl gap-10 px-4 pb-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
@@ -66,28 +68,24 @@ export function Landing() {
             transition={{ duration: 0.48 }}
             className="space-y-6"
           >
-            <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/90 px-3 py-1.5 text-xs font-black text-fuchsia-700 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/92 px-3 py-1.5 text-xs font-black text-fuchsia-700 shadow-sm">
               <Sparkles size={14} />
-              기능 중심 입시 코파일럿
+              트렌드·진단·워크숍 코파일럿
             </div>
+
             <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-              긴 설명 없이
+              말은 짧게
               <br />
               <span className="bg-gradient-to-r from-fuchsia-600 via-violet-600 to-cyan-600 bg-clip-text text-transparent">
-                바로 실행 가능한
+                실행은 빠르게
               </span>
-              <br />
-              학생부 설계
             </h1>
-            <p className="max-w-xl text-base font-semibold text-slate-600 sm:text-lg">
-              진단, 트렌드 탐색, 워크숍 설계를 한 흐름으로 연결합니다.
-            </p>
 
             <div className="flex flex-wrap gap-2">
               {quickMajors.map((major) => (
                 <span
                   key={major}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-700"
+                  className="rounded-full border border-slate-200 bg-white/92 px-3 py-1 text-sm font-bold text-slate-700 shadow-[0_8px_16px_-14px_rgba(15,23,42,0.5)]"
                 >
                   {major}
                 </span>
@@ -97,11 +95,15 @@ export function Landing() {
             <div className="flex flex-wrap gap-3">
               <Link to={startHref} onClick={scrollToTop} className="btn-primary inline-flex items-center gap-2">
                 <Rocket size={16} />
-                바로 시작
+                시작
                 <ArrowRight size={14} />
               </Link>
               <Link to="/app/trends" onClick={scrollToTop} className="btn-secondary inline-flex items-center gap-2">
-                트렌드 보기
+                트렌드
+                <ArrowRight size={14} />
+              </Link>
+              <Link to="/app/workshop" onClick={scrollToTop} className="btn-secondary inline-flex items-center gap-2">
+                워크숍
                 <ArrowRight size={14} />
               </Link>
             </div>
@@ -112,100 +114,100 @@ export function Landing() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.35 }}
             transition={{ duration: 0.55, delay: 0.05 }}
-            className="relative perspective-[1200px]"
+            className="relative"
           >
-            <div className="tilt-3d rounded-[2rem] border border-white/60 bg-white/78 p-5 shadow-[0_34px_60px_-28px_rgba(79,70,229,0.35)] backdrop-blur-xl">
-              <div className="grid grid-cols-[1.25fr_0.75fr] gap-4">
-                <div className="rounded-2xl bg-gradient-to-br from-violet-50 via-sky-50 to-rose-50 p-4">
-                  <p className="text-xs font-black text-violet-600">학생부 코파일럿</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">진단 → 트렌드 → 워크숍</p>
-                  <img src={foliDuo} alt="Uni Foli assistant" className="mt-4 h-40 w-full rounded-xl object-cover" />
-                </div>
-                <div className="space-y-3">
-                  {['증거 기반 진단', '전공별 칩 탐색', '실행형 플랜'].map((label, index) => (
-                    <div
-                      key={label}
-                      className={`rounded-xl p-3 text-xs font-black text-white ${
-                        index === 0
-                          ? 'bg-gradient-to-br from-cyan-500 to-blue-600'
-                          : index === 1
-                            ? 'bg-gradient-to-br from-fuchsia-500 to-violet-600'
-                            : 'bg-gradient-to-br from-amber-500 to-orange-600'
-                      }`}
-                    >
-                      {label}
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="tilt-3d relative rounded-[2.2rem] border border-white/70 bg-white/78 p-4 shadow-[0_38px_64px_-28px_rgba(79,70,229,0.35)] backdrop-blur-xl sm:p-6">
+              <img src={orbitIllustration} alt="기능 흐름 일러스트" className="tilt-depth h-auto w-full rounded-2xl object-cover" />
+
+              <img
+                src={cardIllustration}
+                alt="기능 카드 일러스트"
+                className="absolute -bottom-4 right-4 w-[45%] rounded-2xl border border-white/70 bg-white/80 shadow-[0_20px_38px_-24px_rgba(15,23,42,0.45)] sm:right-6"
+              />
+
+              <img
+                src={depthIllustration}
+                alt="입체 그리드 일러스트"
+                className="absolute -left-3 top-5 w-[34%] rounded-2xl border border-white/60 bg-white/84 shadow-[0_18px_32px_-20px_rgba(15,23,42,0.45)]"
+              />
             </div>
           </motion.div>
         </div>
 
         <div className="mb-8 flex justify-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-bold text-slate-500">
-            스크롤해서 기능 보기
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/84 px-3 py-1 text-xs font-bold text-slate-500">
+            스크롤해서 실행 카드 보기
             <ArrowDown size={13} />
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {featureCards.map((card, index) => (
-            <motion.article
-              key={card.title}
-              initial={{ opacity: 0, y: 28 }}
+          {quickFeatures.map((item, index) => (
+            <motion.div
+              key={item.title}
+              initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.35 }}
-              transition={{ duration: 0.4, delay: index * 0.06 }}
-              className="tilt-3d rounded-3xl border border-white/70 bg-white/85 p-4 shadow-[0_22px_50px_-34px_rgba(15,23,42,0.5)] backdrop-blur-md"
+              transition={{ duration: 0.42, delay: index * 0.06 }}
             >
-              <div className={`mb-3 inline-flex items-center gap-2 rounded-full bg-gradient-to-r px-3 py-1 text-xs font-black text-white ${card.visual}`}>
-                <card.icon size={14} />
-                {card.tag}
-              </div>
-              <h2 className="text-xl font-black text-slate-900">{card.title}</h2>
-              <div className={`mt-3 h-24 rounded-2xl bg-gradient-to-br ${card.visual}`} />
-              <ul className="mt-3 space-y-1.5 text-sm font-semibold text-slate-600">
-                {card.bullets.map((bullet) => (
-                  <li key={bullet} className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                    {bullet}
-                  </li>
-                ))}
-              </ul>
-            </motion.article>
+              <Link
+                to={item.href}
+                onClick={scrollToTop}
+                className="group tilt-3d block rounded-3xl border border-white/70 bg-white/84 p-4 shadow-[0_20px_42px_-30px_rgba(15,23,42,0.5)] backdrop-blur-md"
+              >
+                <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br p-4 text-white ${item.accent}`}>
+                  <item.icon size={16} />
+                  <p className="mt-8 text-lg font-black">{item.title}</p>
+                  <p className="text-xs font-bold text-white/85">{item.subtitle}</p>
+                  <div className="absolute -bottom-5 -right-5 h-20 w-20 rounded-full bg-white/18 blur-md" />
+                </div>
+                <div className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-slate-700 transition group-hover:text-slate-900">
+                  열기
+                  <ArrowRight size={14} />
+                </div>
+              </Link>
+            </motion.div>
           ))}
         </div>
       </section>
 
-      <section className="border-y border-white/70 bg-[linear-gradient(120deg,rgba(252,231,243,0.42)_0%,rgba(224,242,254,0.42)_50%,rgba(220,252,231,0.42)_100%)] py-16">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.35 }}
-          transition={{ duration: 0.45 }}
-          className="mx-auto max-w-5xl rounded-3xl border border-white/70 bg-white/86 p-6 text-center shadow-[0_26px_54px_-34px_rgba(15,23,42,0.4)] backdrop-blur-xl sm:p-8"
-        >
-          <h3 className="text-2xl font-black text-slate-900 sm:text-3xl">기능 선택 후 바로 실행</h3>
-          <div className="mt-5 flex flex-wrap justify-center gap-3">
-            <Link to={startHref} onClick={scrollToTop} className="btn-primary inline-flex items-center gap-2">
-              진단 시작
-              <ArrowRight size={14} />
-            </Link>
-            <Link to="/app/trends" onClick={scrollToTop} className="btn-secondary inline-flex items-center gap-2">
-              전공 트렌드 탐색
-              <ArrowRight size={14} />
-            </Link>
-            <Link to="/app/workshop" onClick={scrollToTop} className="btn-secondary inline-flex items-center gap-2">
-              워크숍 열기
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-        </motion.div>
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="grid gap-4 md:grid-cols-3">
+          {quickFlow.map((step, index) => (
+            <motion.div
+              key={step.title}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.35 }}
+              transition={{ duration: 0.42, delay: index * 0.08 }}
+            >
+              <Link
+                to={step.href}
+                onClick={scrollToTop}
+                className="group block overflow-hidden rounded-[1.8rem] border border-white/70 bg-white/80 shadow-[0_26px_48px_-34px_rgba(15,23,42,0.55)]"
+              >
+                <div className="relative aspect-[4/3] overflow-hidden">
+                  <img
+                    src={step.image}
+                    alt={`${step.title} 일러스트`}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-slate-900/5 to-transparent" />
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="text-base font-black text-slate-900">{step.title}</p>
+                    <p className="text-xs font-bold text-slate-500">{step.tag}</p>
+                  </div>
+                  <ArrowRight size={16} className="text-slate-600" />
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
       </section>
     </div>
   );
 }
-

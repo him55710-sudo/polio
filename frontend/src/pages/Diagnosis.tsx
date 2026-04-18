@@ -859,13 +859,13 @@ export function Diagnosis() {
 
   const headerDescription = useMemo(() => {
     switch (step) {
-      case 'PROFILE': return '학년과 계열을 확인해 진단 기준을 맞춥니다.';
-      case 'GOALS': return '지원 대학과 전공이 정리되어야 진단이 더 정확해집니다.';
-      case 'UPLOAD': return 'PDF 1개만 올리면 바로 파싱과 진단을 시작합니다.';
-      case 'ANALYSING': return '문서를 읽고 결과를 정리하고 있습니다.';
-      case 'RESULT': return '결과를 확인한 뒤 바로 워크숍으로 이어갈 수 있습니다.';
-      case 'FAILED': return '오류 코드와 상세 정보를 확인하고 다시 시도할 수 있습니다.';
-      default: return '학생부 진단을 시작합니다.';
+      case 'PROFILE': return '학년/계열 확인';
+      case 'GOALS': return '목표 전공 점검';
+      case 'UPLOAD': return 'PDF 1개 업로드';
+      case 'ANALYSING': return '문서 분석 중';
+      case 'RESULT': return '결과 확인 후 실행';
+      case 'FAILED': return '오류 확인 후 재시도';
+      default: return '진단 시작';
     }
   }, [step]);
 
@@ -901,7 +901,7 @@ export function Diagnosis() {
             finishedAt: phase.finishedAt,
           }))}
           title="실시간 진단 현황"
-          description="업로드, 파싱, 진단 진행 상황을 실시간으로 보여줍니다."
+          description="업로드 · 파싱 · 진단 상태"
           preferStageMode
           stageMessage={diagnosisRun?.status_message || diagnosisJob?.progress_message || null}
         />

@@ -99,7 +99,7 @@ export function UniFoliLogo({
   size = 'md',
   tone = 'light',
   markOnly = false,
-  subtitle = '기록 중심 입시 준비 워크플로',
+  subtitle = '입시 실행 워크플로',
   className,
   markClassName,
   titleClassName,

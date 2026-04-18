@@ -49,8 +49,8 @@ export function Layout() {
   const shouldShowFooter = !isEditorRoute && !isWorkshopRoute;
 
   const workflowSummary = hasTargets
-    ? `${currentSection.label} 단계 · 필요한 기능을 선택해 바로 실행하세요.`
-    : '목표 대학/학과를 먼저 설정하면 진단 흐름을 바로 시작할 수 있어요.';
+    ? `${currentSection.label} 단계 · 바로 실행`
+    : '목표를 먼저 설정해 주세요.';
 
   const userName = user?.displayName || dbUser?.name || (isGuestSession ? '게스트' : '사용자');
 
