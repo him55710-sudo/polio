@@ -5,6 +5,7 @@ from functools import lru_cache
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 import jwt
@@ -57,6 +58,56 @@ def _resolve_google_application_credentials_path() -> str | None:
     return str(resolve_runtime_path(raw_path).expanduser())
 
 
+def _strip_matching_env_quotes(value: str) -> str:
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {'"', "'"}:
+        return stripped[1:-1].strip()
+    return stripped
+
+
+def _remove_escaped_json_formatting_newlines(value: str) -> str:
+    normalized = value.replace("\\r\\n", "\\n")
+    normalized = re.sub(r"^\s*\\n\s*", "", normalized)
+    normalized = re.sub(r"(?:\\n\s*)+$", "", normalized)
+    normalized = re.sub(r'\\n\s*(?="[^"\\]*(?:\\.[^"\\]*)*"\s*:)', "", normalized)
+    normalized = re.sub(r"\\n\s*(?=})", "", normalized)
+    return normalized
+
+
+def _load_firebase_service_account_payload(raw_value: str) -> dict[str, Any]:
+    """Parse Firebase credentials from common Vercel env var encodings."""
+
+    candidates: list[str] = []
+    stripped = raw_value.strip()
+    unquoted = _strip_matching_env_quotes(stripped)
+    candidates.extend(
+        candidate
+        for candidate in (
+            stripped,
+            unquoted,
+            _remove_escaped_json_formatting_newlines(unquoted),
+        )
+        if candidate
+    )
+
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            payload: Any = json.loads(candidate)
+            if isinstance(payload, str):
+                payload = json.loads(_remove_escaped_json_formatting_newlines(_strip_matching_env_quotes(payload)))
+            if not isinstance(payload, dict):
+                raise ValueError("Firebase service account payload must be a JSON object.")
+            private_key = payload.get("private_key")
+            if isinstance(private_key, str) and "\\n" in private_key:
+                payload = {**payload, "private_key": private_key.replace("\\n", "\n")}
+            return payload
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+
+    raise ValueError("Firebase service account JSON could not be parsed.") from last_error
+
+
 @lru_cache(maxsize=1)
 def get_firebase_auth_client():
     """Initializes the Firebase Admin SDK client once."""
@@ -87,7 +138,7 @@ def get_firebase_auth_client():
             try:
                 if inline_json_b64:
                     inline_json = base64.b64decode(inline_json_b64).decode("utf-8")
-                certificate_payload = json.loads(inline_json)
+                certificate_payload = _load_firebase_service_account_payload(inline_json)
                 project_id = _resolve_firebase_project_id(certificate_payload)
                 credential = firebase_admin.credentials.Certificate(certificate_payload)
             except Exception as exc:

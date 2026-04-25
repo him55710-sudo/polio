@@ -2,7 +2,7 @@ import type { GuidedChoiceGroup, GuidedChoiceOption, GuidedTopicSuggestion } fro
 
 export function buildTopicChoiceGroupFromSuggestions(
   suggestions: GuidedTopicSuggestion[],
-  title = '마음에 드는 탐구주제를 선택하세요.',
+  title = '가장 끌리는 주제를 선택해줘! ✨',
 ): GuidedChoiceGroup {
   return {
     id: 'topic-selection',
@@ -13,7 +13,9 @@ export function buildTopicChoiceGroupFromSuggestions(
       label: topic.title,
       description: topic.why_fit_student,
       value: topic.id,
-    })),
+      suggestion_type: topic.suggestion_type,
+      is_starred: topic.is_starred,
+    } as any)),
   };
 }
 

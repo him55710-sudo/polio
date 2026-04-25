@@ -30,6 +30,7 @@ interface WorkshopChatPanelProps {
   onUseResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onRefineResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onExcludeResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
+  onStarToggle?: (messageId: string, topicId: string) => void | Promise<void>;
   children?: React.ReactNode;
   className?: string;
 }
@@ -82,6 +83,7 @@ export function WorkshopChatPanel({
                 onUseResearchCandidate={(candidateId, sourceMessage) => onUseResearchCandidate?.(candidateId, sourceMessage)}
                 onRefineResearchCandidate={(candidateId, sourceMessage) => onRefineResearchCandidate?.(candidateId, sourceMessage)}
                 onExcludeResearchCandidate={(candidateId, sourceMessage) => onExcludeResearchCandidate?.(candidateId, sourceMessage)}
+                onStarToggle={(topicId) => onStarToggle?.(message.id, topicId)}
                 isGuidedActionLoading={isGuidedActionLoading}
                 selectingTopicId={selectingTopicId}
               />

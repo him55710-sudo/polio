@@ -64,6 +64,32 @@ export function useWorkshopMessages(initialMessages: WorkshopChatMessage[] = [])
     setMessages((prev) => prev.map((message) => (message.id === id ? { ...message, choiceGroups } : message)));
   }, []);
 
+  const toggleTopicStar = useCallback((messageId: string, topicId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        
+        // choiceGroups 내의 주제 찾기
+        const nextGroups = m.choiceGroups?.map((group) => {
+          if (group.id !== 'topic-selection') return group;
+          return {
+            ...group,
+            options: group.options.map((opt: any) =>
+              opt.id === topicId ? { ...opt, is_starred: !opt.is_starred } : opt
+            ),
+          };
+        });
+
+        // topicSuggestions 내의 주제 찾기 (레거시 대응)
+        const nextSuggestions = m.topicSuggestions?.map((s) =>
+          s.id === topicId ? { ...s, is_starred: !s.is_starred } : s
+        );
+
+        return { ...m, choiceGroups: nextGroups, topicSuggestions: nextSuggestions };
+      })
+    );
+  }, []);
+
   const clearMessages = useCallback(() => setMessages([]), []);
 
   return useMemo(
@@ -76,6 +102,7 @@ export function useWorkshopMessages(initialMessages: WorkshopChatMessage[] = [])
       updateStreamingMessage,
       attachPatchToMessage,
       attachChoiceGroupsToMessage,
+      toggleTopicStar,
       clearMessages,
     }),
     [
@@ -84,6 +111,7 @@ export function useWorkshopMessages(initialMessages: WorkshopChatMessage[] = [])
       addUserMessage,
       attachChoiceGroupsToMessage,
       attachPatchToMessage,
+      toggleTopicStar,
       clearMessages,
       messages,
       updateStreamingMessage,

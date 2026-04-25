@@ -4,8 +4,10 @@ export interface GuidedTopicSuggestion {
   why_fit_student: string;
   link_to_record_flow: string;
   link_to_target_major_or_university: string | null;
-  novelty_point: string;
+  novelty_point?: string | null;
   caution_note: string | null;
+  suggestion_type?: 'interest' | 'subject' | 'major' | null;
+  is_starred?: boolean;
 }
 
 export type GuidedConversationPhase =

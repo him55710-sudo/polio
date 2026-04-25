@@ -30,6 +30,7 @@ interface ChatBubbleProps {
   onUseResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onRefineResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onExcludeResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
+  onStarToggle?: (topicId: string) => void | Promise<void>;
   isGuidedActionLoading?: boolean;
   selectingTopicId?: string | null;
 }
@@ -191,6 +192,7 @@ export const ChatBubble = memo(function ChatBubble({
                 isGuidedActionLoading={isGuidedActionLoading}
                 selectingTopicId={selectingTopicId}
                 onSelect={(groupId, option) => void onGuidedChoiceSelect(groupId, option, message)}
+                onStarToggle={onStarToggle}
               />
             ))}
           </div>

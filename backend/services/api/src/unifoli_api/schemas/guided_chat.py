@@ -52,13 +52,17 @@ class TopicSuggestion(BaseModel):
     why_fit_student: str
     link_to_record_flow: str
     link_to_target_major_or_university: str | None = None
-    novelty_point: str
+    novelty_point: str | None = None
     caution_note: str | None = None
+    suggestion_type: Literal["interest", "subject", "major"] | None = None
+    is_starred: bool = False
 
 
 class TopicSuggestionRequest(BaseModel):
     project_id: str | None = None
     subject: str = Field(min_length=1, max_length=100)
+    starred_keywords: list[str] = Field(default_factory=list)
+    target_major: str | None = None
 
 
 class TopicSuggestionResponse(BaseModel):
