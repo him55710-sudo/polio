@@ -316,11 +316,16 @@ export function Diagnosis() {
     setDiagnosisRunId(null);
     setIsUploading(false);
 
-    if (goalList.length > 0) {
+    const primaryGoal = goalList[0];
+    if (primaryGoal?.university && primaryGoal?.major) {
       localStorage.setItem(
         DIAGNOSIS_STORAGE_KEY,
         JSON.stringify({
-          major: goalList[0].major,
+          major: primaryGoal.major,
+          targetUniversity: primaryGoal.university,
+          targetMajor: primaryGoal.major,
+          target_university: primaryGoal.university,
+          target_major: primaryGoal.major,
           projectId: run.project_id,
           savedAt: new Date().toISOString(),
           diagnosis: payload,

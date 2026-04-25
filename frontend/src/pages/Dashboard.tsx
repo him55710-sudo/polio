@@ -47,8 +47,6 @@ interface NextAction {
   onSecondary?: () => void;
 }
 
-type DashboardPanel = 'next' | 'status' | 'plan';
-
 function readStoredDiagnosis(): StoredDiagnosis | null {
   try {
     const raw = localStorage.getItem(DIAGNOSIS_STORAGE_KEY);
@@ -58,6 +56,30 @@ function readStoredDiagnosis(): StoredDiagnosis | null {
     console.error('Failed to parse diagnosis from storage:', e);
     return null;
   }
+}
+
+function normalizeTargetText(value?: string | null): string {
+  return (value || '').trim();
+}
+
+function hasCompletePrimaryGoal(
+  profile: Pick<UserProfile, 'target_university' | 'target_major'> | null | undefined,
+): boolean {
+  return Boolean(normalizeTargetText(profile?.target_university) && normalizeTargetText(profile?.target_major));
+}
+
+function storedDiagnosisMatchesProfile(
+  diagnosis: StoredDiagnosis | null,
+  profile: UserProfile | null,
+): diagnosis is StoredDiagnosis {
+  if (!diagnosis || !hasCompletePrimaryGoal(profile)) return false;
+
+  const currentUniversity = normalizeTargetText(profile?.target_university);
+  const currentMajor = normalizeTargetText(profile?.target_major);
+  const diagnosisUniversity = normalizeTargetText(diagnosis.targetUniversity ?? diagnosis.target_university);
+  const diagnosisMajor = normalizeTargetText(diagnosis.targetMajor ?? diagnosis.target_major ?? diagnosis.major);
+
+  return diagnosisUniversity === currentUniversity && diagnosisMajor === currentMajor;
 }
 
 const riskVariant = (risk: string): any => {
@@ -80,16 +102,6 @@ function toCompactDiagnosisSummary(headline?: string | null): string {
   }
   return cleaned;
 }
-
-const levelSummary = (level: string) => {
-  switch (level) {
-    case 'Diamond': return { label: '다이아몬드', color: 'text-cyan-600', bg: 'bg-cyan-50' };
-    case 'Platinum': return { label: '플래티넘', color: 'text-indigo-600', bg: 'bg-indigo-50' };
-    case 'Gold': return { label: '골드', color: 'text-amber-600', bg: 'bg-amber-50' };
-    case 'Silver': return { label: '실버', color: 'text-slate-500', bg: 'bg-slate-50' };
-    default: return { label: level || '언랭크', color: 'text-slate-400', bg: 'bg-slate-50' };
-  }
-};
 
 const questToneMap = {
   high: {
@@ -153,9 +165,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user, isGuestSession } = useAuth();
   const authStoreUser = useAuthStore(state => state.user);
-  const setAuthUser = useAuthStore(state => state.setUser);
 
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isLoadingBlueprint, setIsLoadingBlueprint] = useState(false);
   const [startingQuestId, setStartingQuestId] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats>({ report_count: 0, level: '불러오는 중', completion_rate: 0 });
@@ -165,6 +175,12 @@ export default function Dashboard() {
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [openSubjectGroups, setOpenSubjectGroups] = useState<Record<string, boolean>>({});
   const localAuthFallbackActive = Boolean(authStoreUser?.id?.startsWith('local-auth-'));
+
+  const activeStoredDiagnosis = useMemo(
+    () => (storedDiagnosisMatchesProfile(storedDiagnosis, profile) ? storedDiagnosis : null),
+    [profile, storedDiagnosis],
+  );
+  const canUseDiagnosisContext = hasCompletePrimaryGoal(profile) && Boolean(activeStoredDiagnosis?.projectId);
 
   useEffect(() => {
     setStoredDiagnosis(readStoredDiagnosis());
@@ -201,10 +217,6 @@ export default function Dashboard() {
         completion_rate: guestProfile?.target_university && guestProfile?.target_major ? 25 : 0,
       });
       setProfile(guestProfile);
-      if (!guestProfile?.target_university || !guestProfile?.target_major) {
-        // Redirect to diagnosis is handled by App.tsx ProtectedRoute, but for manual triggers:
-        // setIsOnboardingOpen(true); -> Managed via nextAction button
-      }
       return;
     }
 
@@ -216,9 +228,6 @@ export default function Dashboard() {
         completion_rate: hasTargets ? 25 : 0,
       });
       setProfile(authStoreUser);
-      if (!hasTargets) {
-        // Handled by ProtectedRoute mostly
-      }
       return;
     }
 
@@ -237,9 +246,6 @@ export default function Dashboard() {
       .get<UserProfile>('/api/v1/users/me')
       .then(data => {
         setProfile(data);
-        if (!data.target_university || !data.target_major) {
-           // Handled by Guide
-        }
       })
       .catch(error => {
         console.error(error);
@@ -247,23 +253,14 @@ export default function Dashboard() {
           const guestProfile = readGuestProfile();
           if (guestProfile) {
             setProfile(guestProfile);
-            if (!guestProfile.target_university || !guestProfile.target_major) {
-               // Handled by Guide
-            }
             return;
           }
         }
         if (authStoreUser) {
           setProfile(authStoreUser);
-          if (!authStoreUser.target_university || !authStoreUser.target_major) {
-             // Handled by Guide
-          }
           return;
         }
         setProfile(null);
-        if (isGuestSession) {
-           // Handled by Guide
-        }
       });
   }, [user, isGuestSession, localAuthFallbackActive, authStoreUser]);
 
@@ -275,13 +272,19 @@ export default function Dashboard() {
       setIsLoadingBlueprint(false);
       return;
     }
+    if (!canUseDiagnosisContext) {
+      setBlueprint(null);
+      setBlueprintError(null);
+      setIsLoadingBlueprint(false);
+      return;
+    }
 
     setIsLoadingBlueprint(true);
     setBlueprintError(null);
 
     api
       .get<CurrentBlueprintResponse>('/api/v1/blueprints/current', {
-        params: storedDiagnosis?.projectId ? { project_id: storedDiagnosis.projectId } : undefined,
+        params: activeStoredDiagnosis?.projectId ? { project_id: activeStoredDiagnosis.projectId } : undefined,
       })
       .then(setBlueprint)
       .catch(error => {
@@ -292,9 +295,7 @@ export default function Dashboard() {
         setBlueprint(null);
       })
       .finally(() => setIsLoadingBlueprint(false));
-  }, [user, isGuestSession, storedDiagnosis?.projectId, localAuthFallbackActive]);
-
-  // handleSaveTargets was only for OnboardingModal, removing.
+  }, [user, isGuestSession, activeStoredDiagnosis?.projectId, canUseDiagnosisContext, localAuthFallbackActive]);
 
   const handleStartQuest = async (quest: BlueprintQuest) => {
     setStartingQuestId(quest.id);
@@ -315,14 +316,14 @@ export default function Dashboard() {
   };
 
   const allGoals = useMemo(() => buildRankedGoals(profile, 6), [profile]);
-  const hasPrimaryGoal = Boolean(profile?.target_university && profile?.target_major);
-  const hasDiagnosis = Boolean(storedDiagnosis?.projectId);
+  const hasPrimaryGoal = hasCompletePrimaryGoal(profile);
+  const hasDiagnosis = Boolean(activeStoredDiagnosis?.projectId);
   const hasBlueprint = Boolean(blueprint);
   const primaryQuest = blueprint?.priority_quests[0] ?? null;
 
   const workflowSteps = useMemo<WorkflowStep[]>(() => {
     const diagnosisSummary = hasDiagnosis
-      ? toCompactDiagnosisSummary(storedDiagnosis?.diagnosis.headline)
+      ? toCompactDiagnosisSummary(activeStoredDiagnosis?.diagnosis.headline)
       : 'AI 진단 실행';
 
     const steps: WorkflowStep[] = [
@@ -332,10 +333,10 @@ export default function Dashboard() {
       { key: 'workshop', title: '워크숍 실행', description: hasBlueprint ? (primaryQuest ? `우선: ${primaryQuest.title}` : '진행 가능') : '액션 플랜 대기', status: hasBlueprint ? 'active' : 'pending' },
     ];
     return steps;
-  }, [hasBlueprint, hasDiagnosis, hasPrimaryGoal, primaryQuest, profile, storedDiagnosis]);
+  }, [activeStoredDiagnosis, hasBlueprint, hasDiagnosis, hasPrimaryGoal, primaryQuest, profile]);
 
-  const progressedCount = workflowSteps.filter(s => s.status === 'done').length + (workflowSteps.some(s => s.status === 'active') ? 1 : 0);
-  const progressLabel = `${Math.min(progressedCount, 4)}/4 단계`;
+  const completedStepCount = workflowSteps.filter(s => s.status === 'done').length;
+  const progressLabel = `${Math.min(completedStepCount, 4)}/4 단계`;
 
   const nextAction = useMemo<NextAction>(() => {
     if (!hasPrimaryGoal) {
@@ -365,18 +366,18 @@ export default function Dashboard() {
         primaryLabel: '퀘스트 시작하기',
         onPrimary: () => void handleStartQuest(primaryQuest),
         secondaryLabel: '워크숍 이동',
-        onSecondary: () => navigate(`/app/workshop/${storedDiagnosis?.projectId}`),
+        onSecondary: () => navigate(`/app/workshop/${activeStoredDiagnosis?.projectId}`),
       };
     }
     return {
       title: '워크숍에서 기록을 완성하세요',
       description: '진단 기반 초안 작성',
       primaryLabel: '워크숍 열기',
-      onPrimary: () => navigate(storedDiagnosis?.projectId ? `/app/workshop/${storedDiagnosis.projectId}` : '/app/workshop'),
+      onPrimary: () => navigate(activeStoredDiagnosis?.projectId ? `/app/workshop/${activeStoredDiagnosis.projectId}` : '/app/workshop'),
     };
-  }, [hasDiagnosis, hasPrimaryGoal, navigate, primaryQuest, storedDiagnosis]);
+  }, [activeStoredDiagnosis, hasDiagnosis, hasPrimaryGoal, navigate, primaryQuest]);
 
-  const primaryGoal = allGoals[0] ?? null;
+  const primaryGoal = hasPrimaryGoal ? (allGoals[0] ?? null) : null;
   const quickActions = [
     {
       label: nextAction.primaryLabel,
@@ -391,7 +392,7 @@ export default function Dashboard() {
     {
       label: hasDiagnosis ? '워크숍 열기' : '학생부 업로드',
       onClick: hasDiagnosis
-        ? () => navigate(storedDiagnosis?.projectId ? `/app/workshop/${storedDiagnosis.projectId}` : '/app/workshop')
+        ? () => navigate(activeStoredDiagnosis?.projectId ? `/app/workshop/${activeStoredDiagnosis.projectId}` : '/app/workshop')
         : () => navigate('/app/record'),
       tone: 'secondary' as const,
     },
@@ -436,11 +437,11 @@ export default function Dashboard() {
               <StatusBadge status="active">{progressLabel}</StatusBadge>
               <StatusBadge status="neutral">준비율 {stats.completion_rate}%</StatusBadge>
               <StatusBadge status="neutral">분석서 {stats.report_count}개</StatusBadge>
-              {storedDiagnosis ? (
-                <StatusBadge status={riskVariant(storedDiagnosis.diagnosis.risk_level)}>
-                  {storedDiagnosis.diagnosis.risk_level === 'danger'
+              {activeStoredDiagnosis ? (
+                <StatusBadge status={riskVariant(activeStoredDiagnosis.diagnosis.risk_level)}>
+                  {activeStoredDiagnosis.diagnosis.risk_level === 'danger'
                     ? '집중 보완'
-                    : storedDiagnosis.diagnosis.risk_level === 'warning'
+                    : activeStoredDiagnosis.diagnosis.risk_level === 'warning'
                       ? '주의'
                       : '안정'}
                 </StatusBadge>
@@ -464,7 +465,7 @@ export default function Dashboard() {
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Diagnosis</p>
               <p className="mt-1 text-sm font-bold text-slate-800">
-                {hasDiagnosis ? toCompactDiagnosisSummary(storedDiagnosis?.diagnosis.headline) : '아직 진단 전입니다.'}
+                {hasDiagnosis ? toCompactDiagnosisSummary(activeStoredDiagnosis?.diagnosis.headline) : '아직 진단 전입니다.'}
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
@@ -495,42 +496,40 @@ export default function Dashboard() {
       {/* Target & Progress Grid */}
       <div className="grid gap-6 sm:gap-8 lg:grid-cols-3">
         {/* Target Card */}
-        <SurfaceCard className="relative overflow-hidden border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(245,248,255,0.86)_100%)] p-5 shadow-[0_20px_42px_rgba(42,64,132,0.14)] sm:p-8 lg:col-span-2">
-          {/* Subtle background decoration for empty state */}
-          
+        <SurfaceCard className="relative overflow-hidden border-slate-200 bg-white p-6 shadow-sm sm:p-10 lg:col-span-2">
           <div className="relative z-10">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center gap-4 sm:gap-6">
-                <div className="relative">
+            <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
+              <div className="flex items-center gap-5 sm:gap-8 flex-1 min-w-0">
+                <div className="relative shrink-0">
                   <UniversityLogo
                     universityName={primaryGoal?.university}
-                    className="h-16 w-16 rounded-2xl border border-[#d8e6ff] bg-white object-contain p-2.5 shadow-[0_14px_28px_rgba(24,66,170,0.12)] sm:h-20 sm:w-20 sm:rounded-3xl sm:p-3"
+                    className="h-16 w-16 rounded-2xl border border-[#f2f4f6] bg-white object-contain p-2.5 shadow-sm sm:h-24 sm:w-24 sm:rounded-[2rem] sm:p-3.5 ring-1 ring-slate-100"
                   />
                   {!hasPrimaryGoal && (
-                    <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm ring-2 ring-white">
-                      <Zap size={12} fill="currentColor" />
+                    <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#ff9c20] text-white shadow-md ring-2 ring-white">
+                      <Zap size={14} fill="currentColor" />
                     </div>
                   )}
                 </div>
-                <div className="min-w-0">
-                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[linear-gradient(135deg,#eef3ff_0%,#eefaff_100%)] px-3 py-1 text-[11px] font-black tracking-widest text-[#2150b8] ring-1 ring-inset ring-[#2150b8]/12 uppercase">
-                    <Flag size={10} />
+                <div className="min-w-0 flex-1">
+                    <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-[11px] font-black tracking-widest text-[#3182f6] uppercase ring-1 ring-inset ring-blue-100">
+                    <Flag size={12} strokeWidth={2.5} />
                     {hasPrimaryGoal ? '핵심 목표' : '첫 걸음'}
                   </div>
-                  <h2 className="truncate text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+                  <h2 className="truncate text-2xl font-black tracking-tight text-[#191f28] sm:text-3xl lg:text-4xl">
                     {primaryGoal?.university || '목표 설정이 필요합니다'}
                   </h2>
-                  <p className="mt-1 truncate text-base font-bold text-slate-500 sm:text-lg">
+                  <p className="mt-1.5 truncate text-[15px] font-bold text-[#4e5968] sm:text-lg">
                     {primaryGoal?.major || '어떤 대학에서 당신의 꿈을 펼치고 싶나요?'}
                   </p>
                   {!hasPrimaryGoal && (
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-6 flex flex-wrap gap-2">
                       <button 
                         onClick={() => navigate('/app/diagnosis')}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-xs font-black text-white transition-all hover:bg-indigo-700 active:scale-95"
+                        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[#3182f6] px-6 text-[14px] font-black text-white shadow-lg shadow-blue-50 transition-all hover:bg-[#1b64da] active:scale-95"
                       >
                         지금 바로 설정하기
-                        <ArrowRight size={14} />
+                        <ArrowRight size={16} strokeWidth={2.5} />
                       </button>
                     </div>
                   )}
@@ -538,35 +537,33 @@ export default function Dashboard() {
               </div>
 
               {/* Secondary Goals or Placeholders to fill space */}
-              <div className="flex flex-wrap gap-2 lg:justify-end">
+              <div className="flex flex-col gap-3 lg:w-[240px] shrink-0">
                 {allGoals.length > 1 ? (
-                  allGoals.slice(1, 4).map((goal, index) => (
-                     <div key={index} className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/88 p-3 shadow-[0_12px_24px_rgba(42,64,132,0.09)]">
-                      <UniversityLogo universityName={goal.university} className="h-10 w-10 rounded-xl bg-slate-50 p-1" />
-                      <div className="min-w-[120px]">
-                        <p className="text-[10px] font-black text-slate-400 uppercase">차순위 {index + 1}</p>
-                        <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
+                  allGoals.slice(1, 3).map((goal, index) => (
+                     <div key={index} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/30 p-3">
+                      <UniversityLogo universityName={goal.university} className="h-10 w-10 rounded-xl bg-white p-1 shadow-sm" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black text-[#b0b8c1] uppercase">차순위 {index + 1}</p>
+                        <p className="truncate text-sm font-black text-[#333d4b]">{goal.university}</p>
                       </div>
                     </div>
                   ))
                 ) : (
-                  // Empty placeholders to fill the grid and provide guidance
                   <>
-                     <div className="flex items-center gap-3 rounded-2xl border border-dashed border-[#dce8ff] bg-slate-50/50 p-3 opacity-70 transition-colors hover:bg-slate-50">
+                     <div className="flex items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-3 opacity-70">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/80">
                         <Target size={16} className="text-slate-300" />
                       </div>
-                      <div className="min-w-[120px]">
+                      <div className="min-w-0">
                         <p className="text-[10px] font-black text-slate-400 uppercase">차순위 목표 1</p>
                         <p className="text-xs font-bold text-slate-400">데이터가 없습니다</p>
                       </div>
                     </div>
-                    {/* Hide second placeholder on small screens to avoid clutter, but keep for desktop to fill space */}
-                     <div className="hidden items-center gap-3 rounded-2xl border border-dashed border-[#dce8ff] bg-slate-50/40 p-3 opacity-45 sm:flex">
+                     <div className="hidden items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 p-3 opacity-45 sm:flex">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100/80">
                         <Target size={16} className="text-slate-300" />
                       </div>
-                      <div className="min-w-[120px]">
+                      <div className="min-w-0">
                         <p className="text-[10px] font-black text-slate-400 uppercase">차순위 목표 2</p>
                         <p className="text-xs font-bold text-slate-400">데이터가 없습니다</p>
                       </div>
@@ -576,14 +573,13 @@ export default function Dashboard() {
               </div>
             </div>
             
-            {/* If no diagnosis but goal exists, add a hint to fill more space */}
             {hasPrimaryGoal && !hasDiagnosis && (
-              <div className="mt-8 flex items-center gap-4 rounded-2xl bg-[linear-gradient(135deg,#f5f9ff_0%,#f0fffb_100%)] p-4 text-sm font-medium text-slate-600 ring-1 ring-inset ring-blue-100/50">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+              <div className="mt-8 flex items-center gap-4 rounded-2xl bg-blue-50 p-4 text-sm font-medium text-slate-600 ring-1 ring-inset ring-blue-100">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#3182f6] shadow-sm">
                   <Sparkles size={18} />
                 </div>
                 <p>
-                  목표 설정 완료. 이제 <span className="font-black text-[#1d4fff]">학생부 PDF</span>를 업로드해
+                  목표 설정 완료. 이제 <span className="font-black text-[#3182f6]">학생부 PDF</span>를 업로드해
                   {` ${primaryGoal?.university}`} 진단을 시작하세요.
                 </p>
               </div>
@@ -595,7 +591,7 @@ export default function Dashboard() {
         <SectionCard title="워크플로 진행도" className="h-full">
           <div className="space-y-4">
             {workflowSteps.map((step) => (
-              <div key={step.key} className="flex gap-4 rounded-2xl bg-white/55 p-3">
+              <div key={step.key} className="flex gap-4 rounded-2xl bg-slate-50/50 p-3 ring-1 ring-slate-100">
                 <div className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
                   step.status === 'done' ? 'bg-[#3182f6] border-[#3182f6] text-white' : 
                   step.status === 'active' ? 'border-[#3182f6] text-[#3182f6]' : 'border-slate-200 text-slate-200'
@@ -604,7 +600,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h4 className={`text-sm font-black ${step.status === 'pending' ? 'text-slate-400' : 'text-slate-900'}`}>{step.title}</h4>
-                  <p className="line-clamp-3 text-xs font-medium leading-5 text-slate-500 sm:line-clamp-none">{step.description}</p>
+                  <p className="line-clamp-2 text-xs font-medium leading-relaxed text-slate-500">{step.description}</p>
                 </div>
               </div>
             ))}
@@ -627,15 +623,14 @@ export default function Dashboard() {
         >
           {isLoadingBlueprint ? (
             <div className="flex h-64 flex-col items-center justify-center gap-4 text-slate-400">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1d4fff] border-t-transparent" />
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3182f6] border-t-transparent" />
               <p className="text-sm font-bold">합격 가능성을 분석하여 퀘스트를 생성하고 있습니다...</p>
             </div>
           ) : blueprint ? (
             <div className="space-y-8">
-              {/* Priority Quests */}
               <div>
-                <h3 className="mb-6 flex items-center gap-2 text-xl font-black text-slate-900">
-                  <Zap size={20} className="text-amber-500" fill="currentColor" />
+                <h3 className="mb-6 flex items-center gap-2 text-xl font-black text-[#191f28]">
+                  <Zap size={20} className="text-[#ff9c20]" fill="currentColor" />
                   최우선 퀘스트
                 </h3>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -645,18 +640,17 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Subject Groups */}
-              <div className="space-y-6 border-t border-[#e4edff] pt-6">
-                <h3 className="text-xl font-black text-slate-900">과목별 탐구 플랜</h3>
+              <div className="space-y-6 border-t border-slate-100 pt-6">
+                <h3 className="text-xl font-black text-[#191f28]">과목별 탐구 플랜</h3>
                 {blueprint.subject_groups.map(group => (
                   <div key={group.name} className="space-y-4">
                     <button 
                       onClick={() => setOpenSubjectGroups(prev => ({ ...prev, [group.name]: !prev[group.name] }))}
-                      className="flex w-full items-center justify-between rounded-2xl border border-white/80 bg-[linear-gradient(135deg,#f7faff_0%,#f3f8ff_100%)] p-4 transition-colors hover:bg-[#edf4ff]"
+                      className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-[#f9fafb] p-4 transition-colors hover:bg-slate-50"
                     >
                       <div className="flex items-center gap-3">
-                        <School size={18} className="text-[#6b83af]" />
-                        <span className="font-black text-slate-700">{group.name}</span>
+                        <School size={18} className="text-[#4e5968]" />
+                        <span className="font-black text-[#333d4b]">{group.name}</span>
                         <StatusBadge status="neutral">{group.quests.length}개</StatusBadge>
                       </div>
                       {openSubjectGroups[group.name] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -683,8 +677,6 @@ export default function Dashboard() {
           )}
         </SectionCard>
       </motion.div>
-
-      {/* OnboardingModal Removed: Integrated into /app/diagnosis */}
     </div>
   );
 }

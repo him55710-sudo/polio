@@ -104,8 +104,8 @@ function ToolbarButton({
       disabled={disabled}
       title={title}
       className={cn(
-        'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:h-7 sm:w-7 disabled:pointer-events-none disabled:opacity-30',
-        active && 'bg-blue-100 text-blue-700 hover:bg-blue-100',
+        'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-sm sm:h-9 sm:w-9 disabled:pointer-events-none disabled:opacity-30',
+        active && 'bg-blue-50 text-blue-600 ring-1 ring-blue-100 hover:bg-blue-100',
         className,
       )}
     >
@@ -139,7 +139,7 @@ function ColorPicker({
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setIsOpen(!isOpen)}
         title={title}
-        className="flex h-8 w-8 flex-col items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 sm:h-7 sm:w-7"
+        className="flex h-10 w-10 flex-col items-center justify-center rounded-lg text-slate-600 transition-all hover:bg-white hover:shadow-sm sm:h-9 sm:w-9"
       >
         {icon}
         <div className="mt-0.5 h-[3px] w-4 rounded-full" style={{ backgroundColor: currentColor || '#000' }} />
@@ -192,11 +192,34 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
   const currentLineHeight = editor.getAttributes('paragraph').lineHeight || '1.6';
   const currentColor = editor.getAttributes('textStyle').color || '#000000';
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const addImage = useCallback(() => {
-    const url = window.prompt('이미지 URL을 입력하세요');
+    const url = window.prompt('이미지 URL을 입력하거나, 취소를 눌러 파일을 선택하세요');
     if (url) {
       editor.chain().focus().setImage({ src: url }).run();
+    } else if (url === '') {
+      // User pressed OK with empty string, do nothing or trigger file?
+    } else {
+      // User pressed Cancel or empty, let's trigger file input
+      fileInputRef.current?.click();
     }
+  }, [editor]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (readerEvent) => {
+        const src = readerEvent.target?.result as string;
+        if (src) {
+          editor.chain().focus().setImage({ src }).run();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    // reset input
+    e.target.value = '';
   }, [editor]);
 
   const setLink = useCallback(() => {
@@ -211,9 +234,16 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
   }, [editor]);
 
   return (
-    <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
+    <div className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/80 px-2 py-2 backdrop-blur-md sm:px-4">
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept="image/*"
+        onChange={handleFileChange}
+      />
       {/* Row 1: Primary formatting */}
-      <div className="flex items-center gap-0.5 overflow-x-auto px-2 py-1.5 sm:px-3 [&::-webkit-scrollbar]:h-0">
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-0">
         {/* Undo / Redo */}
         <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="실행 취소 (Ctrl+Z)">
           <Undo size={15} />
@@ -226,7 +256,7 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
 
         {/* Font Family */}
         <select
-          className="h-7 rounded-md border border-slate-200 bg-transparent px-1.5 text-[11px] font-semibold text-slate-700 outline-none hover:bg-slate-50 focus:ring-1 focus:ring-blue-300"
+          className="h-9 min-w-[120px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-semibold text-slate-700 shadow-sm outline-none transition-all hover:bg-slate-50 focus:ring-2 focus:ring-blue-100"
           value={currentFontFamily}
           onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -238,7 +268,7 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
 
         {/* Font Size */}
         <select
-          className="h-7 w-14 rounded-md border border-slate-200 bg-transparent px-1 text-[11px] font-semibold text-slate-700 outline-none hover:bg-slate-50 focus:ring-1 focus:ring-blue-300"
+          className="h-9 w-16 rounded-lg border border-slate-200 bg-white px-1 text-[12px] font-semibold text-slate-700 shadow-sm outline-none transition-all hover:bg-slate-50 focus:ring-2 focus:ring-blue-100"
           value={currentFontSize}
           onChange={(e) => editor.chain().focus().setFontSize(e.target.value).run()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -315,7 +345,7 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
 
         {/* Line Height */}
         <select
-          className="h-7 w-14 rounded-md border border-slate-200 bg-transparent px-1 text-[11px] font-semibold text-slate-700 outline-none hover:bg-slate-50 focus:ring-1 focus:ring-blue-300"
+          className="h-9 w-16 rounded-lg border border-slate-200 bg-white px-1 text-[12px] font-semibold text-slate-700 shadow-sm outline-none transition-all hover:bg-slate-50 focus:ring-2 focus:ring-blue-100"
           value={currentLineHeight}
           title="줄 간격"
           onChange={(e) => editor.chain().focus().setLineHeight(e.target.value).run()}

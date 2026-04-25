@@ -310,6 +310,10 @@ export interface DiagnosisResultPayload {
 
 export interface StoredDiagnosis {
   major: string;
+  targetUniversity?: string | null;
+  targetMajor?: string | null;
+  target_university?: string | null;
+  target_major?: string | null;
   projectId?: string;
   savedAt: string;
   diagnosis: Pick<

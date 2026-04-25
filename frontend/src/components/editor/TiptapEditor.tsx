@@ -1,6 +1,6 @@
-import React, { useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
+import React, { useCallback, useRef, useMemo, useImperativeHandle, forwardRef, useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import type { JSONContent } from '@tiptap/react';
+import type { Editor, JSONContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -17,20 +17,42 @@ import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
+import { Minus, Plus } from 'lucide-react';
 
 import { FontSize } from './extensions/FontSize';
 import { LineHeight } from './extensions/LineHeight';
 import { EditorToolbar } from './EditorToolbar';
 import { A4Container } from './A4Container';
 import { getResearchReportTemplate } from './templates/researchReport';
+import { sourceRecordToCitationText } from '../../features/workshop/adapters/sourceAdapter';
+import type {
+  ContentPatch,
+  FigureContentBlock,
+  FormatPatch,
+  MathContentBlock,
+  ReportContentBlock,
+  ReportMetadata,
+  ReportPatch,
+  SourceRecord,
+  UniFoliReportSectionId,
+} from '../../features/workshop/types/reportDocument';
 
 import './TiptapEditor.css';
 
 export interface TiptapEditorHandle {
   getJSON: () => JSONContent;
   getHTML: () => string;
+  getMarkdown: () => string;
   insertTemplate: () => void;
   setContent: (content: any) => void;
+  applyPatch: (patch: ReportPatch) => void;
+  appendToSection: (sectionId: UniFoliReportSectionId, blocks: ReportContentBlock[]) => void;
+  replaceSection: (sectionId: UniFoliReportSectionId, blocks: ReportContentBlock[]) => void;
+  focusSection: (sectionId: UniFoliReportSectionId) => void;
+  insertMathBlock: (block: MathContentBlock) => void;
+  insertFigureBlock: (block: FigureContentBlock) => void;
+  updateCoverMetadata: (metadata: ReportMetadata) => void;
+  updateReferences: (sources: SourceRecord[]) => void;
 }
 
 interface TiptapEditorProps {
@@ -129,6 +151,251 @@ function markdownStringToHtml(markdown: string): string {
   return blocks.join('');
 }
 
+const SECTION_HEADING_LABELS: Record<UniFoliReportSectionId, string> = {
+  cover: '표지',
+  table_of_contents: '목차',
+  motivation: 'I. 연구 동기 및 목적',
+  research_purpose: '연구 목적',
+  research_question: '연구 질문',
+  background_theory: 'II. 이론적 배경',
+  prior_research: '선행연구',
+  research_method: 'III. 연구 방법',
+  research_process: '연구 과정',
+  data_analysis: '데이터 분석',
+  result: 'IV. 연구 결과',
+  conclusion: 'V. 결론 및 제언',
+  limitation: '한계점',
+  future_research: '후속 연구',
+  student_record_connection: '학생 기록 연결',
+  references: '참고 문헌',
+  appendix: '부록',
+};
+
+const SECTION_HEADING_KEYWORDS: Record<UniFoliReportSectionId, string[]> = {
+  cover: ['표지', 'title', 'cover', '탐구 보고서'],
+  table_of_contents: ['목차', 'table of contents'],
+  motivation: ['연구 동기', 'motivation', 'introduction'],
+  research_purpose: ['연구 목적', 'purpose'],
+  research_question: ['연구 질문', 'research question', 'title'],
+  background_theory: ['이론적 배경', 'background', 'theory'],
+  prior_research: ['선행연구', 'prior research'],
+  research_method: ['연구 방법', 'method'],
+  research_process: ['연구 과정', 'process'],
+  data_analysis: ['데이터 분석', 'data analysis'],
+  result: ['연구 결과', 'result'],
+  conclusion: ['결론', '제언', 'conclusion'],
+  limitation: ['한계', 'limitation'],
+  future_research: ['후속 연구', 'future research', 'next step'],
+  student_record_connection: ['학생 기록', 'record connection'],
+  references: ['참고 문헌', 'references', 'bibliography'],
+  appendix: ['부록', 'appendix'],
+};
+
+function reportContentBlocksToTiptapNodes(blocks: ReportContentBlock[]): JSONContent[] {
+  return blocks.flatMap((block) => {
+    switch (block.type) {
+      case 'heading':
+        return [{ type: 'heading', attrs: { level: Math.min(block.level, 3) }, content: textContent(block.text) }];
+      case 'list':
+        return [
+          {
+            type: block.ordered ? 'orderedList' : 'bulletList',
+            content: block.items.map((item) => ({
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: textContent(item) }],
+            })),
+          },
+        ];
+      case 'quote':
+        return [{ type: 'blockquote', content: [{ type: 'paragraph', content: textContent(block.text) }] }];
+      case 'table':
+        return [tableBlockToNode(block.headers, block.rows), ...(block.caption ? [paragraphNode(block.caption)] : [])];
+      case 'math':
+        return mathBlockToNodes(block);
+      case 'figure':
+        return figureBlockToNodes(block);
+      case 'paragraph':
+      default:
+        return [paragraphNode(block.text)];
+    }
+  });
+}
+
+function paragraphNode(text: string): JSONContent {
+  return { type: 'paragraph', content: textContent(text) };
+}
+
+function textContent(text: string): JSONContent[] | undefined {
+  return text ? [{ type: 'text', text }] : undefined;
+}
+
+function tableBlockToNode(headers: string[], rows: string[][]): JSONContent {
+  const headerRow = {
+    type: 'tableRow',
+    content: headers.map((header) => ({
+      type: 'tableHeader',
+      content: [paragraphNode(header)],
+    })),
+  };
+  const bodyRows = rows.map((row) => ({
+    type: 'tableRow',
+    content: row.map((cell) => ({
+      type: 'tableCell',
+      content: [paragraphNode(cell)],
+    })),
+  }));
+  return { type: 'table', content: [headerRow, ...bodyRows] };
+}
+
+function mathBlockToNodes(block: MathContentBlock): JSONContent[] {
+  const mathText = block.displayMode === 'inline' ? `$${block.latex}$` : block.latex;
+  const mathNode: JSONContent =
+    block.displayMode === 'inline'
+      ? paragraphNode(mathText)
+      : { type: 'codeBlock', attrs: { language: 'latex' }, content: textContent(mathText) };
+  return [mathNode, ...(block.caption ? [paragraphNode(`수식: ${block.caption}`)] : [])];
+}
+
+function figureBlockToNodes(block: FigureContentBlock): JSONContent[] {
+  return [
+    {
+      type: 'image',
+      attrs: {
+        src: block.imageUrl,
+        alt: block.altText,
+        title: block.caption,
+      },
+    },
+    paragraphNode(`그림: ${block.caption}${block.sourceId ? ` (출처: ${block.sourceId})` : ''}`),
+  ];
+}
+
+function sourceRecordsToReferenceNodes(sources: SourceRecord[]): JSONContent[] {
+  return [
+    {
+      type: 'orderedList',
+      content: sources.map((source) => ({
+        type: 'listItem',
+        content: [paragraphNode(sourceRecordToCitationText(source))],
+      })),
+    },
+  ];
+}
+
+function jsonContentToMarkdown(node: JSONContent | null | undefined): string {
+  if (!node) return '';
+  const children = (node.content || []).map(jsonContentToMarkdown).filter(Boolean);
+  const text = node.text || children.join('\n\n');
+  switch (node.type) {
+    case 'doc':
+      return children.join('\n\n');
+    case 'heading':
+      return `${'#'.repeat(Number(node.attrs?.level || 1))} ${text}`.trim();
+    case 'paragraph':
+      return text;
+    case 'bulletList':
+      return children.join('\n');
+    case 'orderedList':
+      return children.map((child, index) => `${index + 1}. ${child.replace(/^- /, '')}`).join('\n');
+    case 'listItem':
+      return `- ${children.join(' ').replace(/^- /, '')}`;
+    case 'blockquote':
+      return text
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
+    case 'codeBlock':
+      return `\`\`\`${node.attrs?.language || ''}\n${text}\n\`\`\``;
+    case 'image':
+      return `![${node.attrs?.alt || ''}](${node.attrs?.src || ''})`;
+    case 'horizontalRule':
+      return '---';
+    case 'text':
+      return node.text || '';
+    default:
+      return children.join('\n\n') || text;
+  }
+}
+
+function findSectionRange(
+  editor: Editor,
+  sectionId: UniFoliReportSectionId,
+): { headingPos: number; contentStart: number; contentEnd: number } | null {
+  const keywords = SECTION_HEADING_KEYWORDS[sectionId] || [sectionId];
+  let headingPos: number | null = null;
+  let contentStart: number | null = null;
+  let contentEnd: number | null = null;
+  let headingLevel = 2;
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'heading') {
+      return true;
+    }
+    const level = Number(node.attrs.level || 2);
+    const text = normalizeHeadingText(node.textContent || '');
+    if (headingPos === null && keywords.some((keyword) => text.includes(normalizeHeadingText(keyword)))) {
+      headingPos = pos;
+      contentStart = pos + node.nodeSize;
+      headingLevel = level;
+      return true;
+    }
+    if (headingPos !== null && contentEnd === null && level <= headingLevel) {
+      contentEnd = pos;
+      return false;
+    }
+    return true;
+  });
+
+  if (headingPos === null || contentStart === null) {
+    return null;
+  }
+  return {
+    headingPos,
+    contentStart,
+    contentEnd: contentEnd ?? editor.state.doc.content.size,
+  };
+}
+
+function normalizeHeadingText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^[ivxlcdm]+\.\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function applyContentPatch(
+  patch: ContentPatch,
+  handlers: {
+    appendToSection: (sectionId: UniFoliReportSectionId, blocks: ReportContentBlock[]) => void;
+    replaceSection: (sectionId: UniFoliReportSectionId, blocks: ReportContentBlock[]) => void;
+  },
+) {
+  if (patch.action === 'replace' || patch.action === 'rewrite') {
+    handlers.replaceSection(patch.targetSection, patch.contentBlocks);
+    return;
+  }
+  handlers.appendToSection(patch.targetSection, patch.contentBlocks);
+}
+
+function applyFormatPatch(
+  editor: Editor,
+  patch: FormatPatch,
+  handlers: {
+    updateCoverMetadata: (metadata: ReportMetadata) => void;
+    updateReferences: (sources: SourceRecord[]) => void;
+  },
+) {
+  if (patch.target === 'cover' && typeof patch.changes.metadata === 'object' && patch.changes.metadata) {
+    handlers.updateCoverMetadata(patch.changes.metadata as ReportMetadata);
+  }
+  if (patch.target === 'citation' && Array.isArray(patch.changes.sources)) {
+    handlers.updateReferences(patch.changes.sources as SourceRecord[]);
+  }
+  // TODO: Typography/numbering/toc changes should map to editor document attrs once those attrs exist.
+  editor.commands.focus();
+}
+
 export function normalizeInitialStringContent(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return value;
@@ -141,6 +408,19 @@ export function normalizeInitialStringContent(value: string): string {
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
   function TiptapEditor({ initialContent, onUpdate, onJsonUpdate, onHtmlUpdate, readOnly = false }, ref) {
     const contentRef = useRef<JSONContent | null>(null);
+    const [editorWidth, setEditorWidth] = useState(100); // percentage or specific max-width
+    const [isResizing, setIsResizing] = useState(false);
+
+    const handleImageUpload = useCallback((file: File, editorInstance: Editor) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const src = e.target?.result as string;
+        if (src) {
+          editorInstance.chain().focus().setImage({ src }).run();
+        }
+      };
+      reader.readAsDataURL(file);
+    }, []);
 
     // Resolve initial content — if it's a string (markdown/html), 
     // use it directly (Tiptap will parse HTML). If null, use template.
@@ -213,8 +493,28 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       },
       editorProps: {
         attributes: {
-          class: 'tiptap-editor-content focus:outline-none',
+          class: 'tiptap-editor-content focus:outline-none min-h-[800px] text-lg',
           spellcheck: 'false',
+        },
+        handleDrop: (view, event, _slice, moved) => {
+          if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
+            const file = event.dataTransfer.files[0];
+            if (/image/i.test(file.type)) {
+              handleImageUpload(file, view.state as any);
+              return true;
+            }
+          }
+          return false;
+        },
+        handlePaste: (view, event) => {
+          if (event.clipboardData && event.clipboardData.files && event.clipboardData.files[0]) {
+            const file = event.clipboardData.files[0];
+            if (/image/i.test(file.type)) {
+              handleImageUpload(file, view.state as any);
+              return true;
+            }
+          }
+          return false;
         },
       },
     });
@@ -225,27 +525,192 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       editor.chain().focus().setContent(template).run();
     }, [editor]);
 
+    const appendToSection = useCallback(
+      (sectionId: UniFoliReportSectionId, blocks: ReportContentBlock[]) => {
+        if (!editor || !blocks.length) return;
+        const nodes = reportContentBlocksToTiptapNodes(blocks);
+        const range = findSectionRange(editor, sectionId);
+        if (range) {
+          editor.chain().focus().insertContentAt(range.contentEnd, nodes).run();
+          return;
+        }
+        // TODO: Replace this heading-text fallback with durable section id nodes/marks.
+        editor
+          .chain()
+          .focus('end')
+          .insertContent([paragraphNode(''), { type: 'heading', attrs: { level: 2 }, content: textContent(SECTION_HEADING_LABELS[sectionId]) }, ...nodes])
+          .run();
+      },
+      [editor],
+    );
+
+    const replaceSection = useCallback(
+      (sectionId: UniFoliReportSectionId, blocks: ReportContentBlock[]) => {
+        if (!editor) return;
+        const nodes = reportContentBlocksToTiptapNodes(blocks);
+        const range = findSectionRange(editor, sectionId);
+        if (!range) {
+          appendToSection(sectionId, blocks);
+          return;
+        }
+        editor.chain().focus().deleteRange({ from: range.contentStart, to: range.contentEnd }).insertContentAt(range.contentStart, nodes).run();
+      },
+      [appendToSection, editor],
+    );
+
+    const focusSection = useCallback(
+      (sectionId: UniFoliReportSectionId) => {
+        if (!editor) return;
+        const range = findSectionRange(editor, sectionId);
+        if (range) {
+          editor.chain().focus().setTextSelection(range.headingPos + 1).run();
+        }
+      },
+      [editor],
+    );
+
+    const insertMathBlock = useCallback(
+      (block: MathContentBlock) => {
+        if (!editor) return;
+        editor.chain().focus().insertContent(mathBlockToNodes(block)).run();
+      },
+      [editor],
+    );
+
+    const insertFigureBlock = useCallback(
+      (block: FigureContentBlock) => {
+        if (!editor) return;
+        editor.chain().focus().insertContent(figureBlockToNodes(block)).run();
+      },
+      [editor],
+    );
+
+    const updateReferences = useCallback(
+      (sources: SourceRecord[]) => {
+        if (!editor) return;
+        const nodes = sourceRecordsToReferenceNodes(sources);
+        const range = findSectionRange(editor, 'references');
+        if (range) {
+          editor.chain().focus().deleteRange({ from: range.contentStart, to: range.contentEnd }).insertContentAt(range.contentStart, nodes).run();
+          return;
+        }
+        editor
+          .chain()
+          .focus('end')
+          .insertContent([{ type: 'heading', attrs: { level: 2 }, content: textContent(SECTION_HEADING_LABELS.references) }, ...nodes])
+          .run();
+      },
+      [editor],
+    );
+
+    const updateCoverMetadata = useCallback(
+      (metadata: ReportMetadata) => {
+        if (!editor) return;
+        const nodes = [
+          { type: 'heading', attrs: { level: 1, textAlign: 'center' }, content: textContent(metadata.title || '탐구 보고서') },
+          paragraphNode(metadata.subtitle || ''),
+          paragraphNode(`학교: ${metadata.schoolName || '____________'}    학년/반: ${metadata.grade || '____'} / ${metadata.className || '____'}`),
+          paragraphNode(`이름: ${metadata.studentName || '____________'}    학번: ${metadata.studentId || '____________'}`),
+          paragraphNode(`지도교사: ${metadata.teacherName || '____________'}    작성일: ${metadata.date || '____년 __월 __일'}`),
+        ];
+        const range = findSectionRange(editor, 'cover');
+        if (range) {
+          editor.chain().focus().deleteRange({ from: range.headingPos, to: range.contentEnd }).insertContentAt(range.headingPos, nodes).run();
+          return;
+        }
+        editor.chain().focus().insertContentAt(0, nodes).run();
+      },
+      [editor],
+    );
+
+    const applyPatch = useCallback(
+      (patch: ReportPatch) => {
+        if (!editor) return;
+        if (patch.requiresApproval && patch.status !== 'accepted' && patch.status !== 'applied') {
+          return;
+        }
+        if (patch.type === 'format') {
+          applyFormatPatch(editor, patch, { updateCoverMetadata, updateReferences });
+          return;
+        }
+        applyContentPatch(patch, { appendToSection, replaceSection });
+      },
+      [appendToSection, editor, replaceSection, updateCoverMetadata, updateReferences],
+    );
+
     // Expose imperative handle so parent can call getJSON / insertTemplate
     useImperativeHandle(
       ref,
       () => ({
         getJSON: () => contentRef.current || editor?.getJSON() || { type: 'doc', content: [] },
         getHTML: () => editor?.getHTML() || '',
+        getMarkdown: () => jsonContentToMarkdown(contentRef.current || editor?.getJSON() || { type: 'doc', content: [] }),
         insertTemplate,
         setContent: (content: any) => editor?.commands.setContent(content),
+        applyPatch,
+        appendToSection,
+        replaceSection,
+        focusSection,
+        insertMathBlock,
+        insertFigureBlock,
+        updateCoverMetadata,
+        updateReferences,
       }),
-      [editor, insertTemplate],
+      [
+        appendToSection,
+        applyPatch,
+        editor,
+        focusSection,
+        insertFigureBlock,
+        insertMathBlock,
+        insertTemplate,
+        replaceSection,
+        updateCoverMetadata,
+        updateReferences,
+      ],
     );
 
     return (
-      <div className="flex h-full w-full flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200/80">
-        {!readOnly && <EditorToolbar editor={editor} onInsertTemplate={insertTemplate} />}
+      <div 
+        className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200"
+        style={{ width: `${editorWidth}%`, margin: '0 auto', transition: isResizing ? 'none' : 'width 0.2s ease' }}
+      >
+        {!readOnly && (
+          <div className="flex-none bg-slate-50/50 backdrop-blur-md">
+            <EditorToolbar editor={editor} onInsertTemplate={insertTemplate} />
+          </div>
+        )}
 
-        <div className="flex-1 overflow-y-auto">
-          <A4Container>
-            {editor && <EditorContent editor={editor} />}
-          </A4Container>
+        <div className="flex-1 overflow-y-auto bg-slate-50/30 p-4 sm:p-8">
+          <div className="mx-auto max-w-5xl shadow-2xl transition-shadow hover:shadow-blue-900/5">
+            <A4Container>
+              {editor && <EditorContent editor={editor} />}
+            </A4Container>
+          </div>
         </div>
+
+        {/* Resize Handle */}
+        {!readOnly && (
+          <div className="absolute bottom-4 right-4 flex flex-col items-center gap-2">
+             <div className="flex items-center gap-2 rounded-full bg-white/80 p-1.5 shadow-lg ring-1 ring-slate-200 backdrop-blur-sm">
+                <button 
+                  onClick={() => setEditorWidth(prev => Math.max(50, prev - 10))}
+                  className="rounded-full p-1.5 hover:bg-slate-100 text-slate-500"
+                  title="축소"
+                >
+                  <Minus size={16} />
+                </button>
+                <span className="text-[10px] font-bold text-slate-400 w-8 text-center">{editorWidth}%</span>
+                <button 
+                  onClick={() => setEditorWidth(prev => Math.min(100, prev + 10))}
+                  className="rounded-full p-1.5 hover:bg-slate-100 text-slate-500"
+                  title="확대"
+                >
+                  <Plus size={16} />
+                </button>
+             </div>
+          </div>
+        )}
       </div>
     );
   },

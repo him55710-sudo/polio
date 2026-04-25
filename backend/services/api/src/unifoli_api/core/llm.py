@@ -25,6 +25,7 @@ _OLLAMA_LOG_COOLDOWN_SECONDS = 120.0
 _last_ollama_failure_logs: dict[str, float] = {}
 _ollama_model_alias_cache: dict[str, str] = {}
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+_LLM_MAX_ATTEMPTS = 3
 
 
 class LLMRequestError(RuntimeError):
@@ -135,55 +136,72 @@ class GeminiClient(LLMClient):
         temperature: float = 0.2,
     ) -> T:
         started_at = time.perf_counter()
-        try:
+
+        async def _call_once() -> Any:
             if self.sdk_variant == "google-generativeai":
-                response = await self._legacy_generate_content(
+                return await self._legacy_generate_content(
                     prompt=prompt,
                     system_instruction=system_instruction,
                     temperature=temperature,
                     response_model=response_model,
                     stream=False,
                 )
-            else:
-                config = {
-                    "system_instruction": system_instruction,
-                    "response_mime_type": "application/json",
-                    "response_schema": response_model,
-                    "temperature": temperature,
-                }
-                generate_async = getattr(self.client.models, "generate_content_async", None)
-                if callable(generate_async):
-                    response = await generate_async(
-                        model=self.model_name,
-                        contents=prompt,
-                        config=config,
-                    )
-                else:
-                    response = await asyncio.to_thread(
-                        self.client.models.generate_content,
-                        model=self.model_name,
-                        contents=prompt,
-                        config=config,
-                    )
-            parsed = response_model.model_validate_json(response.text)
-            _record_runtime_success(
-                self,
-                provider="gemini",
+
+            config = {
+                "system_instruction": system_instruction,
+                "response_mime_type": "application/json",
+                "response_schema": response_model,
+                "temperature": temperature,
+            }
+            generate_async = getattr(self.client.models, "generate_content_async", None)
+            if callable(generate_async):
+                return await generate_async(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=config,
+                )
+            return await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=self.model_name,
-                operation="generate_json",
-                started_at=started_at,
+                contents=prompt,
+                config=config,
             )
-            return parsed
-        except Exception as exc:  # noqa: BLE001
-            _record_runtime_failure(
-                self,
-                provider="gemini",
-                model=self.model_name,
-                operation="generate_json",
-                started_at=started_at,
-                exc=exc,
-            )
-            raise
+
+        last_exc: Exception | None = None
+        for attempt in range(_LLM_MAX_ATTEMPTS):
+            try:
+                response = await _call_once()
+                parsed = _parse_response_model(response, response_model)
+                _record_runtime_success(
+                    self,
+                    provider="gemini",
+                    model=self.model_name,
+                    operation="generate_json",
+                    started_at=started_at,
+                )
+                return parsed
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt < _LLM_MAX_ATTEMPTS - 1 and _should_retry_llm_exception(exc):
+                    logger.warning(
+                        "Gemini generate_json attempt failed; retrying. model=%s attempt=%s error=%r",
+                        self.model_name,
+                        attempt + 1,
+                        exc,
+                    )
+                    await asyncio.sleep(_llm_retry_delay_seconds(attempt))
+                    continue
+                _record_runtime_failure(
+                    self,
+                    provider="gemini",
+                    model=self.model_name,
+                    operation="generate_json",
+                    started_at=started_at,
+                    exc=exc,
+                )
+                raise
+
+        raise last_exc or RuntimeError("Gemini generation failed without an exception.")
 
     async def stream_chat(
         self,
@@ -525,7 +543,7 @@ class OllamaClient(LLMClient):
             raise request_error
 
         try:
-            parsed = response_model.model_validate_json(content)
+            parsed = _parse_response_model_text(content, response_model)
         except Exception as exc:  # noqa: BLE001
             request_error = LLMRequestError(
                 "응답 형식을 해석하지 못해 제한 모드로 전환합니다.",
@@ -725,6 +743,94 @@ class RobustLLMClient(LLMClient):
                 )
             else:
                 raise
+
+
+def _parse_response_model(response: Any, response_model: Type[T]) -> T:
+    parsed_payload = getattr(response, "parsed", None)
+    if parsed_payload is not None:
+        if isinstance(parsed_payload, response_model):
+            return parsed_payload
+        try:
+            return response_model.model_validate(parsed_payload)
+        except Exception:
+            logger.debug("Provider parsed payload did not match the requested schema.", exc_info=True)
+
+    response_text = str(getattr(response, "text", "") or "").strip()
+    if not response_text:
+        raise ValueError("LLM response text is empty.")
+    return _parse_response_model_text(response_text, response_model)
+
+
+def _parse_response_model_text(response_text: str, response_model: Type[T]) -> T:
+    text = str(response_text or "").strip()
+    try:
+        return response_model.model_validate_json(text)
+    except Exception as first_exc:
+        extracted = _extract_json_payload(text)
+        if extracted and extracted != text:
+            try:
+                return response_model.model_validate_json(extracted)
+            except Exception:
+                logger.debug("Extracted JSON payload did not validate.", exc_info=True)
+        try:
+            decoded = json.loads(extracted or text)
+            return response_model.model_validate(decoded)
+        except Exception as final_exc:
+            raise first_exc from final_exc
+
+
+def _extract_json_payload(text: str) -> str:
+    stripped = str(text or "").strip()
+    if not stripped:
+        return ""
+    stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r"\s*```$", "", stripped).strip()
+
+    decoder = json.JSONDecoder()
+    starts = [
+        index
+        for index, char in enumerate(stripped)
+        if char in {"{", "["}
+    ]
+    for start in starts:
+        try:
+            _, end = decoder.raw_decode(stripped[start:])
+        except json.JSONDecodeError:
+            continue
+        return stripped[start : start + end].strip()
+    return stripped
+
+
+def _should_retry_llm_exception(exc: Exception) -> bool:
+    if isinstance(exc, (BadRequestError, NotFoundError)):
+        return False
+    category = _classify_runtime_failure(exc)
+    if category in {"timeout", "unreachable", "provider_error", "invalid_response"}:
+        return True
+    lowered = f"{type(exc).__name__}: {exc}".lower()
+    retry_markers = (
+        "429",
+        "500",
+        "502",
+        "503",
+        "504",
+        "temporarily",
+        "timeout",
+        "deadline",
+        "overloaded",
+        "rate",
+        "quota",
+        "connection",
+        "network",
+        "json",
+        "decode",
+        "validation",
+    )
+    return any(marker in lowered for marker in retry_markers)
+
+
+def _llm_retry_delay_seconds(attempt: int) -> float:
+    return min(0.5 * (2**max(0, attempt)), 3.0)
 
 
 def get_llm_client(*, profile: LLMProfile = "standard", concern: LLMConcern = "default") -> LLMClient:

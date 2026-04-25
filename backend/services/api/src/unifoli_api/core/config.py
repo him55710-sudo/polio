@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     docling_enabled: bool = True
     gemini_genai_enabled: bool = False
 
+    # Crawl4AI Settings
+    crawl4ai_enabled: bool = False
+    research_crawl_max_pages: int = 3
+    research_crawl_max_chars_per_page: int = 5000
+    research_crawl_timeout_seconds: float = 12.0
+
     # Storage Settings
     unifoli_storage_provider: str = Field(
         default="local",
@@ -274,6 +280,22 @@ class Settings(BaseSettings):
             raise ValueError("RESEARCH_FETCH_MAX_BYTES must be greater than zero.")
         if self.live_web_search_timeout_seconds <= 0:
             raise ValueError("LIVE_WEB_SEARCH_TIMEOUT_SECONDS must be greater than zero.")
+        
+        # Crawl4AI Validation
+        if self.research_crawl_max_pages < 1:
+            raise ValueError("RESEARCH_CRAWL_MAX_PAGES must be greater than or equal to 1.")
+        if self.research_crawl_max_chars_per_page < 500:
+            raise ValueError("RESEARCH_CRAWL_MAX_CHARS_PER_PAGE must be greater than or equal to 500.")
+        if self.research_crawl_timeout_seconds <= 0:
+            raise ValueError("RESEARCH_CRAWL_TIMEOUT_SECONDS must be greater than zero.")
+
+        if self.serverless_runtime and self.crawl4ai_enabled:
+            logger.warning(
+                "CRAWL4AI_ENABLED is true in a serverless runtime. "
+                "Crawl4AI requires a browser environment which may not be available. "
+                "Ensure your environment supports Playwright/Puppeteer or disable this feature."
+            )
+
         if not _is_valid_http_url(self.live_web_search_endpoint):
             raise ValueError("LIVE_WEB_SEARCH_ENDPOINT must be a valid http(s) URL.")
         if not 0.0 <= float(self.neis_auto_detect_min_confidence) <= 1.0:

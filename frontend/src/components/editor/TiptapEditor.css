@@ -20,8 +20,8 @@
     'Pretendard Variable', 'Pretendard',
     -apple-system, BlinkMacSystemFont, system-ui,
     'Noto Sans KR', 'Malgun Gothic', sans-serif;
-  font-size: 11pt;
-  line-height: 1.6;
+  font-size: 13pt; /* 키움 */
+  line-height: 1.8; /* 가독성 향상 */
   color: #1e293b;
   word-break: keep-all;
   overflow-wrap: break-word;
@@ -51,34 +51,34 @@
 
 /* ── Headings ────────────────────────────── */
 .tiptap-editor-content h1 {
-  font-size: 22pt;
+  font-size: 28pt; /* 키움 */
   font-weight: 800;
-  letter-spacing: -0.02em;
-  margin: 1.5rem 0 0.75rem;
+  letter-spacing: -0.03em;
+  margin: 2rem 0 1.5rem;
   color: #0f172a;
-  border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 0.4rem;
+  border-bottom: 3px solid #f1f5f9;
+  padding-bottom: 0.5rem;
 }
 
 .tiptap-editor-content h2 {
-  font-size: 16pt;
+  font-size: 20pt; /* 키움 */
   font-weight: 700;
-  margin: 1.25rem 0 0.5rem;
+  margin: 1.75rem 0 1rem;
   color: #1e293b;
   border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 0.3rem;
+  padding-bottom: 0.4rem;
 }
 
 .tiptap-editor-content h3 {
-  font-size: 13pt;
+  font-size: 16pt; /* 키움 */
   font-weight: 700;
-  margin: 1rem 0 0.4rem;
+  margin: 1.5rem 0 0.75rem;
   color: #334155;
 }
 
 /* ── Paragraphs ──────────────────────────── */
 .tiptap-editor-content p {
-  margin: 0.4rem 0;
+  margin: 0.8rem 0;
 }
 
 /* ── Blockquote ──────────────────────────── */

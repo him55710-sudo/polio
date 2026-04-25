@@ -47,8 +47,29 @@ import {
   SurfaceCard,
   WorkflowNotice,
 } from '../components/primitives';
-import { TiptapEditor } from '../components/editor/TiptapEditor';
+import { TiptapEditor, type TiptapEditorHandle } from '../components/editor/TiptapEditor';
 import { WorkshopProgress } from '../components/WorkshopProgress';
+import { ChatBubble as WorkshopChatBubble } from '../features/workshop/components/ChatBubble';
+import { PatchReviewCard } from '../features/workshop/components/PatchReviewCard';
+import { WorkshopMobileToggle } from '../features/workshop/components/WorkshopMobileToggle';
+import { TiptapEditorAdapter } from '../features/workshop/adapters/TiptapEditorAdapter';
+import {
+  applyReportPatchToStructuredDraft,
+  convertWorkshopDraftPatchToReportPatch,
+  structuredDraftToReportDocumentState,
+} from '../features/workshop/adapters/workshopPatchAdapter';
+import type { ReportPatch, ResearchCandidate, SourceRecord } from '../features/workshop/types/reportDocument';
+import type { ReviewablePatch } from '../features/workshop/utils/messageFormatters';
+import {
+  buildResearchQueryFromMessage,
+  inferTargetSectionFromResearchMessage,
+  isResearchRequestMessage,
+} from '../features/workshop/utils/researchIntent';
+import { validateReportPatch } from '../features/workshop/validators/reportValidation';
+import type { FormatValidationResult } from '../features/workshop/validators/reportValidation';
+import { useDocumentPatch } from '../features/workshop/hooks/useDocumentPatch';
+import { useEditorBridge } from '../features/workshop/hooks/useEditorBridge';
+import { useResearchCandidates } from '../features/workshop/hooks/useResearchCandidates';
 import {
   ensureThreeSuggestions,
   type GuidedChoiceGroup,
@@ -189,6 +210,10 @@ interface Message {
   role: MessageRole;
   content: string;
   draftPatch?: WorkshopDraftPatchProposal;
+  reportPatch?: ReportPatch;
+  patchValidation?: FormatValidationResult | null;
+  researchCandidates?: ResearchCandidate[];
+  researchSources?: SourceRecord[];
   phase?: GuidedConversationPhase | null;
   topicSubject?: string;
   topicSuggestions?: GuidedTopicSuggestion[];
@@ -593,7 +618,9 @@ async function streamFoliReply(
 
 interface ChatBubbleProps {
   message: Message;
-  onApplyDraftPatch: (patch: WorkshopDraftPatchProposal) => void;
+  onApplyDraftPatch: (patch: WorkshopDraftPatchProposal) => void | Promise<void>;
+  onRejectDraftPatch: (messageId: string) => void;
+  onRequestDraftPatchRewrite: (patch: WorkshopDraftPatchProposal, tone: 'simpler' | 'professional' | 'custom') => void;
   onGuidedChoiceSelect: (groupId: string, option: GuidedChoiceOption, message: Message) => void;
   isGuidedActionLoading?: boolean;
   selectingTopicId?: string | null;
@@ -602,6 +629,8 @@ interface ChatBubbleProps {
 const ChatBubble = memo(function ChatBubble({
   message,
   onApplyDraftPatch,
+  onRejectDraftPatch,
+  onRequestDraftPatchRewrite,
   onGuidedChoiceSelect,
   isGuidedActionLoading,
   selectingTopicId,
@@ -629,6 +658,11 @@ const ChatBubble = memo(function ChatBubble({
     }
     return groups;
   }, [message.choiceGroups, message.phase, topicSuggestions]);
+
+  const reportPatch = useMemo<ReportPatch | null>(
+    () => (message.draftPatch ? convertWorkshopDraftPatchToReportPatch(message.draftPatch) : null),
+    [message.draftPatch],
+  );
 
   return (
     <motion.div
@@ -658,7 +692,17 @@ const ChatBubble = memo(function ChatBubble({
           <MemoizedMarkdown content={message.content} role={message.role} />
         ) : null}
 
-        {message.draftPatch ? (
+        {message.draftPatch && reportPatch ? (
+          <PatchReviewCard
+            className="mt-4"
+            patch={reportPatch}
+            onApply={() => void onApplyDraftPatch(message.draftPatch!)}
+            onReject={() => onRejectDraftPatch(message.id)}
+            onRequestRewrite={(_, tone) => onRequestDraftPatchRewrite(message.draftPatch!, tone)}
+          />
+        ) : null}
+
+        {false && message.draftPatch ? (
           <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 shadow-inner">
             <p className="text-xs font-bold text-slate-600 mb-3 flex items-center gap-2">
               <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-[10px] text-white shadow-sm">AI</span>
@@ -790,6 +834,19 @@ export function Workshop() {
   const [chatMeta, setChatMeta] = useState<ChatStreamMetaPayload | null>(null);
   const [mobileView, setMobileView] = useState<'chat' | 'draft'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<TiptapEditorHandle | null>(null);
+  const reportDocumentState = useMemo(() => structuredDraftToReportDocumentState(structuredDraft), [structuredDraft]);
+  const editorBridge = useEditorBridge({
+    editorRef,
+    documentState: reportDocumentState,
+    structuredDraft,
+    setStructuredDraft,
+  });
+  const documentPatch = useDocumentPatch({
+    getEditorAdapter: editorBridge.getEditorAdapter,
+    structuredDraft,
+    documentState: reportDocumentState,
+  });
 
   const questStart = useMemo(() => readQuestStart(), []);
   const initialMajor = useMemo(() => workshopLocationState?.major || '미정', [workshopLocationState]);
@@ -798,6 +855,14 @@ export function Workshop() {
   const isProjectBacked = Boolean(projectId && projectId !== 'demo');
   const guidedProjectId = isProjectBacked ? projectId ?? null : null;
   const fileName = useMemo(() => `${(questStart?.title || 'draft').replace(/\s+/g, '_')}.hwpx`, [questStart]);
+  const researchCandidates = useResearchCandidates({
+    projectId: guidedProjectId,
+    selectedTopic: guidedSubject || questStart?.title || null,
+    selectedOutline: structuredDraftToMarkdown(structuredDraft),
+    reportDocumentState,
+    formatProfile: reportDocumentState.formatProfile,
+    existingSources: reportDocumentState.sources,
+  });
 
   const initWorkshop = useCallback(async () => {
     setIsSessionLoading(true);
@@ -1449,6 +1514,37 @@ export function Workshop() {
     }));
   }, []);
 
+  const applyPatchThroughReportPipeline = useCallback(
+    async (patch: WorkshopDraftPatchProposal) => {
+      const reportPatch = {
+        ...convertWorkshopDraftPatchToReportPatch(patch, { structuredDraft }),
+        status: 'accepted' as const,
+      };
+      const validation = validateReportPatch(reportPatch, structuredDraftToReportDocumentState(structuredDraft));
+      if (!validation.valid) {
+        toast.error(validation.errors[0] || '문서 반영 제안을 검토해야 합니다.');
+        return false;
+      }
+
+      const result = applyReportPatchToStructuredDraft(structuredDraft, reportPatch, { approved: true });
+      if (!result.applied) {
+        toast.error('학생 작성 내용 보호 정책 때문에 patch를 바로 반영하지 못했습니다.');
+        return false;
+      }
+
+      if (editorRef.current) {
+        new TiptapEditorAdapter(editorRef.current).applyReportPatch(reportPatch);
+      }
+      setStructuredDraft(result.next);
+      setWorkshopMode(result.next.mode);
+      setDocumentContent(structuredDraftToMarkdown(result.next));
+      setPendingDraftPatch(null);
+      toast.success('승인된 문서 patch를 반영했습니다.');
+      return true;
+    },
+    [structuredDraft],
+  );
+
   const updateDraftHeading = useCallback((blockId: string, nextHeading: string) => {
     setStructuredDraft((prev) => ({
       ...prev,
@@ -1465,6 +1561,74 @@ export function Workshop() {
     }));
   }, []);
 
+  const handleResearchRequestIfNeeded = useCallback(
+    async (text: string) => {
+      if (!isResearchRequestMessage(text)) {
+        return false;
+      }
+
+      const targetSection = inferTargetSectionFromResearchMessage(text) || 'background_theory';
+      const query = buildResearchQueryFromMessage(text, {
+        selectedTopic: guidedSubject || questStart?.title || null,
+        selectedOutline: structuredDraftToMarkdown(structuredDraft),
+        targetMajor: initialMajor,
+        currentSectionId: targetSection,
+      });
+
+      setIsTyping(true);
+      const pendingId = crypto.randomUUID();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: pendingId,
+          role: 'foli',
+          content: '관련 논문과 자료를 찾고 있어요. 검색 결과는 바로 문서에 넣지 않고 후보 카드로 보여드릴게요.',
+        },
+      ]);
+
+      try {
+        const result = await researchCandidates.searchCandidates(query || text, {
+          targetSection,
+          source: 'both',
+          limit: 5,
+        });
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  content: result.candidates.length
+                    ? `자료 후보 ${result.candidates.length}개를 찾았어요. 사용할 후보를 고르면 먼저 문서 반영 제안 카드로 바꿔서 보여드릴게요.`
+                    : '검색된 자료 후보가 없어요. 주제나 키워드를 조금 더 구체적으로 말해 주세요.',
+                  researchCandidates: result.candidates,
+                  researchSources: result.sources,
+                }
+              : message,
+          ),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '자료 검색 중 오류가 발생했습니다.';
+        console.error('Research candidate search failed:', error);
+        toast.error(message);
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === pendingId
+              ? {
+                  ...item,
+                  content: `자료 검색에 실패했어요.\n\n${message}\n\n잠시 뒤 다시 시도하거나 검색어를 더 구체적으로 바꿔 주세요.`,
+                }
+              : item,
+          ),
+        );
+      } finally {
+        setIsTyping(false);
+      }
+
+      return true;
+    },
+    [guidedSubject, initialMajor, questStart?.title, researchCandidates, structuredDraft],
+  );
+
   const handleSend = async (overriddenText?: string, options?: { displayText?: string }) => {
     const text = (overriddenText ?? input ?? '').trim();
     const displayText = (options?.displayText || text).trim();
@@ -1472,10 +1636,14 @@ export function Workshop() {
     if (!overriddenText) setInput('');
 
     if (pendingDraftPatch && isPatchAcceptanceMessage(text)) {
-      applyPatchToDraft(pendingDraftPatch, true, false);
+      await applyPatchThroughReportPipeline(pendingDraftPatch);
     }
 
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayText || text }]);
+
+    if (await handleResearchRequestIfNeeded(text)) {
+      return;
+    }
 
     if (isProjectBacked && !isGuidedSetupComplete(guidedPhase)) {
       setIsTyping(true);
@@ -1630,6 +1798,7 @@ export function Workshop() {
           const normalizedPatch = normalizeStructuredDraftPatch(patch);
           if (normalizedPatch) {
             streamedPatch = normalizedPatch;
+            documentPatch.receivePatch(normalizedPatch);
             setPendingDraftPatch(normalizedPatch);
           }
         },
@@ -1660,25 +1829,13 @@ export function Workshop() {
       const extracted = extractPatchTagFromRaw(raw);
       const resolvedPatch = streamedPatch || extracted.patch;
       const responseContent = extracted.cleaned || raw || accumulated || '답변을 생성하지 못했습니다.';
-      const shouldAutoApplyPatch =
-        resolvedPatch !== null &&
-        coauthoringTier !== 'basic' &&
-        (isPatchAcceptanceMessage(text) || isSectionDraftIntent(text));
-
-      if (resolvedPatch && shouldAutoApplyPatch) {
-        const autoApplied = applyPatchToDraft(resolvedPatch, true, false);
-        if (!autoApplied) {
-          setPendingDraftPatch(resolvedPatch);
-        }
-      }
-
       setMessages(prev =>
         prev.map(message =>
           message.id === foliId
             ? {
                 ...message,
                 content: responseContent,
-                draftPatch: resolvedPatch && !shouldAutoApplyPatch ? resolvedPatch : undefined,
+                draftPatch: resolvedPatch || undefined,
               }
             : message,
         ),
@@ -1811,11 +1968,144 @@ export function Workshop() {
   );
 
   const handleApplyPatchFromMessage = useCallback(
-    (patch: WorkshopDraftPatchProposal) => {
-      setPendingDraftPatch(patch);
-      applyPatchToDraft(patch, true, false);
+    async (patch: ReviewablePatch, message?: Message) => {
+      if ('block_id' in patch) {
+        setPendingDraftPatch(patch);
+        await applyPatchThroughReportPipeline(patch);
+        return;
+      }
+      const lifecycle = await documentPatch.applyPatch({ ...patch, status: 'accepted' });
+      if (message?.id && lifecycle.validation.valid) {
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === message.id
+              ? { ...item, reportPatch: lifecycle.patch, patchValidation: lifecycle.validation }
+              : item,
+          ),
+        );
+      }
     },
-    [applyPatchToDraft],
+    [applyPatchThroughReportPipeline, documentPatch],
+  );
+
+  const handleRejectPatchFromMessage = useCallback((patch: ReviewablePatch, message?: Message) => {
+    const messageId = message?.id;
+    if (messageId) {
+      setMessages((prev) =>
+        prev.map((item) =>
+          item.id === messageId
+            ? { ...item, draftPatch: undefined, reportPatch: undefined, patchValidation: null }
+            : item,
+        ),
+      );
+    }
+    if ('block_id' in patch) {
+      setPendingDraftPatch(null);
+    } else {
+      documentPatch.rejectPatch(patch);
+    }
+    toast('문서 반영 제안을 거절했습니다.');
+  }, [documentPatch]);
+
+  const handleRejectPatchByMessageId = useCallback((messageId: string) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? { ...message, draftPatch: undefined, reportPatch: undefined, patchValidation: null }
+          : message,
+      ),
+    );
+    setPendingDraftPatch(null);
+    toast('문서 반영 제안을 거절했습니다.');
+  }, []);
+
+  const handleRequestPatchRewrite = useCallback(
+    (patch: ReviewablePatch, tone: 'simpler' | 'professional' | 'custom') => {
+      const instruction =
+        tone === 'simpler'
+          ? '방금 문서 반영 제안을 더 쉽게 다시 써줘. 문서에는 아직 반영하지 말고 새 patch로 제안해줘.'
+          : tone === 'professional'
+            ? '방금 문서 반영 제안을 더 전문적인 보고서 문체로 다시 써줘. 문서에는 아직 반영하지 말고 새 patch로 제안해줘.'
+            : '방금 문서 반영 제안을 내가 수정해서 승인할 수 있도록 더 작은 단위의 patch로 다시 제안해줘.';
+      if ('block_id' in patch) {
+        setPendingDraftPatch(patch);
+      } else {
+        documentPatch.requestPatchRewrite(patch, tone);
+      }
+      void handleSend(instruction, { displayText: instruction });
+    },
+    [documentPatch, handleSend],
+  );
+
+  const handleUseResearchCandidate = useCallback(
+    (candidateId: string, message: Message) => {
+      const candidate = message.researchCandidates?.find((item) => item.id === candidateId);
+      if (!candidate) {
+        toast.error('선택한 자료 후보를 찾을 수 없습니다.');
+        return;
+      }
+      const patch = researchCandidates.convertCandidateToPatch(candidate);
+      const lifecycle = documentPatch.receivePatch(patch);
+      setMessages((prev) =>
+        prev.map((item) =>
+          item.id === message.id
+            ? {
+                ...item,
+                reportPatch: lifecycle.patch,
+                patchValidation: lifecycle.validation,
+              }
+            : item,
+        ),
+      );
+      toast.success('자료 후보를 문서 반영 제안으로 바꿨어요. 검토 후 승인하면 문서에 들어갑니다.');
+    },
+    [documentPatch, researchCandidates],
+  );
+
+  const handleRefineResearchCandidate = useCallback(
+    async (candidateId: string, message: Message) => {
+      const candidate = message.researchCandidates?.find((item) => item.id === candidateId);
+      if (!candidate) return;
+      try {
+        const result = await researchCandidates.refineCandidate(candidateId, `${candidate.title} 더 구체적인 근거`);
+        if (!result) return;
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === message.id
+              ? {
+                  ...item,
+                  content: `더 구체화한 자료 후보 ${result.candidates.length}개를 다시 찾았어요.`,
+                  researchCandidates: result.candidates,
+                  researchSources: result.sources,
+                  reportPatch: undefined,
+                  patchValidation: null,
+                }
+              : item,
+          ),
+        );
+      } catch (error) {
+        console.error('Research candidate refine failed:', error);
+        toast.error(error instanceof Error ? error.message : '자료 후보를 구체화하지 못했습니다.');
+      }
+    },
+    [researchCandidates],
+  );
+
+  const handleExcludeResearchCandidate = useCallback(
+    (candidateId: string, message: Message) => {
+      researchCandidates.rejectCandidate(candidateId);
+      setMessages((prev) =>
+        prev.map((item) =>
+          item.id === message.id
+            ? {
+                ...item,
+                researchCandidates: item.researchCandidates?.filter((candidate) => candidate.id !== candidateId),
+              }
+            : item,
+        ),
+      );
+    },
+    [researchCandidates],
   );
 
   const handleGenerateDraft = async () => {
@@ -2027,7 +2317,8 @@ export function Workshop() {
         )}
 
         <div className="mt-6 lg:hidden">
-          <div className="inline-flex w-full items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+          <WorkshopMobileToggle value={mobileView} onChange={setMobileView} />
+          <div className="hidden w-full items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
             <button
               type="button"
               onClick={() => setMobileView('chat')}
@@ -2118,10 +2409,15 @@ export function Workshop() {
                 {!isSessionLoading ? (
                   <div className="space-y-6 pb-6">
                     {messages.map((message) => (
-                      <ChatBubble
+                      <WorkshopChatBubble
                         key={message.id}
                         message={message}
-                        onApplyDraftPatch={handleApplyPatchFromMessage}
+                        onApplyPatch={handleApplyPatchFromMessage}
+                        onRejectPatch={handleRejectPatchFromMessage}
+                        onRequestPatchRewrite={handleRequestPatchRewrite}
+                        onUseResearchCandidate={handleUseResearchCandidate}
+                        onRefineResearchCandidate={handleRefineResearchCandidate}
+                        onExcludeResearchCandidate={handleExcludeResearchCandidate}
                         onGuidedChoiceSelect={handleGuidedChoiceSelect}
                         isGuidedActionLoading={isGuidedActionLoading}
                         selectingTopicId={isSelectingGuidedTopicId}
@@ -2206,6 +2502,7 @@ export function Workshop() {
 
               <div className="flex-1 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/50 transition-all focus-within:ring-indigo-500/30">
                 <TiptapEditor
+                  ref={editorRef}
                   initialContent={documentContent}
                   onUpdate={(json, html, text) => {
                     // Simple text update for documentContent to keep it synced

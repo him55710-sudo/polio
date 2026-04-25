@@ -42,6 +42,68 @@ def test_build_grounded_diagnosis_result_returns_canonical_gap_axes_without_vali
     _assert_default_action_references_existing_payload_ids(result)
 
 
+def test_build_grounded_diagnosis_result_without_target_uses_unset_target_language() -> None:
+    result = build_grounded_diagnosis_result(
+        project_title="Unset target check",
+        target_major=None,
+        target_university=None,
+        career_direction=None,
+        document_count=1,
+        full_text=(
+            "Compared readings across two classes, wrote a reflection, and planned a follow-up inquiry "
+            "without selecting a specific university or major yet."
+        ),
+    )
+
+    assert "목표 대학·학과가 아직 설정되지 않아" in result.headline
+    assert "서울대학교" not in result.headline
+    assert "건축학과" not in result.headline
+    assert result.diagnosis_summary is not None
+    assert "설정 안 됨" in result.diagnosis_summary.target_context
+
+
+def test_evaluate_student_record_without_target_scrubs_target_specific_llm_headline(monkeypatch) -> None:
+    class _TargetSpecificDiagnosisLLM:
+        async def generate_json(self, **kwargs):  # noqa: ANN003
+            response_model = kwargs["response_model"]
+            grounded = build_grounded_diagnosis_result(
+                project_title="No target LLM scrub check",
+                target_major="건축학과",
+                target_university="서울대학교",
+                career_direction=None,
+                document_count=1,
+                full_text=kwargs.get("prompt", ""),
+            )
+            grounded.headline = "서울대학교 건축학과 입시 관점에서 판단한 진단입니다."
+            grounded.recommended_focus = "서울대학교 건축학과 합격을 목표로 보완하세요."
+            return response_model.model_validate(grounded.model_dump())
+
+    monkeypatch.setattr("unifoli_api.services.diagnosis_service.get_llm_client", lambda: _TargetSpecificDiagnosisLLM())
+    monkeypatch.setattr("unifoli_api.services.diagnosis_service.fetch_cached_response", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_service.store_cached_response", lambda *_args, **_kwargs: None)
+
+    result = asyncio.run(
+        evaluate_student_record(
+            user_major="일반 탐구",
+            masked_text=(
+                "Compared readings across two classes, wrote a reflection, and planned a follow-up inquiry "
+                "without selecting a specific university or major yet."
+            ),
+            target_university=None,
+            target_major=None,
+            career_direction=None,
+            project_title="No target LLM scrub check",
+            scope_key=f"unset-target:{uuid4()}",
+            evidence_keys=["doc:unset-target"],
+        )
+    )
+
+    assert "목표 대학·학과가 아직 설정되지 않아" in result.headline
+    assert "서울대학교" not in result.headline
+    assert "건축학과" not in result.headline
+    assert "서울대학교" not in result.recommended_focus
+
+
 def test_evaluate_student_record_success_path_returns_guided_contract(monkeypatch) -> None:
     class _SuccessfulDiagnosisLLM:
         async def generate_json(self, **kwargs):  # noqa: ANN003
@@ -108,7 +170,7 @@ def test_evaluate_student_record_fallback_path_returns_guided_contract(monkeypat
         )
     )
 
-    assert "fallback" in result.headline.lower()
+    assert "자동 분석 결과" in result.headline
     assert len(result.gap_axes) == len(POSITIVE_AXIS_KEYS)
     assert {axis.key for axis in result.gap_axes} == set(POSITIVE_AXIS_KEYS)
     _assert_default_action_references_existing_payload_ids(result)

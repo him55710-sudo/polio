@@ -101,25 +101,33 @@ export function Landing() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.98 }}
+            whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true, amount: 0.35 }}
-            transition={{ duration: 0.55, delay: 0.05 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
             className="relative"
           >
-            <div className="tilt-3d relative rounded-[2.2rem] border border-slate-200 bg-white/78 p-8 shadow-sm backdrop-blur-xl sm:p-12 flex flex-col items-center justify-center h-full">
-              <h2 className="text-2xl font-bold text-slate-800 mb-4">입시 전략의 새로운 패러다임</h2>
-              <p className="text-slate-600 text-center">여러분의 학생부 분석부터 워크숍 기획까지, UniFoli가 함께합니다.</p>
+            <div className="relative overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white p-10 shadow-xl shadow-blue-50/50 sm:p-14 flex flex-col items-center justify-center h-full min-h-[320px]">
+              {/* Subtle background element */}
+              <div className="absolute top-0 right-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-blue-50/50 blur-3xl opacity-60" />
+              <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-64 w-64 rounded-full bg-indigo-50/50 blur-3xl opacity-60" />
+              
+              <div className="relative z-10 space-y-6 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#3182f6]">
+                  <Layers3 size={32} strokeWidth={2.5} />
+                </div>
+                <h2 className="text-3xl font-black tracking-tight text-[#191f28] sm:text-4xl">
+                  입시 전략의 새로운 패러다임
+                </h2>
+                <p className="text-lg font-medium leading-relaxed text-[#4e5968] max-w-[280px] mx-auto">
+                  여러분의 학생부 분석부터 워크숍 기획까지, <span className="font-black text-[#3182f6]">UniFoli</span>가 함께합니다.
+                </p>
+              </div>
             </div>
           </motion.div>
         </div>
 
-        <div className="mb-8 flex justify-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/84 px-3 py-1 text-xs font-bold text-slate-500">
-            스크롤해서 실행 카드 보기
-            <ArrowDown size={13} />
-          </div>
-        </div>
+        <div className="mb-12" />
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">

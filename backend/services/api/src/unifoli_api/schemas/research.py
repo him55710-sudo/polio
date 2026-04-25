@@ -90,3 +90,32 @@ class ResearchChunkRead(BaseModel):
 class ResearchIngestResponse(BaseModel):
     documents: list[ResearchDocumentRead]
     jobs: list[AsyncJobRead]
+
+
+class ResearchCrawlRequest(BaseModel):
+    project_id: str
+    urls: list[str] = Field(min_length=1, max_length=10)
+    max_pages: int | None = Field(default=None, ge=1, le=5)
+    max_chars_per_page: int | None = Field(default=None, ge=500, le=10000)
+
+
+class CrawledPageRead(BaseModel):
+    url: str
+    title: str | None = None
+    text: str | None = None
+    markdown: str | None = None
+    extracted_at: str
+    provider: str
+    status: Literal["ok", "error", "unavailable", "skipped"]
+    error: str | None = None
+    source_domain: str | None = None
+    char_count: int = 0
+
+
+class ResearchCrawlResponse(BaseModel):
+    pages: list[CrawledPageRead]
+    ok_count: int
+    error_count: int
+    unavailable_count: int
+    skipped_count: int
+    message: str | None = None

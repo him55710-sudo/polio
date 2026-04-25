@@ -392,9 +392,10 @@ export function Trends() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {displayedTopics.map((topic, index) => {
             const topicLine = activeLens === 'flow' ? topic.flow : activeLens === 'question' ? topic.question : topic.activity;
+            const topicWithMajor = topic as unknown as { major?: unknown };
             const topicMajorLabel =
-              typeof (topic as { major?: unknown }).major === 'string'
-                ? (topic as { major: string }).major
+              typeof topicWithMajor.major === 'string'
+                ? topicWithMajor.major
                 : selectedMajor;
             // Determine palette based on the topic's major if search is active
             const topicPalette = searchKeyword.trim()

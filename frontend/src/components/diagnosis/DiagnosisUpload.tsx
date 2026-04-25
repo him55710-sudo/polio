@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { FileUp, Plus, Send, Settings2 } from 'lucide-react';
+import { FileUp, Loader2, Plus, Send, Settings2, Sparkles, Target } from 'lucide-react';
 import { SectionCard, SecondaryButton, WorkflowNotice } from '../primitives';
+import { cn } from '../../lib/cn';
 import {
   buildPreUploadGuideReply,
   PRE_UPLOAD_GUIDE_OPENING,

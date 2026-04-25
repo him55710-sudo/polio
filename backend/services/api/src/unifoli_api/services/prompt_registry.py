@@ -60,6 +60,12 @@ class PromptRegistry:
             prompt_root=self.prompt_root,
         )
         self._manifest: dict[str, object] | None = None
+        self._asset_roots: dict[str, Path] = {}
+        self._fallback_prompt_roots = (
+            self._build_fallback_prompt_roots(self.prompt_root)
+            if prompt_root is None and registry_path is None
+            else ()
+        )
 
     def list_asset_metadata(self) -> tuple[PromptAssetMeta, ...]:
         registry = self._load_manifest()
@@ -76,7 +82,7 @@ class PromptRegistry:
                 f"Prompt asset '{name}' was not found in registry '{self.registry_path}'."
             )
         meta = self._parse_meta(name=name, payload=payload)
-        full_path = (self.prompt_root / meta.relative_path).resolve()
+        full_path = self._resolve_asset_path(meta)
         if not full_path.exists():
             raise PromptRegistryError(
                 f"Prompt file for '{name}' is missing: '{full_path}'."
@@ -114,22 +120,60 @@ class PromptRegistry:
                 f"Registry '{self.registry_path}' is missing a top-level 'prompts' object."
             )
 
-        if not self.registry_path.exists():
+        prompts = dict(self._read_manifest_prompts(self.registry_path))
+        self._asset_roots = {name: self.prompt_root for name in prompts}
+
+        for fallback_root in self._fallback_prompt_roots:
+            fallback_registry_path = (fallback_root / "registry.v1.json").resolve()
+            if fallback_registry_path == self.registry_path.resolve() or not fallback_registry_path.exists():
+                continue
+            fallback_prompts = self._read_manifest_prompts(fallback_registry_path)
+            for name, payload in fallback_prompts.items():
+                if name in prompts:
+                    continue
+                prompts[name] = payload
+                self._asset_roots[name] = fallback_root
+
+        self._manifest = {"prompts": prompts}
+        return prompts
+
+    @staticmethod
+    def _read_manifest_prompts(registry_path: Path) -> dict[str, object]:
+        if not registry_path.exists():
             raise PromptRegistryError(
-                f"Prompt registry file is missing: '{self.registry_path}'."
+                f"Prompt registry file is missing: '{registry_path}'."
             )
-        raw = json.loads(self.registry_path.read_text(encoding="utf-8"))
+        raw = json.loads(registry_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise PromptRegistryError(
-                f"Prompt registry '{self.registry_path}' must contain a JSON object."
+                f"Prompt registry '{registry_path}' must contain a JSON object."
             )
-        self._manifest = raw
         prompts = raw.get("prompts")
         if not isinstance(prompts, dict):
             raise PromptRegistryError(
-                f"Registry '{self.registry_path}' is missing a top-level 'prompts' object."
+                f"Registry '{registry_path}' is missing a top-level 'prompts' object."
             )
         return prompts
+
+    def _resolve_asset_path(self, meta: PromptAssetMeta) -> Path:
+        roots: list[Path] = []
+        preferred_root = self._asset_roots.get(meta.name)
+        if preferred_root is not None:
+            roots.append(preferred_root)
+        roots.append(self.prompt_root)
+        roots.extend(self._fallback_prompt_roots)
+
+        seen: set[Path] = set()
+        for root in roots:
+            resolved_root = root.resolve()
+            if resolved_root in seen:
+                continue
+            seen.add(resolved_root)
+            candidate = (resolved_root / meta.relative_path).resolve()
+            if candidate.exists():
+                return candidate
+        first_root = roots[0] if roots else self.prompt_root
+        return (first_root / meta.relative_path).resolve()
 
     @staticmethod
     def _resolve_prompt_root(*, explicit: Path | None, configured: str | None) -> Path:
@@ -162,6 +206,26 @@ class PromptRegistry:
     @staticmethod
     def _repo_root() -> Path:
         return find_project_root().parent
+
+    @staticmethod
+    def _backend_root() -> Path:
+        return find_project_root()
+
+    @staticmethod
+    def _build_fallback_prompt_roots(primary_root: Path) -> tuple[Path, ...]:
+        candidates = [
+            PromptRegistry._repo_root() / "prompts",
+            PromptRegistry._backend_root() / "prompts",
+        ]
+        roots: list[Path] = []
+        seen: set[Path] = {primary_root.resolve()}
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            if resolved in seen or not resolved.exists():
+                continue
+            seen.add(resolved)
+            roots.append(resolved)
+        return tuple(roots)
 
     @staticmethod
     def _parse_meta(*, name: str, payload: object) -> PromptAssetMeta:

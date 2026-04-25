@@ -11,11 +11,14 @@ from unifoli_api.db.models.user import User
 from unifoli_api.schemas.async_job import AsyncJobRead, as_async_job_read
 from unifoli_api.schemas.research import (
     ResearchChunkRead,
+    ResearchCrawlRequest,
+    ResearchCrawlResponse,
     ResearchDocumentRead,
     ResearchIngestRequest,
     ResearchIngestResponse,
 )
 from unifoli_api.services.async_job_service import create_async_job, dispatch_job_if_enabled
+from unifoli_api.services.crawler_provider_service import crawl_many
 from unifoli_api.services.project_service import get_project
 from unifoli_api.services.research_service import (
     create_research_placeholder,
@@ -123,3 +126,41 @@ def get_research_source_chunks(
     if project is None:
         raise HTTPException(status_code=404, detail="Research document not found.")
     return [ResearchChunkRead.model_validate(item) for item in list_research_chunks(db, document_id)]
+
+
+@router.post("/crawl", response_model=ResearchCrawlResponse)
+async def crawl_research_urls(
+    payload: ResearchCrawlRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(rate_limit(bucket="research_crawl", limit=10, window_seconds=300)),
+) -> ResearchCrawlResponse:
+    project = get_project(db, payload.project_id, owner_user_id=current_user.id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    pages = await crawl_many(
+        urls=payload.urls,
+        max_pages=payload.max_pages,
+        max_chars_per_page=payload.max_chars_per_page,
+    )
+
+    ok_count = sum(1 for p in pages if p.status == "ok")
+    error_count = sum(1 for p in pages if p.status == "error")
+    unavailable_count = sum(1 for p in pages if p.status == "unavailable")
+    skipped_count = sum(1 for p in pages if p.status == "skipped")
+
+    message = "Crawled pages successfully."
+    if unavailable_count > 0 and ok_count == 0:
+        message = "Crawl4AI is disabled. Search snippets will be used instead."
+    elif error_count > 0 or skipped_count > 0:
+        message = "Some pages could not be crawled. Partial results are available."
+
+    return ResearchCrawlResponse(
+        pages=pages,
+        ok_count=ok_count,
+        error_count=error_count,
+        unavailable_count=unavailable_count,
+        skipped_count=skipped_count,
+        message=message,
+    )

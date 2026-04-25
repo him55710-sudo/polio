@@ -993,10 +993,11 @@ def _build_guided_diagnosis(
         targets.extend(interest_universities)
     
     target_context_label = " 및 ".join(targets[:2]) + (f" 외 {len(targets)-2}개" if len(targets) > 2 else "")
+    has_target_context = bool(target_context_label)
     if not target_context_label:
-        target_context_label = target_major or "희망 전공"
+        target_context_label = "목표 대학·학과 미설정 상태"
 
-    major_label = target_major or "희망 전공"
+    major_label = target_major or "학생부 기반 탐구"
     gap_axes = _infer_gap_axes(
         full_text=full_text,
         target_major=target_major,
@@ -1006,19 +1007,31 @@ def _build_guided_diagnosis(
     )
     directions = _recommended_directions_from_axes(gap_axes=gap_axes, major_label=major_label, project_title=project_title)
     risk_level = _risk_level_from_axes(gap_axes)
-    result = DiagnosisResult(
-        headline=(
+    if has_target_context:
+        headline = (
             f"{target_context_label} 입시 관점에서, 현재 기록은 {'조심스럽게 심화를 진행할 수 있는 기반이 마련되어 있습니다' if risk_level == 'safe' else '방어 가능한 근거가 일부 부족한 상태입니다'}; "
             "다음 활동은 양적인 확장보다 증거의 밀도와 방향성을 정교화하는 데 집중해야 합니다."
-        ),
-        strengths=_strengths_from_axes(gap_axes),
-        gaps=_gaps_from_axes(gap_axes),
-        detailed_gaps=_detailed_gaps_from_axes(gap_axes),
-        recommended_focus=(
+        )
+        recommended_focus = (
             f"{target_context_label} 합격을 목표로 할 때, 현재 가장 필요한 단계는 "
             f"{next((axis.label for axis in gap_axes if axis.severity != 'strong'), '기존 근거 기반의 심화')} 측면을 강화하는 것입니다. "
             "포장된 수식어보다 실제 수행 가능한 활동에 집중하세요."
-        ),
+        )
+    else:
+        headline = (
+            "목표 대학·학과가 아직 설정되지 않아, 현재 기록은 특정 대학 합격 판단보다 학생부 기반 준비도 관점에서 해석했습니다; "
+            "먼저 목표를 확정한 뒤 전공 적합성, 탐구 심화도, 면접 방어력을 다시 맞춤 진단해야 합니다."
+        )
+        recommended_focus = (
+            "목표 설정 전에는 현재 기록에서 반복되는 강점과 약한 근거를 먼저 정리하고, "
+            f"{next((axis.label for axis in gap_axes if axis.severity != 'strong'), '기존 근거 기반의 심화')} 측면을 보완할 수 있는 후보 전공/학과를 확정하는 것이 우선입니다."
+        )
+    result = DiagnosisResult(
+        headline=headline,
+        strengths=_strengths_from_axes(gap_axes),
+        gaps=_gaps_from_axes(gap_axes),
+        detailed_gaps=_detailed_gaps_from_axes(gap_axes),
+        recommended_focus=recommended_focus,
         action_plan=[DiagnosisQuest(title=direction.label, description=direction.summary, priority="high" if index == 0 else "medium") for index, direction in enumerate(directions)],
         risk_level=risk_level,
         diagnosis_summary=_diagnosis_summary(
@@ -1081,18 +1094,34 @@ def _hydrate_guided_fields(
     full_text: str,
 ) -> DiagnosisResult:
     _normalize_guided_choice_constraints(result)
+    fallback: DiagnosisResult | None = None
+    if not (target_major or target_university or interest_universities):
+        fallback = build_grounded_diagnosis_result(
+            project_title=project_title,
+            target_major=target_major,
+            target_university=target_university,
+            interest_universities=interest_universities,
+            career_direction=career_direction,
+            document_count=1,
+            full_text=full_text,
+        )
+        result.headline = fallback.headline
+        result.recommended_focus = fallback.recommended_focus
+        result.diagnosis_summary = fallback.diagnosis_summary
+
     if _has_complete_guided_contract(result):
         return result
 
-    fallback = build_grounded_diagnosis_result(
-        project_title=project_title,
-        target_major=target_major,
-        target_university=target_university,
-        interest_universities=interest_universities,
-        career_direction=career_direction,
-        document_count=1,
-        full_text=full_text,
-    )
+    if fallback is None:
+        fallback = build_grounded_diagnosis_result(
+            project_title=project_title,
+            target_major=target_major,
+            target_university=target_university,
+            interest_universities=interest_universities,
+            career_direction=career_direction,
+            document_count=1,
+            full_text=full_text,
+        )
     if not result.diagnosis_summary:
         result.diagnosis_summary = fallback.diagnosis_summary
     if len(result.gap_axes) != len(AXIS_LABELS) or {axis.key for axis in result.gap_axes} != set(AXIS_LABELS.keys()):
@@ -1140,9 +1169,10 @@ async def evaluate_student_record(
         targets_str = ", ".join(interest_universities)
         extra_targets = f"\nOther Interest Universities: {targets_str}"
 
+    explicit_target_major = (target_major or "").strip() or None
     target_context = (
         f"Target University: {target_university or 'Not set'}\n"
-        f"Target Major: {target_major or user_major}\n"
+        f"Target Major: {explicit_target_major or 'Not set'}\n"
         f"Career Direction: {career_direction or 'Not set'}"
         f"{extra_targets}"
     )
@@ -1201,7 +1231,7 @@ async def evaluate_student_record(
             return _hydrate_guided_fields(
                 result=cached_result,
                 project_title=project_title or "학생 기록부",
-                target_major=target_major or user_major,
+                target_major=explicit_target_major,
                 target_university=target_university,
                 interest_universities=interest_universities,
                 career_direction=career_direction,
@@ -1219,7 +1249,7 @@ async def evaluate_student_record(
                 result = _hydrate_guided_fields(
                     result=result,
                     project_title=project_title or "학생 기록부",
-                    target_major=target_major or user_major,
+                    target_major=explicit_target_major,
                     target_university=target_university,
                     interest_universities=interest_universities,
                     career_direction=career_direction,
@@ -1245,7 +1275,7 @@ async def evaluate_student_record(
             ) from exc
         fallback = build_grounded_diagnosis_result(
             project_title=project_title or "학생 기록부",
-            target_major=target_major or user_major,
+            target_major=explicit_target_major,
             target_university=target_university,
             interest_universities=interest_universities,
             career_direction=career_direction,

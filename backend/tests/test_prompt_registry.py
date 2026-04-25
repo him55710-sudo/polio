@@ -24,6 +24,15 @@ def test_prompt_registry_loads_known_asset() -> None:
     assert "diagnosis engine and guided-choice planner" in composed
 
 
+def test_prompt_registry_falls_back_to_backend_registry_assets() -> None:
+    registry = PromptRegistry()
+
+    asset = registry.get_asset("diagnosis.semantic-scoring")
+
+    assert asset.meta.category == "diagnosis"
+    assert asset.full_path.name == "prompt.md"
+
+
 def test_prompt_registry_missing_prompt_has_clear_error() -> None:
     registry = PromptRegistry()
 

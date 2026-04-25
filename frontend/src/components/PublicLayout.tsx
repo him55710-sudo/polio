@@ -19,10 +19,10 @@ function PublicNavItem({ to, label, onClick }: { to: string; label: string; onCl
       onClick={onClick}
       className={({ isActive }) =>
         cn(
-          'rounded-2xl px-3.5 py-2.5 text-sm font-bold transition-all',
+          'rounded-2xl px-3.5 py-2.5 text-sm font-black transition-all',
           isActive
-            ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#ec4899_48%,#06b6d4_100%)] text-white shadow-[0_14px_30px_rgba(124,58,237,0.24)]'
-            : 'text-slate-600 hover:bg-white/70 hover:text-[#6d28d9]',
+            ? 'bg-[#3182f6] text-white shadow-lg shadow-blue-100'
+            : 'text-[#4e5968] hover:bg-blue-50 hover:text-[#3182f6]',
         )
       }
     >

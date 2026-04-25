@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+import inspect
 import re
 import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -281,6 +282,26 @@ def build_report_artifact_response(
     )
 
 
+async def _emit_report_heartbeat(
+    heartbeat_callback: Callable[..., Any] | None,
+    *,
+    stage: str,
+    message: str,
+    progress: float | None = None,
+) -> None:
+    if heartbeat_callback is None:
+        return
+    try:
+        result = heartbeat_callback(stage=stage, message=message, progress=progress)
+    except TypeError as exc:
+        try:
+            result = heartbeat_callback()
+        except TypeError:
+            raise exc
+    if inspect.isawaitable(result):
+        await result
+
+
 async def generate_consultant_report_artifact(
     db: Session,
     *,
@@ -290,7 +311,7 @@ async def generate_consultant_report_artifact(
     template_id: str | None,
     include_appendix: bool,
     include_citations: bool,
-    force_regenerate: bool, heartbeat_callback: Callable[[], Awaitable[None]] | None = None,
+    force_regenerate: bool, heartbeat_callback: Callable[..., Any] | None = None,
 ) -> DiagnosisReportArtifact:
     report_mode = _canonical_report_mode(report_mode)  # type: ignore[assignment]
     settings = get_settings()
@@ -446,7 +467,7 @@ async def build_consultant_report_payload(
     template_id: str,
     include_appendix: bool,
     include_citations: bool,
-    documents: list[Any], heartbeat_callback: Callable[[], Awaitable[None]] | None = None,
+    documents: list[Any], heartbeat_callback: Callable[..., Any] | None = None,
 ) -> ConsultantDiagnosisReport:
     report_mode = _canonical_report_mode(report_mode)  # type: ignore[assignment]
     mode_spec = _mode_spec(report_mode)
@@ -2743,7 +2764,7 @@ async def _generate_narratives(
     project: Project,
     result: DiagnosisResultPayload,
     document_structure: dict[str, Any],
-    uncertainty_notes: list[str], heartbeat_callback: Callable[[], Awaitable[None]] | None = None,
+    uncertainty_notes: list[str], heartbeat_callback: Callable[..., Any] | None = None,
 ) -> _NarrativeGenerationResult:
     fallback_summary = _build_fallback_executive_summary(result=result)
     fallback_memo = _build_fallback_final_memo(result=result)
@@ -2820,16 +2841,24 @@ async def _generate_narratives(
 
     try:
         llm = resolution.client or get_llm_client(profile="render", concern="render")
-        if heartbeat_callback:
-            await heartbeat_callback()
+        await _emit_report_heartbeat(
+            heartbeat_callback,
+            stage="render_narrative",
+            message="Generating consultant narrative.",
+            progress=54.0,
+        )
         response = await llm.generate_json(
             prompt=prompt,
             response_model=_ConsultantNarrativePayload,
             system_instruction=system_instruction,
             temperature=get_llm_temperature(profile="render", concern="render", resolution=resolution),
         )
-        if heartbeat_callback:
-            await heartbeat_callback()
+        await _emit_report_heartbeat(
+            heartbeat_callback,
+            stage="render_narrative",
+            message="Consultant narrative generated.",
+            progress=62.0,
+        )
         invocation = get_last_llm_invocation(llm)
         actual_provider = (
             str(invocation.get("last_provider_used") or "").strip()

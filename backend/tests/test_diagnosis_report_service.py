@@ -203,6 +203,30 @@ def test_schema_backward_compatibility_allows_old_payload_without_new_fields() -
     assert parsed.score_blocks[0].next_best_action is None
 
 
+def test_report_heartbeat_accepts_worker_style_callback() -> None:
+    calls: list[dict[str, object]] = []
+
+    def heartbeat(stage: str, message: str, progress: float | None = None) -> None:
+        calls.append({"stage": stage, "message": message, "progress": progress})
+
+    asyncio.run(
+        report_service._emit_report_heartbeat(
+            heartbeat,
+            stage="render_narrative",
+            message="Generating consultant narrative.",
+            progress=54.0,
+        )
+    )
+
+    assert calls == [
+        {
+            "stage": "render_narrative",
+            "message": "Generating consultant narrative.",
+            "progress": 54.0,
+        }
+    ]
+
+
 def test_topic_recommendation_block_is_grounded_and_conservative() -> None:
     intelligence = report_service._build_diagnosis_intelligence(
         result=_result_payload(),

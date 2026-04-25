@@ -88,6 +88,10 @@ export function DiagnosisModal({ isOpen, onClose }: DiagnosisModalProps) {
         // Save to cache for roadmap usage
         const storedDiagnosis: StoredDiagnosis = {
           major: major.trim(),
+          targetUniversity: null,
+          targetMajor: major.trim(),
+          target_university: null,
+          target_major: major.trim(),
           projectId: projectId ?? undefined,
           diagnosis: res.result_payload,
           savedAt: new Date().toISOString(),
