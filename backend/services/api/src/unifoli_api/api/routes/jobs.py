@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
@@ -14,21 +16,23 @@ from unifoli_api.services.async_job_service import (
     get_latest_job_for_resource,
     list_project_jobs,
     process_async_job,
+    process_next_async_job,
     retry_async_job,
 )
 from unifoli_api.services.project_service import get_project
 
 router = APIRouter()
+logger = logging.getLogger("unifoli.api.jobs")
 
 
 def _authorize_job_access(db: Session, job, current_user: User) -> None:
     if job is None:
-        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
     if job.project_id is None:
-        raise HTTPException(status, Request_code=status, Request.HTTP_403_FORBIDDEN, detail="Access denied. Job is not bound to a project.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Job is not bound to a project.")
     project = get_project(db, job.project_id, owner_user_id=current_user.id)
     if project is None:
-        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
 
 
 @router.get("", response_model=list[AsyncJobRead])
@@ -39,7 +43,7 @@ def list_jobs_route(
 ) -> list[AsyncJobRead]:
     project = get_project(db, project_id, owner_user_id=current_user.id)
     if project is None:
-        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Project not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
     return [as_async_job_read(item) for item in list_project_jobs(db, project_id)]
 
 
@@ -77,7 +81,7 @@ def retry_job_route(
     _authorize_job_access(db, job, current_user)
     retried = retry_async_job(db, job_id)
     if retried is None:
-        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
     dispatch_job_if_enabled(retried.id)
     return as_async_job_read(retried)
 
@@ -92,14 +96,14 @@ def process_job_route(
     settings = get_settings()
     if not settings.allow_inline_job_processing:
         raise HTTPException(
-            status, Request_code=status, Request.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Inline job processing is disabled. Use the worker instead.",
         )
     job = get_async_job(db, job_id)
     _authorize_job_access(db, job, current_user)
     processed = process_async_job(db, job_id)
     if processed is None:
-        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
     return as_async_job_read(processed)
 
 @router.post("/cron/process", response_model=dict[str, object])
@@ -122,7 +126,7 @@ def cron_process_jobs_route(
     
     if settings.app_cron_secret and effective_secret != settings.app_cron_secret:
         logger.warning("Unauthorized cron attempt rejected.")
-        raise HTTPException(status, Request_code=status, Request.HTTP_401_UNAUTHORIZED, detail="Invalid cron secret.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid cron secret.")
     
     # Run a round of processing
     processed_count = 0
@@ -134,7 +138,7 @@ def cron_process_jobs_route(
         processed_count += 1
     
     return {
-        "status, Request": "ok",
+        "status": "ok",
         "processed_count": processed_count,
         "timestamp": utc_now().isoformat()
     }
