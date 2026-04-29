@@ -16,8 +16,10 @@ from unifoli_shared.paths import resolve_runtime_path
 def classify_startup_failure(error: Exception | str | None) -> str:
     message = str(error or "").strip()
     normalized = message.lower()
-    if "sqlite runtime database is blocked" in normalized:
-        return UniFoliErrorCode.DATABASE_URL_REQUIRED.value
+    if "sqlite runtime database is blocked" in normalized or "sqlite is not allowed in production" in normalized:
+        return UniFoliErrorCode.PRODUCTION_SQLITE_UNSAFE.value
+    if "local storage provider is being used in a production serverless" in normalized:
+        return "STORAGE_PROVIDER_UNSAFE"
     if (
         "database schema has not been initialized" in normalized
         or "database schema is not at alembic head" in normalized
@@ -40,11 +42,14 @@ def classify_startup_failure(error: Exception | str | None) -> str:
 
 
 def remediation_for_error_code(code: str | None) -> str | None:
-    if code == UniFoliErrorCode.DATABASE_URL_REQUIRED.value:
+    if code == UniFoliErrorCode.PRODUCTION_SQLITE_UNSAFE.value or code == UniFoliErrorCode.DATABASE_URL_REQUIRED.value:
         return (
             "Set DATABASE_URL to a managed Postgres connection in Vercel. "
+            "SQLite is ephemeral in serverless and data will be lost. "
             "Use ALLOW_PRODUCTION_SQLITE=true only as a temporary emergency override."
         )
+    if code == "STORAGE_PROVIDER_UNSAFE":
+        return "Change UNIFOLI_STORAGE_PROVIDER to 'vercel_blob', 's3', or 'gcs' for production serverless stability."
     if code == UniFoliErrorCode.DB_SCHEMA_MISMATCH.value:
         return "Run Alembic migrations against the deployed database before routing upload traffic."
     if code == UniFoliErrorCode.DATABASE_UNAVAILABLE.value:
@@ -215,10 +220,15 @@ def build_health_payload(
     startup_error_code = str(getattr(app_state, "runtime_boot_error_code", "") or "").strip() or None
 
     database_scheme = urlparse(str(settings.database_url or "")).scheme or str(settings.database_url).split(":", 1)[0]
+    is_sqlite = database_scheme == "sqlite"
+    is_production = getattr(settings, "app_env", "production") not in {"local", "test"}
+    is_serverless = bool(getattr(settings, "serverless_runtime", False))
+    
     database_info: dict[str, Any] = {
         "configured": bool(str(settings.database_url or "").strip()),
         "scheme": database_scheme or None,
         "allow_production_sqlite": bool(getattr(settings, "allow_production_sqlite", False)),
+        "production_sqlite_unsafe": is_sqlite and is_production and is_serverless,
         "auto_create_tables": bool(getattr(settings, "database_auto_create_tables", True)),
         "connected": None,
         "error": None,
@@ -248,10 +258,20 @@ def build_health_payload(
         storage_bucket = getattr(settings, "gcs_bucket_name", None)
     elif storage_provider in {"vercel_blob", "blob"}:
         storage_bucket = "vercel_blob"
+    storage_persistent = storage_provider in {"s3", "gcs", "firebase", "vercel_blob"}
+    storage_serverless_safe = storage_persistent or (not is_serverless)
+    
     storage_info = {
         "provider": storage_provider,
         "bucket": storage_bucket,
+        "persistent": storage_persistent,
+        "serverless_safe": storage_serverless_safe,
+        "warning": None,
+        "error": None,
     }
+
+    if is_serverless and is_production and not storage_persistent:
+        storage_info["warning"] = "Local storage is ephemeral in serverless production."
 
     resolved_pdf_ollama = (
         getattr(settings, "pdf_analysis_ollama_base_url", None)

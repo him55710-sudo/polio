@@ -80,6 +80,10 @@ function mapErrorCodeToUserMessage(code: string): string | null {
       return '서버 데이터베이스 스키마가 최신 상태가 아닙니다. 운영자에게 마이그레이션 적용을 요청해 주세요.';
     case 'DIAGNOSIS_FAILED':
       return '생기부 진단 생성에 실패했습니다.';
+    case 'HTML_MISROUTE':
+      return '프런트가 백엔드 API 대신 웹페이지 HTML을 받고 있습니다. VITE_API_URL이 백엔드 주소를 가리키는지, 또는 같은 오리진 배포의 rewrite 설정이 올바른지 확인해 주세요.';
+    case 'NETWORK_UNREACHABLE':
+      return '백엔드 서버에 연결할 수 없습니다. API 서버 주소, 배포 상태, CORS 설정을 확인해 주세요.';
     case 'INTERNAL_ERROR':
       return '서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
     default:
@@ -91,7 +95,7 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
   if (axios.isAxiosError(error)) {
     if (!error.response) {
       return {
-        userMessage: '백엔드 서버에 연결할 수 없습니다. API 서버가 실행 중인지 확인해 주세요.',
+        userMessage: mapErrorCodeToUserMessage('NETWORK_UNREACHABLE') || '백엔드 서버에 연결할 수 없습니다.',
         debugCode: 'NETWORK_UNREACHABLE',
         debugDetail: error.message || null,
         status: null,
@@ -114,6 +118,10 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
 
     if (!debugCode && (vercelError === 'FUNCTION_INVOCATION_FAILED' || responseText?.includes('FUNCTION_INVOCATION_FAILED'))) {
       debugCode = 'BACKEND_STARTUP_FAILED';
+    }
+
+    if (!debugCode && String(responseHeaders?.['content-type'] || '').toLowerCase().includes('text/html')) {
+      debugCode = 'HTML_MISROUTE';
     }
 
     const detailMessage =
@@ -188,12 +196,12 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
   }
 
   if (error instanceof Error) {
-    if (error.message.includes('Backend API is returning HTML')) {
+    if (error.message.includes('Backend API is returning HTML') || (error as any).debugCode === 'HTML_MISROUTE') {
       return {
-        userMessage: '프런트가 백엔드 대신 HTML 응답을 받고 있습니다. API 주소 설정을 확인해 주세요.',
+        userMessage: mapErrorCodeToUserMessage('HTML_MISROUTE') || '프런트가 백엔드 대신 HTML을 받고 있습니다.',
         debugCode: 'HTML_MISROUTE',
         debugDetail: error.message,
-        status: null,
+        status: (error as any).status || null,
       };
     }
     const message = error.message.trim();

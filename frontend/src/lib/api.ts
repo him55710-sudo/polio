@@ -16,9 +16,9 @@ function isApiRequestUrl(requestUrl: string): boolean {
 let hasWarnedMissingApiUrl = false;
 
 export function resolveApiBaseUrl() {
-  const configured = viteEnv.VITE_API_URL;
-  if (configured && configured.trim()) {
-    return normalizeBaseUrl(configured.trim());
+  const configured = (viteEnv.VITE_API_URL || '').trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
   }
 
   const sameOriginBase = resolveSameOriginApiBaseUrl();
@@ -33,6 +33,20 @@ export function resolveApiBaseUrl() {
   }
 
   return 'http://localhost:8000';
+}
+
+export function getResolvedApiBaseUrl(): string {
+  return resolveApiBaseUrl();
+}
+
+export function getApiConnectionHint(): string {
+  const resolved = getResolvedApiBaseUrl();
+  const envValue = (viteEnv.VITE_API_URL || '').trim();
+  const isSameOrigin = typeof window !== 'undefined' && resolved === normalizeBaseUrl(window.location.origin);
+  
+  if (envValue) return `Configured (VITE_API_URL): ${resolved}`;
+  if (isSameOrigin) return `Same-Origin: ${resolved}`;
+  return `Default: ${resolved}`;
 }
 
 export function resolveSameOriginApiBaseUrl(): string | null {
@@ -91,19 +105,37 @@ client.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-function assertApiHtmlResponse(requestUrl: string, contentType: string) {
+client.interceptors.response.use(
+  (response) => {
+    assertApiHtmlResponse(response.config, response.headers, response.status);
+    return response;
+  },
+  (error) => {
+    if (axios.isAxiosError(error) && error.response) {
+      assertApiHtmlResponse(error.config || {}, error.response.headers, error.response.status);
+    }
+    return Promise.reject(error);
+  }
+);
+
+function assertApiHtmlResponse(config: AxiosRequestConfig, responseHeaders: any, status: number) {
+  const requestUrl = config.url || '';
+  const contentType = String(responseHeaders?.['content-type'] || '').toLowerCase();
+  
   if (isApiRequestUrl(requestUrl) && contentType.includes('text/html')) {
-    throw new Error(
-      'Backend API is returning HTML. Check VITE_API_URL and make sure it points to the backend origin.',
+    const error = new Error(
+      `Backend API is returning HTML instead of JSON. This usually means a misconfigured VITE_API_URL or a missing server-side route. ` +
+      `[Status: ${status}] [Resolved API Base: ${resolveApiBaseUrl()}] [Request URL: ${requestUrl}]`
     );
+    (error as any).debugCode = 'HTML_MISROUTE';
+    (error as any).status = status;
+    (error as any).contentType = contentType;
+    throw error;
   }
 }
 
 async function request<T = any>(config: AxiosRequestConfig): Promise<T> {
   const response = await client.request<T>(config);
-  const requestUrl = typeof config.url === 'string' ? config.url : '';
-  const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
-  assertApiHtmlResponse(requestUrl, contentType);
   return response.data;
 }
 
@@ -122,12 +154,9 @@ async function download(url: string, config?: AxiosRequestConfig): Promise<ApiDo
     responseType: 'blob',
   });
 
-  const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
-  assertApiHtmlResponse(url, contentType);
-
   return {
     blob: response.data,
-    contentType,
+    contentType: String(response.headers?.['content-type'] || '').toLowerCase(),
     contentDisposition: String(response.headers?.['content-disposition'] || ''),
     status: response.status,
   };

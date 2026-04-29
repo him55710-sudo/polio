@@ -6,6 +6,7 @@ import { AxiosHeaders } from 'axios';
 import { api, applyAuthorizationHeader } from '../src/lib/api';
 import {
   ChatStreamError,
+  consumeChatEventStream,
   openChatEventStream,
   openChatEventStreamWithFallback,
   resolveChatStreamFallbackHint,
@@ -151,6 +152,37 @@ test('chat stream fallback does not retry when authentication fails', async () =
   );
 
   assert.equal(callCount, 1);
+});
+
+test('chat stream keeps partial text when the response closes abruptly after tokens', async () => {
+  const encoded = new TextEncoder().encode('data: {"token":"partial reply"}\n\n');
+  let sent = false;
+  const response = new Response(
+    new ReadableStream({
+      pull(controller) {
+        if (sent) {
+          controller.error(new Error('stream interrupted'));
+          return;
+        }
+        sent = true;
+        controller.enqueue(encoded);
+      },
+    }),
+    {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    },
+  );
+
+  const deltas: string[] = [];
+  const result = await consumeChatEventStream({
+    endpoint: 'https://api.example.com/api/v1/workshops/w1/chat/stream',
+    response,
+    onDelta: (delta) => deltas.push(delta),
+  });
+
+  assert.equal(result, 'partial reply');
+  assert.deepEqual(deltas, ['partial reply']);
 });
 
 test('chat stream classifies backend startup failures separately from generic HTTP errors', async () => {

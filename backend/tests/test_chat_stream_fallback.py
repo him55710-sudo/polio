@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from unifoli_api.core.llm import LLMRequestError
@@ -23,6 +25,13 @@ class _ContextEchoStreamLLM:
     async def stream_chat(self, prompt, system_instruction=None, temperature=0.5):  # noqa: ANN001
         yield "[문서 근거 사용 원칙]\n- 문서 근거 범위를 벗어나는 사실은 단정하지 않습니다.\n"
         yield "[세션 목표 모드]\n- 모드: planning\n- DRAFT_PATCH JSON 예시: {}"
+
+
+class _HangingStreamLLM:
+    async def stream_chat(self, prompt, system_instruction=None, temperature=0.5):  # noqa: ANN001
+        await asyncio.sleep(60)
+        if False:  # pragma: no cover - keeps this as an async generator contract.
+            yield ""
 
 
 def _create_project(client: TestClient, headers: dict[str, str]) -> str:
@@ -126,3 +135,34 @@ def test_workshop_chat_stream_fallback_returns_meta_and_done(monkeypatch) -> Non
     assert '"limited_reason": "ollama_timeout"' in body
     assert '"status": "DONE"' in body
     assert calls == [{"profile": "standard", "concern": "guided_chat"}]
+
+
+def test_workshop_chat_stream_times_out_to_fallback_without_aborting(monkeypatch) -> None:
+    def fake_get_llm_client(*, profile: str = "standard", concern: str = "default") -> _HangingStreamLLM:
+        return _HangingStreamLLM()
+
+    monkeypatch.setattr("unifoli_api.api.routes.workshops.get_llm_client", fake_get_llm_client)
+    monkeypatch.setattr("unifoli_api.api.routes.workshops._resolve_workshop_chat_timeout_seconds", lambda: 0.01)
+
+    headers = auth_headers("workshop-timeout-user")
+    with TestClient(app) as client:
+        project_id = _create_project(client, headers)
+        workshop = client.post(
+            "/api/v1/workshops",
+            headers=headers,
+            json={"project_id": project_id, "quality_level": "mid"},
+        )
+        assert workshop.status_code == 201
+        workshop_id = workshop.json()["session"]["id"]
+
+        response = client.post(
+            f"/api/v1/workshops/{workshop_id}/chat/stream",
+            headers=headers,
+            json={"message": "timeout should still produce a safe reply"},
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert '"limited_mode": true' in body
+    assert '"limited_reason": "llm_timeout"' in body
+    assert '"status": "DONE"' in body

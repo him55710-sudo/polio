@@ -195,6 +195,7 @@ class Settings(BaseSettings):
     ollama_fast_timeout_seconds: float | None = None
     ollama_standard_timeout_seconds: float | None = None
     ollama_render_timeout_seconds: float | None = None
+    workshop_chat_timeout_seconds: float = 25.0
     diagnosis_generation_timeout_seconds: float = 45.0
     pdf_analysis_llm_enabled: bool = True
     pdf_analysis_llm_provider: str = "ollama"
@@ -364,16 +365,36 @@ class Settings(BaseSettings):
 
         vercel_env = (os.getenv("VERCEL_ENV") or "").strip().lower()
         strict_runtime = self.serverless_runtime or vercel_env in {"production", "preview"}
-        if strict_runtime and self.app_env not in {"local", "test"} and _is_sqlite_database_url(self.database_url):
+        
+        # Database Safety Check
+        is_sqlite = _is_sqlite_database_url(self.database_url)
+        is_production_env = self.app_env not in {"local", "test"}
+        
+        if strict_runtime and is_production_env and is_sqlite:
             if not self.allow_production_sqlite:
+                # In production serverless, we fail fast unless explicitly overridden
+                raise ValueError(
+                    "SQLite is not allowed in production serverless environments by default. "
+                    "Data will be ephemeral and lost on function recycle. "
+                    "Set DATABASE_URL to a persistent Postgres endpoint, or set ALLOW_PRODUCTION_SQLITE=true to override."
+                )
+            else:
                 logger.warning(
-                    "SQLite runtime database is being used in a deployed environment. "
-                    "This is discouraged for production use as data will be ephemeral. "
-                    "Startup continues, but consider setting DATABASE_URL to a persistent Postgres endpoint."
+                    "ALLOW_PRODUCTION_SQLITE is enabled in production serverless. "
+                    "Data will be ephemeral and will be lost frequently. USE ONLY FOR TEMPORARY TESTING."
                 )
 
         normalized_storage_provider = (self.unifoli_storage_provider or "").strip().lower()
         object.__setattr__(self, "unifoli_storage_provider", normalized_storage_provider or "local")
+        
+        # Storage Safety Check
+        if strict_runtime and is_production_env and self.unifoli_storage_provider == "local":
+            logger.warning(
+                "LOCAL storage provider is being used in a production serverless environment. "
+                "Uploaded files and reports will be LOST when the function instance is recycled. "
+                "Use 'vercel_blob', 's3', or 'gcs' for persistent storage."
+            )
+
         if self.unifoli_storage_provider == "s3":
             if not self.s3_bucket_name:
                 raise ValueError("S3_BUCKET_NAME is required when UNIFOLI_STORAGE_PROVIDER=s3")
@@ -433,6 +454,8 @@ class Settings(BaseSettings):
         ):
             if value is not None and value <= 0:
                 raise ValueError(f"{name} must be greater than zero when set.")
+        if self.workshop_chat_timeout_seconds <= 0:
+            raise ValueError("WORKSHOP_CHAT_TIMEOUT_SECONDS must be greater than zero.")
 
         pdf_ollama_base_url = self.pdf_analysis_ollama_base_url or self.ollama_base_url
         if not _is_valid_http_url(pdf_ollama_base_url):

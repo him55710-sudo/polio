@@ -132,11 +132,33 @@ Common failure signals:
 
 ## 8. Symptoms and direct meaning
 
-- Frontend shows `HTML_MISROUTE`
-  - `VITE_API_URL` points at the frontend origin or rewrites are bypassed.
-- Frontend shows `NETWORK_UNREACHABLE`
-  - browser never received a normal HTTP response; inspect DNS, TLS, CORS, or total backend outage.
-- Frontend shows `BACKEND_STARTUP_FAILED`
-  - Vercel reached the Python function, but the backend failed before serving normal API responses.
-- `/api/v1/health` returns `DB_SCHEMA_MISMATCH`
-  - the database exists but migrations have not reached Alembic head.
+- **`HTML_MISROUTE`**
+  - **증상**: 프론트엔드가 API 응답(JSON) 대신 HTML을 받음.
+  - **원인 1 (분리 배포)**: `VITE_API_URL`이 백엔드 주소가 아닌 프론트엔드 주소로 설정되어, 백엔드로 가야 할 요청을 프론트엔드 라우터(React Router)가 낚아채서 index.html을 반환함.
+  - **원인 2 (통합 배포)**: `vercel.json`의 rewrites 설정이 누락되거나 작동하지 않아 `/api/*` 요청이 Python 서버로 전달되지 않고 프론트엔드 정적 파일로 연결됨.
+  - **조치**: `VITE_API_URL`을 확인하고, 통합 배포라면 해당 변수를 비우고 rewrite 설정을 점검하세요.
+
+- **`NETWORK_UNREACHABLE`**
+  - **증상**: 브라우저가 서버로부터 어떤 응답도 받지 못함.
+  - **원인**: 백엔드 서버 다운, 잘못된 도메인/IP, 혹은 CORS 정책 위반으로 브라우저가 요청을 차단함.
+  - **조치**: 백엔드 로그를 확인하고, `CORS_ORIGINS`에 현재 프론트엔드 도메인이 포함되어 있는지 확인하세요.
+
+- **`BACKEND_STARTUP_FAILED` (500/502/503)**
+  - **증상**: 서버가 살아있으나 내부 오류로 응답을 못 함.
+  - **원인**: `DATABASE_URL` 누락, 라이브러리 설치 오류, 혹은 런타임 크래시.
+  - **조치**: Vercel Function Logs를 확인하여 traceback을 추적하세요.
+
+- **`DATABASE_UNAVAILABLE`**
+  - **증상**: 서버는 작동하나 데이터베이스 연결 실패.
+  - **조치**: DB 암호, 호스트 설정, 화이트리스트 IP 설정을 확인하세요.
+
+---
+
+## 9. Deployment Mode Quick Summary
+
+| 항목 | 통합 배포 (Monolith) | 분리 배포 (Decoupled) |
+| :--- | :--- | :--- |
+| **VITE_API_URL** | **비워둠 (Empty)** | **백엔드 Origin URL** (e.g., `https://api.unifoli.com`) |
+| **vercel.json** | 필수 (rewrites 설정) | 선택 사항 |
+| **CORS_ORIGINS** | 필요 없음 (Same-Origin) | 필수 (프론트엔드 Origin 주소) |
+| **Firebase Domain** | 자동 추가됨 | 수동으로 백엔드/프론트엔드 도메인 추가 필요 |

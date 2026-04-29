@@ -50,13 +50,37 @@ test('frontend surfaces structured backend diagnosis error codes with separated 
 
 test('frontend surfaces HTML misroute as a dedicated debug code', () => {
   const info = getApiErrorInfo(
-    new Error('Backend API is returning HTML. Check VITE_API_URL and make sure it points to the backend origin.'),
+    new Error('Backend API is returning HTML instead of JSON. Check VITE_API_URL...'),
     'fallback',
   );
 
-  assert.equal(info.userMessage, '프런트가 백엔드 대신 HTML 응답을 받고 있습니다. API 주소 설정을 확인해 주세요.');
+  assert.match(info.userMessage, /프런트가 백엔드 API 대신 웹페이지 HTML을 받고 있습니다/);
   assert.equal(info.debugCode, 'HTML_MISROUTE');
-  assert.match(info.debugDetail || '', /VITE_API_URL/);
+});
+
+test('frontend surfaces HTML misroute from Axios error response with text/html content-type', () => {
+  const error = buildAxiosError(
+    '<html><body>Error Page</body></html>',
+    404,
+    { 'content-type': 'text/html; charset=utf-8' }
+  );
+
+  const info = getApiErrorInfo(error, 'fallback');
+
+  assert.equal(info.debugCode, 'HTML_MISROUTE');
+  assert.match(info.userMessage, /프런트가 백엔드 API 대신 웹페이지 HTML을 받고 있습니다/);
+  assert.equal(info.status, 404);
+});
+
+test('frontend surfaces network unreachable with clear Korean message', () => {
+  const error = new AxiosError('Network Error', 'ERR_NETWORK');
+  // No response object simulates a network failure
+  
+  const info = getApiErrorInfo(error, 'fallback');
+
+  assert.equal(info.debugCode, 'NETWORK_UNREACHABLE');
+  assert.match(info.userMessage, /백엔드 서버에 연결할 수 없습니다/);
+  assert.match(info.userMessage, /API 서버 주소, 배포 상태, CORS 설정/);
 });
 
 test('frontend surfaces vercel function boot failures as backend startup errors', () => {

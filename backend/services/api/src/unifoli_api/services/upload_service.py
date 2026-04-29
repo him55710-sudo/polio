@@ -53,6 +53,16 @@ async def store_upload(
     
     # Use abstracted storage provider
     storage = get_storage_provider(settings)
+    
+    # Storage Safety Check for Production Serverless
+    is_production = settings.app_env not in {"local", "test"}
+    if settings.serverless_runtime and is_production and settings.unifoli_storage_provider == "local":
+        raise UploadValidationError(
+            "Cloud storage is required in production serverless environments. "
+            "Please configure UNIFOLI_STORAGE_PROVIDER to 'vercel_blob', 's3', or 'gcs'.",
+            status_code=500
+        )
+    
     stored_path = f"uploads/{project_id}/{filename}"
     storage.store(contents, stored_path)
 

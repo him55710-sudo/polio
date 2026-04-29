@@ -83,10 +83,11 @@ test('syncWithUser advances a stale goal step when saved goals already exist', (
     lastSyncedUserKey: 'user-1::firebase-1',
   });
 
-  useOnboardingStore.getState().syncWithUser(makeUser({}));
+  const user = makeUser({});
+  useOnboardingStore.getState().syncWithUser(user);
 
   const nextState = useOnboardingStore.getState();
   assert.equal(nextState.diagnosisStep, 'UPLOAD');
-  assert.equal(nextState.goalList[0]?.university, '?쒖슱?');
-  assert.equal(nextState.goalList[0]?.major, '而댄벂?곌났?숆낵');
+  assert.equal(nextState.goalList[0]?.university, user.target_university);
+  assert.equal(nextState.goalList[0]?.major, user.target_major);
 });

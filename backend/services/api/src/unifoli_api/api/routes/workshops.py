@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import json
 import logging
 import secrets
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -12,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from unifoli_api.api.deps import get_current_user, get_db
+from unifoli_api.core.config import get_settings
 from unifoli_api.core.llm import LLMRequestError, get_llm_client, get_llm_temperature
 from unifoli_api.core.rate_limit import rate_limit
 from unifoli_api.db.models.project import Project
@@ -70,6 +72,7 @@ from unifoli_domain.enums import QualityLevel, TurnType, WorkshopStatus
 router = APIRouter()
 logger = logging.getLogger("unifoli.api.workshops")
 _STREAM_TOKEN_TTL_SECONDS = 300
+_WORKSHOP_CHAT_DEFAULT_TIMEOUT_SECONDS = 25.0
 
 
 def _utc_now() -> datetime:
@@ -436,6 +439,36 @@ def _build_workshop_fallback_text(*, user_message: str, reason: str, memory_summ
         reason=reason,
         summary=memory_summary,
     )
+
+
+def _resolve_workshop_chat_timeout_seconds() -> float:
+    raw_value = getattr(get_settings(), "workshop_chat_timeout_seconds", _WORKSHOP_CHAT_DEFAULT_TIMEOUT_SECONDS)
+    try:
+        timeout = float(raw_value)
+    except (TypeError, ValueError):
+        timeout = _WORKSHOP_CHAT_DEFAULT_TIMEOUT_SECONDS
+    return max(1.0, min(timeout, 45.0))
+
+
+async def _collect_workshop_chat_response(
+    llm: Any,
+    *,
+    prompt: str,
+    system_instruction: str,
+    temperature: float,
+    timeout_seconds: float,
+) -> str:
+    async def _collect() -> str:
+        parts: list[str] = []
+        async for token in llm.stream_chat(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            temperature=temperature,
+        ):
+            parts.append(str(token))
+        return "".join(parts)
+
+    return await asyncio.wait_for(_collect(), timeout=timeout_seconds)
 
 
 @router.get("/quality-levels", response_model=list[QualityLevelInfo])
@@ -805,12 +838,17 @@ async def chat_stream_route(
 
         try:
             llm = get_llm_client(profile=profile, concern=concern)
-            async for token in llm.stream_chat(
+            full_response = await _collect_workshop_chat_response(
+                llm,
                 prompt=_build_user_message_prompt(payload.message),
                 system_instruction=full_instruction,
                 temperature=get_llm_temperature(profile=profile, concern=concern),
-            ):
-                full_response += token
+                timeout_seconds=_resolve_workshop_chat_timeout_seconds(),
+            )
+        except TimeoutError:
+            logger.warning("Workshop chat stream timed out and switched to fallback. workshop=%s", workshop_id)
+            limited_mode = True
+            limited_reason = "llm_timeout"
         except LLMRequestError as exc:
             limited_mode = True
             limited_reason = exc.limited_reason
@@ -853,22 +891,26 @@ async def chat_stream_route(
         if draft_patch is not None:
             yield f"data: {json.dumps({'draft_patch': draft_patch.model_dump(mode='json')}, ensure_ascii=False)}\n\n"
 
-        assistant_turn = WorkshopTurn(
-            session_id=session.id,
-            turn_type=TurnType.MESSAGE.value,
-            speaker_role="assistant",
-            query=(cleaned_response or full_response).strip(),
-            response=None,
-            action_payload={
-                "limited_mode": limited_mode,
-                "limited_reason": limited_reason,
-                "memory_summary": memory_summary,
-                "coauthoring_mode": payload.mode,
-                "draft_patch": draft_patch.model_dump(mode="json") if draft_patch is not None else None,
-            },
-        )
-        db.add(assistant_turn)
-        db.commit()
+        try:
+            assistant_turn = WorkshopTurn(
+                session_id=session.id,
+                turn_type=TurnType.MESSAGE.value,
+                speaker_role="assistant",
+                query=(cleaned_response or full_response).strip(),
+                response=None,
+                action_payload={
+                    "limited_mode": limited_mode,
+                    "limited_reason": limited_reason,
+                    "memory_summary": memory_summary,
+                    "coauthoring_mode": payload.mode,
+                    "draft_patch": draft_patch.model_dump(mode="json") if draft_patch is not None else None,
+                },
+            )
+            db.add(assistant_turn)
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            logger.exception("Workshop chat stream failed to persist assistant turn. workshop=%s", workshop_id)
 
         yield f"data: {json.dumps({'status': 'DONE'}, ensure_ascii=False)}\n\n"
 

@@ -316,6 +316,14 @@ async def generate_consultant_report_artifact(
     report_mode = _canonical_report_mode(report_mode)  # type: ignore[assignment]
     settings = get_settings()
     storage = get_storage_provider(settings)
+
+    # Storage Safety Check for Production Serverless
+    is_production = settings.app_env not in {"local", "test"}
+    if settings.serverless_runtime and is_production and settings.unifoli_storage_provider == "local":
+        raise ValueError(
+            "Cloud storage is required for report generation in production serverless environments. "
+            "Please configure UNIFOLI_STORAGE_PROVIDER to 'vercel_blob', 's3', or 'gcs'. [REPORT_ARTIFACT_STORAGE_UNSAFE]"
+        )
     resolved_template_id = resolve_consultant_report_template_id(
         report_mode=report_mode,
         template_id=template_id,

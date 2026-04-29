@@ -1708,11 +1708,15 @@ export function Workshop() {
           }
         },
         patch => {
-          const normalizedPatch = normalizeStructuredDraftPatch(patch);
-          if (normalizedPatch) {
-            streamedPatch = normalizedPatch;
-            documentPatch.receivePatch(normalizedPatch);
-            setPendingDraftPatch(normalizedPatch);
+          try {
+            const normalizedPatch = normalizeStructuredDraftPatch(patch);
+            if (normalizedPatch) {
+              streamedPatch = normalizedPatch;
+              documentPatch.receivePatch(normalizedPatch);
+              setPendingDraftPatch(normalizedPatch);
+            }
+          } catch (patchError) {
+            console.error('Workshop chat patch handling failed; keeping text response.', patchError);
           }
         },
       );

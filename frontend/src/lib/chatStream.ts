@@ -395,24 +395,40 @@ export async function consumeChatEventStream(params: ConsumeChatEventStreamParam
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const chunks = buffer.split('\n\n');
-    buffer = chunks.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() || '';
 
-    for (const eventChunk of chunks) {
-      const payloads = extractPayloadsFromEvent(eventChunk);
-      for (const payload of payloads) {
-        consumePayload(payload);
+      for (const eventChunk of chunks) {
+        const payloads = extractPayloadsFromEvent(eventChunk);
+        for (const payload of payloads) {
+          consumePayload(payload);
+          if (streamDone) break;
+        }
         if (streamDone) break;
       }
+
       if (streamDone) break;
     }
-
-    if (streamDone) break;
+  } catch (error) {
+    const partial = full.trim();
+    if (partial) return partial;
+    throw new ChatStreamError(
+      'stream_payload_error',
+      'Chat stream was interrupted before returning a usable response.',
+      {
+        endpoint,
+        status: response.status,
+        contentType: normalizeContentType(response.headers.get('content-type')),
+        authSource,
+        cause: error,
+      },
+    );
   }
 
   // Flush decoder tail bytes to avoid partial UTF-8 truncation on stream end.

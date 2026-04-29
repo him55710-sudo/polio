@@ -712,7 +712,12 @@ export function Diagnosis() {
 
     try {
       beginTimingPhase('upload', '서버 상태를 확인하고 있습니다.');
-      await api.getBackendReadiness();
+      try {
+        await api.getBackendReadiness();
+      } catch (readinessError) {
+        const failure = getApiErrorInfo(readinessError, '백엔드 서버 준비 상태 확인에 실패했습니다.');
+        throw failure; // getApiErrorInfo returns an object, but we need to pass it to the catch block below
+      }
 
       const formData = new FormData();
       setTimingPhase('upload', (prev) => ({
@@ -744,9 +749,15 @@ export function Diagnosis() {
       triggerInlineParseProcessing(parseStarted);
 
       toast.success('진단을 시작했습니다.', { id: loadingId });
-    } catch (error) {
-      const failure = getApiErrorInfo(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
-      const failureMessage = getApiErrorMessage(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } catch (error: any) {
+      // If error is already an ApiErrorInfo (from our readiness try-catch), use it. 
+      // Otherwise, resolve it normally.
+      const failure = error.userMessage && error.debugCode !== undefined
+        ? (error as ApiErrorInfo)
+        : getApiErrorInfo(error, '진단 실행에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      
+      const failureMessage = failure.userMessage;
+      
       failRunningTimingPhases(failureMessage);
       setDiagnosisError(failureMessage);
       setFlowError(failureMessage);
