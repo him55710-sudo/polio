@@ -389,8 +389,8 @@ export function Auth() {
                 <p className="text-sm font-black text-slate-900">로그인 문제 해결</p>
               </div>
               <p className="mt-3 text-sm font-medium leading-7 text-slate-600 break-keep">
-                Google 로그인이 되지 않으면 현재 접속 주소가 Firebase 허용 도메인인지 먼저 확인해 주세요.
-                로컬에서는 `localhost`와 `127.0.0.1` 중 허용된 주소로 접속해야 합니다.
+                로그인이 원활하지 않을 경우 잠시 후 다시 시도하시거나,
+                아래의 문의 채널을 통해 도움을 받으실 수 있습니다.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
