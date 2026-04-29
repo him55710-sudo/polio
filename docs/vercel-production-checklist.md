@@ -37,10 +37,10 @@ Recommended for shared Vercel serverless runtime:
 
 Do not rely on these in production except as a temporary emergency escape hatch:
 
-- `ALLOW_PRODUCTION_SQLITE=true`
+- `ALLOW_PRODUCTION_SQLITE=true` (이 설정은 운영 환경에서 **매우 위험**하며, readiness 체크를 통과하지 못하게 만듭니다)
 - default SQLite `DATABASE_URL`
 
-Using SQLite on Vercel will not preserve diagnosis data reliably and can still fail readiness when schema initialization is missing.
+SQLite는 Vercel/serverless 환경에서 데이터가 영구 저장되지 않으며, 동시 요청 시 `database is locked` 오류가 발생합니다. 운영 환경에서는 반드시 Managed PostgreSQL을 사용해야 합니다.
 
 ## 3. Backend auth/env checklist
 
@@ -81,6 +81,15 @@ If using Ollama outside local development:
 
 Do not point production Ollama settings to `localhost`.
 
+### 4.1 LLM Input Budgeting (Safety)
+
+Large student documents can exceed Gemini's context window or cost too much. Use these to safely truncate input:
+
+- `DIAGNOSIS_LLM_MAX_INPUT_CHARS=120000` (Default)
+- `PDF_ANALYSIS_MAX_INPUT_CHARS=60000`
+- `SEMANTIC_EXTRACTION_MAX_INPUT_CHARS=80000`
+- `GEMINI_MAX_OUTPUT_TOKENS=4096`
+
 ## 5. Frontend env checklist
 
 Shared monorepo deployment:
@@ -115,20 +124,25 @@ Expected success signals:
 Common failure signals:
 
 - `BACKEND_STARTUP_FAILED`
+- `PRODUCTION_SQLITE_UNSAFE`: Production 환경에서 SQLite를 사용 중임 (DATABASE_URL을 Postgres로 변경 필요)
 - `DATABASE_URL_REQUIRED`
-- `DB_SCHEMA_MISMATCH`
+- `DB_SCHEMA_MISMATCH`: DB 스키마가 최신이 아님 (Alembic migration 실행 필요)
 - `DATABASE_UNAVAILABLE`
 
 ## 7. Required manual steps outside the repo
 
-1. Provision a managed Postgres database.
-2. Set `DATABASE_URL` in the Vercel project.
-3. Run Alembic migrations against that database before routing production traffic.
-4. Set backend auth secrets.
-5. Add the deployed frontend origin to:
+1. Provision a managed Postgres database (e.g., Neon, Supabase, AWS RDS).
+2. Set `DATABASE_URL` in the Vercel project settings.
+3. Run Alembic migrations against that database:
+   - 로컬에서 운영 DB URL을 임시로 `DATABASE_URL`로 설정한 후 `alembic upgrade head` 실행
+   - 또는 CI/CD 파이프라인에서 실행
+4. /api/v1/readiness를 호출하여 `database.connected=true` 및 `database.scheme=postgresql` 확인.
+5. `DB_SCHEMA_MISMATCH` 발생 시 migration이 누락되었음을 의미하므로 다시 upgrade를 시도하세요.
+6. Set backend auth secrets.
+7. Add the deployed frontend origin to:
    - backend `CORS_ORIGINS`
    - Firebase Authorized Domains
-6. Set Gemini credentials if you want Gemini-backed diagnosis enrichment.
+8. Set Gemini credentials if you want Gemini-backed diagnosis enrichment.
 
 ## 8. Symptoms and direct meaning
 

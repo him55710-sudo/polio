@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List, Dict, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -39,6 +39,40 @@ class SectionCandidate(BaseModel):
     pages: list[int] = Field(default_factory=list)
 
 
+class SectionCoverage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    present: bool = False
+    confidence: float = 0.0
+    evidence_count: int = 0
+    pages: List[int] = Field(default_factory=list)
+    warning: Optional[str] = None
+
+
+class EvidenceAnchor(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    page_number: int
+    section: str
+    label: str
+    quote: str
+    char_start: int
+    char_end: int
+    confidence: float
+
+
+class ParseQuality(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    overall_score: float = 0.0
+    text_coverage_score: float = 0.0
+    table_coverage_score: float = 0.0
+    section_coverage_score: float = 0.0
+    page_diversity_score: float = 0.0
+    anchor_diversity_score: float = 0.0
+    missing_critical_sections: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    is_provisional: bool = False
+
+
 class PdfAnalysisMetadata(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
@@ -77,7 +111,7 @@ class PipelineMetadata(BaseModel):
     """
     Comprehensive schema for the 'parse_metadata' field in ParsedDocument.
     """
-    model_config = ConfigDict(extra="allow") # Allow unknown fields for forward compatibility
+    model_config = ConfigDict(extra="allow")
 
     # Base parsing info
     chunk_count: int = Field(default=0, ge=0)
@@ -86,6 +120,15 @@ class PipelineMetadata(BaseModel):
     source_storage_key: str | None = Field(default=None)
     warnings: list[str] = Field(default_factory=list)
     page_failures: list[PageFailure] = Field(default_factory=list)
+
+    # Task 2: New structural parsing info
+    student_record_structure: Optional[Dict[str, Any]] = None
+    student_record_canonical: Optional[Dict[str, Any]] = None
+    section_coverage: Dict[str, SectionCoverage] = Field(default_factory=dict)
+    page_coverage: List[int] = Field(default_factory=list)
+    anchor_registry: List[EvidenceAnchor] = Field(default_factory=list)
+    parse_quality: Optional[ParseQuality] = None
+    provisional_reason: Optional[str] = None
 
     # Secondary stages
     masking: MaskingMetadata | None = None

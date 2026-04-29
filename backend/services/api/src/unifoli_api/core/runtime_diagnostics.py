@@ -44,9 +44,8 @@ def classify_startup_failure(error: Exception | str | None) -> str:
 def remediation_for_error_code(code: str | None) -> str | None:
     if code == UniFoliErrorCode.PRODUCTION_SQLITE_UNSAFE.value or code == UniFoliErrorCode.DATABASE_URL_REQUIRED.value:
         return (
-            "Set DATABASE_URL to a managed Postgres connection in Vercel. "
-            "SQLite is ephemeral in serverless and data will be lost. "
-            "Use ALLOW_PRODUCTION_SQLITE=true only as a temporary emergency override."
+            "Production/serverless 환경에서는 SQLite를 사용할 수 없습니다. "
+            "Managed PostgreSQL DATABASE_URL을 설정하고 Alembic migration을 적용하세요."
         )
     if code == "STORAGE_PROVIDER_UNSAFE":
         return "Change UNIFOLI_STORAGE_PROVIDER to 'vercel_blob', 's3', or 'gcs' for production serverless stability."
@@ -56,6 +55,8 @@ def remediation_for_error_code(code: str | None) -> str | None:
         return "Check the deployed database host, credentials, SSL requirements, and network allowlist."
     if code == UniFoliErrorCode.BACKEND_STARTUP_FAILED.value:
         return "Inspect the Vercel Python function logs for the startup traceback and fix the failing dependency."
+    if code == "GEMINI_API_KEY_MISSING":
+        return "Provide a valid Gemini API Key in your environment variables (GEMINI_API_KEY)."
     return None
 
 
@@ -89,7 +90,7 @@ def _read_int_env(key: str, default: int | None) -> int | None:
 
 def snapshot_settings_from_env(api_prefix: str | None = None) -> Any:
     llm_provider = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower() or "gemini"
-    pdf_provider = (os.getenv("PDF_ANALYSIS_LLM_PROVIDER") or "ollama").strip().lower() or "ollama"
+    pdf_provider = (os.getenv("PDF_ANALYSIS_LLM_PROVIDER") or "gemini").strip().lower() or "gemini"
     return SimpleNamespace(
         api_prefix=(api_prefix or os.getenv("API_PREFIX") or "/api/v1").strip() or "/api/v1",
         app_env=(os.getenv("APP_ENV") or "production").strip().lower() or "production",
@@ -228,11 +229,17 @@ def build_health_payload(
         "configured": bool(str(settings.database_url or "").strip()),
         "scheme": database_scheme or None,
         "allow_production_sqlite": bool(getattr(settings, "allow_production_sqlite", False)),
-        "production_sqlite_unsafe": is_sqlite and is_production and is_serverless,
+        "production_sqlite_unsafe": is_sqlite and is_production and (is_serverless or is_production),
+        "recommended_provider": "PostgreSQL",
         "auto_create_tables": bool(getattr(settings, "database_auto_create_tables", True)),
         "connected": None,
         "error": None,
     }
+
+    if database_info["production_sqlite_unsafe"] and not database_info["allow_production_sqlite"]:
+        startup_ready = False
+        startup_error_code = UniFoliErrorCode.PRODUCTION_SQLITE_UNSAFE.value
+        startup_error_message = "Production/serverless 환경에서는 SQLite를 사용할 수 없습니다. Managed PostgreSQL DATABASE_URL을 설정하세요."
 
     if check_db and startup_ready:
         try:
@@ -298,6 +305,12 @@ def build_health_payload(
         "concerns": concern_resolutions,
         "runtime_resolution": concern_resolutions,
     }
+
+    # Gemini Readiness Check
+    if check_llm and llm_info["default_provider"] == "gemini" and not llm_info["gemini_api_key_configured"]:
+        startup_ready = False
+        startup_error_message = "GEMINI_API_KEY is not configured. AI features will be unavailable."
+        startup_error_code = "GEMINI_API_KEY_MISSING"
 
     if check_llm and ollama_probe:
         llm_info.update(ollama_probe)

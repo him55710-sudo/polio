@@ -178,7 +178,7 @@ async def extract_semantic_diagnosis(
     prompt = (
         "다음 학생부 텍스트를 바탕으로 심층적인 의미론적 진단을 수행하십시오. "
         "반드시 부여된 SemanticDiagnosisExtraction 스키마를 엄격히 준수하여 JSON 형태로 출력하십시오.\n\n"
-        f"분석 대상 텍스트:\n{masked_text[:15000]}"
+        f"분석 대상 텍스트:\n{masked_text[:get_settings().semantic_extraction_max_input_chars]}"
     )
     return await llm.generate_json(
         prompt=prompt,

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     app_debug: bool = False
+    app_cron_secret: str | None = None
     api_prefix: str = "/api/v1"
     api_docs_enabled: bool = False
     api_root_redirect_enabled: bool = True
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30"
     database_echo: bool = False
     database_auto_create_tables: bool = True
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
     allow_production_sqlite: bool = False
     postgres_enable_pgvector: bool = True
     cors_origins: Annotated[list[str], NoDecode] = Field(
@@ -187,6 +190,10 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: float = 90.0
     ollama_keep_alive: str = "30m"
     ollama_num_ctx: int = 2048
+    gemini_max_retries: int = 3
+    gemini_retry_initial_delay_seconds: float = 1.0
+    gemini_retry_max_delay_seconds: float = 8.0
+    gemini_retry_jitter_enabled: bool = True
     ollama_num_predict: int = 512
     ollama_num_thread: int | None = None
     ollama_fast_model: str | None = None
@@ -198,7 +205,7 @@ class Settings(BaseSettings):
     workshop_chat_timeout_seconds: float = 25.0
     diagnosis_generation_timeout_seconds: float = 45.0
     pdf_analysis_llm_enabled: bool = True
-    pdf_analysis_llm_provider: str = "ollama"
+    pdf_analysis_llm_provider: str = "gemini"
     pdf_analysis_gemini_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
@@ -217,6 +224,12 @@ class Settings(BaseSettings):
     pdf_analysis_num_ctx: int = 3072
     pdf_analysis_num_predict: int = 512
     pdf_analysis_num_thread: int | None = None
+    
+    # LLM Input Budget Settings
+    diagnosis_llm_max_input_chars: int = 120000
+    pdf_analysis_max_input_chars: int = 60000
+    semantic_extraction_max_input_chars: int = 80000
+    gemini_max_output_tokens: int = 4096
 
     # SMTP Settings
     smtp_enabled: bool = False
@@ -372,11 +385,11 @@ class Settings(BaseSettings):
         
         if strict_runtime and is_production_env and is_sqlite:
             if not self.allow_production_sqlite:
-                # In production serverless, we fail fast unless explicitly overridden
-                raise ValueError(
-                    "SQLite is not allowed in production serverless environments by default. "
-                    "Data will be ephemeral and lost on function recycle. "
-                    "Set DATABASE_URL to a persistent Postgres endpoint, or set ALLOW_PRODUCTION_SQLITE=true to override."
+                # We no longer crash here to allow readiness check to report the failure gracefully.
+                # But we issue a loud warning.
+                logger.error(
+                    "CRITICAL: SQLite is being used in a production serverless environment. "
+                    "This is UNSAFE and data will be lost. DATABASE_URL must be set to PostgreSQL."
                 )
             else:
                 logger.warning(
@@ -430,7 +443,7 @@ class Settings(BaseSettings):
                 raise ValueError(f"{field_name.upper()} must be 'gemini' or 'ollama' when set.")
             object.__setattr__(self, field_name, normalized_value)
 
-        normalized_pdf_provider = (self.pdf_analysis_llm_provider or "").strip().lower() or "ollama"
+        normalized_pdf_provider = (self.pdf_analysis_llm_provider or "").strip().lower() or "gemini"
         if normalized_pdf_provider not in allowed_llm_providers:
             raise ValueError("PDF_ANALYSIS_LLM_PROVIDER must be 'gemini' or 'ollama'.")
         object.__setattr__(self, "pdf_analysis_llm_provider", normalized_pdf_provider)
@@ -451,9 +464,12 @@ class Settings(BaseSettings):
             ("OLLAMA_FAST_TIMEOUT_SECONDS", self.ollama_fast_timeout_seconds),
             ("OLLAMA_STANDARD_TIMEOUT_SECONDS", self.ollama_standard_timeout_seconds),
             ("OLLAMA_RENDER_TIMEOUT_SECONDS", self.ollama_render_timeout_seconds),
+            ("GEMINI_MAX_RETRIES", self.gemini_max_retries),
+            ("GEMINI_RETRY_INITIAL_DELAY_SECONDS", self.gemini_retry_initial_delay_seconds),
+            ("GEMINI_RETRY_MAX_DELAY_SECONDS", self.gemini_retry_max_delay_seconds),
         ):
-            if value is not None and value <= 0:
-                raise ValueError(f"{name} must be greater than zero when set.")
+            if value is not None and value < 0:
+                raise ValueError(f"{name} must be greater than or equal to zero when set.")
         if self.workshop_chat_timeout_seconds <= 0:
             raise ValueError("WORKSHOP_CHAT_TIMEOUT_SECONDS must be greater than zero.")
 

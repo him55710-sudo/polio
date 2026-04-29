@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from unifoli_api.api.deps import get_current_user, get_db
@@ -23,12 +23,12 @@ router = APIRouter()
 
 def _authorize_job_access(db: Session, job, current_user: User) -> None:
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
     if job.project_id is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied. Job is not bound to a project.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_403_FORBIDDEN, detail="Access denied. Job is not bound to a project.")
     project = get_project(db, job.project_id, owner_user_id=current_user.id)
     if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
 
 
 @router.get("", response_model=list[AsyncJobRead])
@@ -39,7 +39,7 @@ def list_jobs_route(
 ) -> list[AsyncJobRead]:
     project = get_project(db, project_id, owner_user_id=current_user.id)
     if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Project not found.")
     return [as_async_job_read(item) for item in list_project_jobs(db, project_id)]
 
 
@@ -77,7 +77,7 @@ def retry_job_route(
     _authorize_job_access(db, job, current_user)
     retried = retry_async_job(db, job_id)
     if retried is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
     dispatch_job_if_enabled(retried.id)
     return as_async_job_read(retried)
 
@@ -92,12 +92,49 @@ def process_job_route(
     settings = get_settings()
     if not settings.allow_inline_job_processing:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status, Request_code=status, Request.HTTP_403_FORBIDDEN,
             detail="Inline job processing is disabled. Use the worker instead.",
         )
     job = get_async_job(db, job_id)
     _authorize_job_access(db, job, current_user)
     processed = process_async_job(db, job_id)
     if processed is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_404_NOT_FOUND, detail="Job not found.")
     return as_async_job_read(processed)
+
+@router.post("/cron/process", response_model=dict[str, object])
+def cron_process_jobs_route(
+    request: Request,
+    cron_secret: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """
+    Dedicated endpoint for scheduled cron jobs to pump the async job queue.
+    Supports Vercel's standard CRON_SECRET via Authorization header or query param.
+    """
+    settings = get_settings()
+    from unifoli_api.core.database import utc_now
+    
+    # Authenticate cron request
+    auth_header = request.headers.get("Authorization", "")
+    bearer_secret = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else None
+    effective_secret = cron_secret or bearer_secret
+    
+    if settings.app_cron_secret and effective_secret != settings.app_cron_secret:
+        logger.warning("Unauthorized cron attempt rejected.")
+        raise HTTPException(status, Request_code=status, Request.HTTP_401_UNAUTHORIZED, detail="Invalid cron secret.")
+    
+    # Run a round of processing
+    processed_count = 0
+    max_batch = 5
+    for _ in range(max_batch):
+        job = process_next_async_job(db)
+        if job is None:
+            break
+        processed_count += 1
+    
+    return {
+        "status, Request": "ok",
+        "processed_count": processed_count,
+        "timestamp": utc_now().isoformat()
+    }

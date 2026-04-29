@@ -33,6 +33,11 @@ class AsyncJob(Base):
     max_retries: Mapped[int] = mapped_column(Integer, default=2)
     failure_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
     failure_history: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
+    
+    # New fields for stabilization (Task 1)
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    
     progress_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
     progress_message: Mapped[str | None] = mapped_column(Text(), nullable=True)
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
@@ -59,4 +64,3 @@ class AsyncJob(Base):
         self.started_at = None
         self.completed_at = None
         self.next_attempt_at = utc_now() + timedelta(seconds=max(delay_seconds, 0))
-

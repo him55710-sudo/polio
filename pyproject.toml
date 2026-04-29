@@ -30,6 +30,7 @@ dependencies = [
   "pymupdf>=1.24,<1.25",
   "lxml<6.1.0",
   "vercel>=0.5.8,<1.0",
+  "tenacity>=9.0,<10.0",
 ]
 
 [tool.uv]

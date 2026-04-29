@@ -12,8 +12,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/popup-closed-by-user': 'Google 로그인 창이 닫혔어요. 다시 시도해 주세요.',
   'auth/popup-blocked': '브라우저에서 팝업이 차단됐어요. 팝업 허용 후 다시 시도해 주세요.',
   'auth/network-request-failed': '네트워크 연결 상태를 확인해 주세요.',
-  'auth/unauthorized-domain':
-    '현재 주소가 Firebase 허용 도메인에 없습니다. Firebase Console > Authentication > Settings > Authorized domains에 현재 도메인을 추가해 주세요.',
+  'auth/unauthorized-domain': '현재 접속하신 주소가 인증되지 않았습니다. 관리자에게 문의하거나 잠시 후 다시 시도해 주세요.',
   'auth/configuration-not-found': 'Google 로그인 설정이 완료되지 않았어요. Firebase Console에서 Google 제공업체를 켜 주세요.',
   'auth/operation-not-allowed': '현재 환경에서 이 로그인 방식이 비활성화되어 있어요.',
   'auth/admin-restricted-operation': 'Firebase 보안 정책으로 요청이 차단됐어요.',

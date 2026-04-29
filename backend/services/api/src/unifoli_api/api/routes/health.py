@@ -39,7 +39,8 @@ async def health_check(
 ) -> JSONResponse:
     settings = get_settings()
     ollama_payload: dict[str, object] | None = None
-    if check_llm and _settings_may_use_ollama(settings):
+    fallback_enabled = bool(getattr(settings, "llm_provider_fallback_enabled", False))
+    if check_llm and (_settings_may_use_ollama(settings) or fallback_enabled):
         now = time.monotonic()
         checked_at = float(_ollama_health_cache["checked_at"])
         if now - checked_at > _OLLAMA_HEALTH_TTL_SECONDS:

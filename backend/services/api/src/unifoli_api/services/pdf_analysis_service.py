@@ -258,6 +258,13 @@ def build_pdf_analysis_metadata(
             )
         )
         actual_provider, actual_model, fallback_used, fallback_reason = _resolve_pdf_analysis_runtime_outcome(resolution)
+        
+        # Capture retry info from GeminiClient
+        client = resolution.client
+        llm_retry_attempts = getattr(client, "last_retry_attempts", 0)
+        llm_retry_exhausted = getattr(client, "last_retry_exhausted", False)
+        llm_last_error_code = getattr(client, "last_error_code", None)
+
         return _compose_pdf_analysis_metadata(
             llm_payload,
             started_at=started_at,
@@ -269,6 +276,9 @@ def build_pdf_analysis_metadata(
             engine="llm",
             fallback_used=fallback_used,
             fallback_reason=fallback_reason,
+            llm_retry_attempts=llm_retry_attempts,
+            llm_retry_exhausted=llm_retry_exhausted,
+            llm_last_error_code=llm_last_error_code,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("PDF analysis LLM pipeline failed; switching to heuristic fallback: %s", exc)
@@ -284,7 +294,7 @@ def build_pdf_analysis_metadata(
 
 
 def _resolve_requested_pdf_identity(settings: Any) -> tuple[str, str]:
-    provider = str(getattr(settings, "pdf_analysis_llm_provider", "") or "ollama").strip().lower()
+    provider = str(getattr(settings, "pdf_analysis_llm_provider", "") or "gemini").strip().lower()
     if provider == "ollama":
         model = str(
             getattr(settings, "pdf_analysis_ollama_model", "")
@@ -293,9 +303,9 @@ def _resolve_requested_pdf_identity(settings: Any) -> tuple[str, str]:
         ).strip()
         return provider, model
     if provider == "gemini":
-        model = str(getattr(settings, "pdf_analysis_gemini_model", "") or "").strip() or "gemini-2.5-flash-lite"
+        model = str(getattr(settings, "pdf_analysis_gemini_model", "") or "").strip() or "gemini-2.0-flash-lite"
         return provider, model
-    return provider or "unknown", "unknown"
+    return provider or "gemini", "unknown"
 
 
 def _extract_masked_only_pages(parsed: ParsedDocumentPayload) -> list[_MaskedPage]:
@@ -566,7 +576,7 @@ def _build_stage_a_prompt(*, batch: list[_MaskedPage], batch_index: int, total_b
         "batch_index": batch_index,
         "total_batches": total_batches,
         "pages": [
-            {"page_number": page.page_number, "masked_text": _clip(page.text, _MAX_PAGE_TEXT_CHARS)}
+            {"page_number": page.page_number, "masked_text": _clip(page.text, get_settings().pdf_analysis_max_input_chars // max(1, len(batch)))}
             for page in batch
         ],
     }
@@ -955,6 +965,9 @@ def _compose_pdf_analysis_metadata(
     engine: str,
     fallback_used: bool,
     fallback_reason: str | None,
+    llm_retry_attempts: int = 0,
+    llm_retry_exhausted: bool = False,
+    llm_last_error_code: str | None = None,
 ) -> dict[str, Any]:
     duration_ms = int(max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds() * 1000.0))
     metadata = {
@@ -975,6 +988,9 @@ def _compose_pdf_analysis_metadata(
         "pdf_analysis_engine": engine,
         "fallback_used": fallback_used,
         "fallback_reason": fallback_reason,
+        "llm_retry_attempts": llm_retry_attempts,
+        "llm_retry_exhausted": llm_retry_exhausted,
+        "llm_last_error_code": llm_last_error_code,
         "processing_duration_ms": duration_ms,
         "generated_at": generated_at.isoformat(),
         "summary": _clip(str(payload.get("summary") or ""), _SUMMARY_CHAR_LIMIT),

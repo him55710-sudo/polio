@@ -118,32 +118,58 @@ export function AsyncJobStatusCard({
         </div>
       </div>
 
-      {isLongRunning ? (
+      {isLongRunning || status === 'stale' ? (
         <WorkflowNotice
-          tone="warning"
-          title="예상보다 오래 걸리고 있습니다."
-          description="자동 복구와 재시도를 계속 진행 중입니다. 완료 또는 실패 상태가 확정되면 즉시 반영됩니다."
+          tone={status === 'stale' ? "danger" : "warning"}
+          title={status === 'stale' ? "응답 지연 감지" : "예상보다 오래 걸리고 있습니다."}
+          description={
+            status === 'stale' 
+              ? `작업의 마지막 응답이 ${formatDateTime(job?.heartbeat_at || job?.updated_at)} 에 확인되었습니다. 자동 복구를 시도하고 있습니다.`
+              : "자동 복구와 재시도를 계속 진행 중입니다. 완료 또는 실패 상태가 확정되면 즉시 반영됩니다."
+          }
         />
       ) : null}
 
       {history.length ? (
         <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">최근 기록</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">최근 기록</p>
+            {job?.attempt_count && job.attempt_count > 1 ? (
+              <p className="text-[10px] font-bold text-[#004aad]">
+                시도 {job.attempt_count} / {job.max_attempts}
+              </p>
+            ) : null}
+          </div>
           <div className="space-y-1.5">
             {history.map((item, index) => (
               <div key={`${item.stage || 'stage'}-${index}`} className="flex items-start gap-2 text-xs">
                 <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-400" />
-                <p className="font-semibold text-slate-600">
-                  <span className="mr-2 font-bold text-slate-700">{item.stage || '단계'}</span>
-                  {item.message || ''}
-                </p>
+                <div className="flex flex-1 flex-col">
+                  <p className="font-semibold text-slate-600">
+                    <span className="mr-2 font-bold text-slate-700">{item.stage || '단계'}</span>
+                    {item.message || ''}
+                  </p>
+                  {item.completed_at && (
+                    <p className="text-[10px] text-slate-400">{formatDateTime(item.completed_at)}</p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </div>
       ) : null}
 
-      {failure ? <WorkflowNotice tone="danger" title="확인 필요" description={failure} /> : null}
+      {failure ? (
+        <div className="space-y-2">
+          <WorkflowNotice tone="danger" title="확인 필요" description={failure} />
+          {job?.debug_detail && (
+             <details className="cursor-pointer rounded-lg bg-red-50 p-2 text-[10px] text-red-900/60">
+               <summary className="font-bold">기술 상세 정보 (Debug)</summary>
+               <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap">{job.debug_detail}</pre>
+             </details>
+          )}
+        </div>
+      ) : null}
 
       {status === 'failed' && onRetry ? (
         <PrimaryButton type="button" data-testid="diagnosis-job-retry" onClick={onRetry} disabled={isRetrying} fullWidth className="mt-2">

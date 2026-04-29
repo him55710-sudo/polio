@@ -59,6 +59,9 @@ export function resolveDiagnosisJobVisualStatus(
   if (status === 'failed') return 'failed';
   if (status === 'queued' || status === 'pending') return 'queued';
 
+  // Prefer backend-detected stale status
+  if (job?.stale) return 'stale';
+
   if (status === 'retrying') {
     if (looksStaleSignal(job)) return 'stale';
     return 'retrying';
@@ -86,12 +89,28 @@ function toTitleCaseFromSnake(raw: string): string {
     .trim();
 }
 
+function getPhaseLabel(phase: string | null | undefined): string {
+  const p = normalizeStatus(phase);
+  if (p === 'upload') return '업로드';
+  if (p === 'parse') return '문서 분석';
+  if (p === 'diagnosis') return '정밀 진단';
+  if (p === 'report') return '리포트 생성';
+  return '';
+}
+
 export function resolveDiagnosisJobStageLabel(
   job: AsyncJobRead | null,
   runStatusMessage: string | null | undefined,
   visualStatus: DiagnosisJobVisualStatus,
 ): string {
+  const phaseLabel = getPhaseLabel(job?.phase);
   const stageFromJob = toTitleCaseFromSnake(String(job?.progress_stage || ''));
+  
+  if (phaseLabel && stageFromJob) {
+    // If it's a known stage like 'Diagnosis: Analyzing Subject Records', show it nicely
+    return `${phaseLabel}: ${stageFromJob}`;
+  }
+  if (phaseLabel) return phaseLabel;
   if (stageFromJob) return stageFromJob;
 
   const fromRun = String(runStatusMessage || '').trim();
@@ -111,6 +130,9 @@ export function resolveDiagnosisJobMessage(
   runStatusMessage: string | null | undefined,
   visualStatus: DiagnosisJobVisualStatus,
 ): string {
+  // Use public_message from backend if available for better UX
+  if (job?.public_message) return job.public_message;
+
   const runMessage = String(runStatusMessage || '').trim();
   if (runMessage) return runMessage;
 
@@ -131,10 +153,25 @@ export function resolveDiagnosisJobProgressPercent(
   visualStatus: DiagnosisJobVisualStatus,
 ): number | null {
   const raw = (job as AsyncJobRead & { progress_percent?: number | null } | null)?.progress_percent;
+  const phase = normalizeStatus((job as any)?.phase);
+
+  // If we have an explicit progress percent, use it
   if (typeof raw === 'number' && Number.isFinite(raw)) {
     return Math.max(0, Math.min(100, Math.round(raw)));
   }
+
+  // Phase-based fallback percentages
+  if (visualStatus === 'running') {
+    if (phase === 'upload') return 15;
+    if (phase === 'parse') return 45;
+    if (phase === 'diagnosis') return 75;
+    if (phase === 'report') return 95;
+    return 35;
+  }
+
   if (visualStatus === 'succeeded') return 100;
+  if (visualStatus === 'queued') return 5;
+  
   return null;
 }
 

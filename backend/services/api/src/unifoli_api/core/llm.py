@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI, BadRequestError, NotFoundError
 from pydantic import BaseModel
+import tenacity
+from google.api_core import exceptions as google_exceptions
 
 from unifoli_api.core.config import get_settings
 
@@ -105,10 +107,60 @@ class LLMClient(abc.ABC):
         pass
 
 
+def _is_retryable_gemini_exception(exc: Exception) -> bool:
+    """Gemini API 오류 중 재시도 가능한 것인지 판단."""
+    # Google GenAI SDK wraps errors
+    exc_str = str(exc).lower()
+    
+    # 1. 명시적인 Google API Core Exceptions
+    if isinstance(exc, (
+        google_exceptions.InternalServerError,
+        google_exceptions.ServiceUnavailable,
+        google_exceptions.TooManyRequests,
+        google_exceptions.DeadlineExceeded,
+        google_exceptions.GatewayTimeout,
+    )):
+        return True
+        
+    # 2. 네트워크 및 타임아웃 관련
+    if any(err in exc_str for err in [
+        "timeout", "deadline exceeded", "connection reset", 
+        "service unavailable", "internal server error", "too many requests",
+        "429", "500", "502", "503", "504"
+    ]):
+        # 단, 400, 401, 403 등은 제외
+        if any(bad in exc_str for bad in ["400", "401", "403", "invalid_argument", "permission_denied"]):
+            return False
+        return True
+        
+    return False
+
+
+def _classify_gemini_error(exc: Exception) -> str:
+    """에러 객체로부터 fallback reason 코드를 추출."""
+    exc_str = str(exc).lower()
+    if "api_key" in exc_str or "api key" in exc_str:
+        if "missing" in exc_str:
+            return "gemini_api_key_missing"
+        return "gemini_api_key_invalid"
+    if "429" in exc_str or "too many requests" in exc_str:
+        return "gemini_rate_limited"
+    if "timeout" in exc_str or "deadline" in exc_str:
+        return "gemini_timeout"
+    if "400" in exc_str or "invalid" in exc_str:
+        return "gemini_invalid_request"
+    if any(err in exc_str for err in ["500", "502", "503", "504", "server error"]):
+        return "gemini_server_error"
+    return "gemini_connection_error"
+
+
 class GeminiClient(LLMClient):
     def __init__(self, api_key: str, *, model_name: str = DEFAULT_GEMINI_MODEL):
         self.model_name = (model_name or DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
         self.sdk_variant = "google-genai"
+        self.last_retry_attempts = 0
+        self.last_retry_exhausted = False
+        self.last_error_code = None
         try:
             from google import genai
 
@@ -152,6 +204,7 @@ class GeminiClient(LLMClient):
                 "response_mime_type": "application/json",
                 "response_schema": response_model,
                 "temperature": temperature,
+                "max_output_tokens": settings.gemini_max_output_tokens,
             }
             generate_async = getattr(self.client.models, "generate_content_async", None)
             if callable(generate_async):
@@ -167,41 +220,98 @@ class GeminiClient(LLMClient):
                 config=config,
             )
 
-        last_exc: Exception | None = None
-        for attempt in range(_LLM_MAX_ATTEMPTS):
-            try:
-                response = await _call_once()
-                parsed = _parse_response_model(response, response_model)
-                _record_runtime_success(
-                    self,
-                    provider="gemini",
-                    model=self.model_name,
-                    operation="generate_json",
-                    started_at=started_at,
-                )
-                return parsed
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                if attempt < _LLM_MAX_ATTEMPTS - 1 and _should_retry_llm_exception(exc):
-                    logger.warning(
-                        "Gemini generate_json attempt failed; retrying. model=%s attempt=%s error=%r",
-                        self.model_name,
-                        attempt + 1,
-                        exc,
-                    )
-                    await asyncio.sleep(_llm_retry_delay_seconds(attempt))
-                    continue
-                _record_runtime_failure(
-                    self,
-                    provider="gemini",
-                    model=self.model_name,
-                    operation="generate_json",
-                    started_at=started_at,
-                    exc=exc,
-                )
-                raise
+        self.last_retry_attempts = 0
+        self.last_retry_exhausted = False
+        self.last_error_code = None
+        
+        settings = get_settings()
+        retryer = tenacity.AsyncRetrying(
+            stop=tenacity.stop_after_attempt(settings.gemini_max_retries + 1),
+            wait=tenacity.wait_exponential(
+                multiplier=settings.gemini_retry_initial_delay_seconds,
+                max=settings.gemini_retry_max_delay_seconds
+            ),
+            retry=tenacity.retry_if_exception(_is_retryable_gemini_exception),
+            before_sleep=tenacity.before_sleep_log(logger, logging.WARNING),
+            reraise=True
+        )
 
-        raise last_exc or RuntimeError("Gemini generation failed without an exception.")
+        try:
+            async for attempt in retryer:
+                with attempt:
+                    self.last_retry_attempts = attempt.retry_state.attempt_number - 1
+                    response = await _call_once()
+            
+            # JSON 파싱 및 Repair Attempt (이 부분은 네트워크 재시도 성공 후에 실행)
+            try:
+                parsed = _parse_response_model(response, response_model)
+            except (ValueError, json.JSONDecodeError) as parse_exc:
+                logger.warning("Gemini JSON parsing failed; attempting 1-time repair. error=%r", parse_exc)
+                repair_prompt = (
+                    f"The following output is not a valid JSON for the schema {response_model.model_json_schema()}.\n"
+                    "Please fix the JSON and return ONLY the valid JSON object.\n\n"
+                    f"Invalid Output:\n{str(getattr(response, 'text', ''))}\n"
+                )
+                
+                # Repair 시에도 재시도 적용 가능하지만, 여기서는 단순화하여 1회만 시도 (필요시 retryer 사용 가능)
+                try:
+                    repair_config = {
+                        "response_mime_type": "application/json",
+                        "response_schema": response_model,
+                        "temperature": 0.1,
+                    }
+                    if self.sdk_variant == "google-generativeai":
+                        repair_response = await self._legacy_generate_content(
+                            prompt=repair_prompt,
+                            system_instruction="You are a JSON repair specialist. Output ONLY valid JSON.",
+                            temperature=0.1,
+                            response_model=response_model,
+                            stream=False
+                        )
+                    else:
+                        repair_func = getattr(self.client.models, "generate_content_async", self.client.models.generate_content)
+                        if asyncio.iscoroutinefunction(repair_func):
+                            repair_response = await repair_func(
+                                model=self.model_name,
+                                contents=repair_prompt,
+                                config=repair_config
+                            )
+                        else:
+                            repair_response = await asyncio.to_thread(
+                                repair_func,
+                                model=self.model_name,
+                                contents=repair_prompt,
+                                config=repair_config
+                            )
+                    parsed = _parse_response_model(repair_response, response_model)
+                except Exception as repair_exc:
+                    logger.error("Gemini JSON repair failed. error=%r", repair_exc)
+                    raise parse_exc from repair_exc
+
+            _record_runtime_success(
+                self,
+                provider="gemini",
+                model=self.model_name,
+                operation="generate_json",
+                started_at=started_at,
+            )
+            return parsed
+
+        except Exception as exc:
+            self.last_error_code = _classify_gemini_error(exc)
+            if self.last_retry_attempts >= settings.gemini_max_retries:
+                self.last_retry_exhausted = True
+                self.last_error_code += "_retry_exhausted"
+            
+            _record_runtime_failure(
+                self,
+                provider="gemini",
+                model=self.model_name,
+                operation="generate_json",
+                started_at=started_at,
+                exc=exc,
+            )
+            raise
 
     async def stream_chat(
         self,
@@ -306,7 +416,10 @@ class GeminiClient(LLMClient):
         response_model: Type[BaseModel] | None = None,
         stream: bool = False,
     ) -> Any:
-        generation_config: dict[str, Any] = {"temperature": temperature}
+        generation_config: dict[str, Any] = {
+            "temperature": temperature,
+            "max_output_tokens": get_settings().gemini_max_output_tokens,
+        }
         if response_model is not None:
             generation_config["response_mime_type"] = "application/json"
             generation_config["response_schema"] = response_model
@@ -876,8 +989,8 @@ def get_pdf_analysis_llm_client() -> LLMClient:
 
 def resolve_pdf_analysis_llm_resolution(*, settings: Any | None = None) -> PDFAnalysisLLMResolution:
     settings = settings or get_settings()
-    provider_fallback_enabled = bool(getattr(settings, "llm_provider_fallback_enabled", True))
-    attempted_provider = (settings.pdf_analysis_llm_provider or "ollama").strip().lower()
+    provider_fallback_enabled = bool(getattr(settings, "llm_provider_fallback_enabled", False))
+    attempted_provider = (settings.pdf_analysis_llm_provider or "gemini").strip().lower()
     attempted_model = _resolve_pdf_analysis_requested_model(settings, attempted_provider)
     gemini_client: GeminiClient | None = None
     gemini_reason: str | None = None
@@ -1014,7 +1127,7 @@ def resolve_llm_runtime(
     settings: Any | None = None,
 ) -> LLMRuntimeResolution:
     settings = settings or get_settings()
-    provider_fallback_enabled = bool(getattr(settings, "llm_provider_fallback_enabled", True))
+    provider_fallback_enabled = bool(getattr(settings, "llm_provider_fallback_enabled", False))
     requested_provider = _resolve_requested_provider(settings, concern=concern)
     attempted_model = resolve_llm_requested_model(profile=profile, concern=concern, settings=settings)
     gemini_client: GeminiClient | None = None
@@ -1340,7 +1453,7 @@ def _resolve_requested_provider(settings: Any, *, concern: LLMConcern) -> str:
     elif concern == "render":
         value = getattr(settings, "render_llm_provider", None) or getattr(settings, "llm_provider", "gemini")
     elif concern == "pdf_analysis":
-        value = getattr(settings, "pdf_analysis_llm_provider", None) or "ollama"
+        value = getattr(settings, "pdf_analysis_llm_provider", None) or "gemini"
     else:
         value = getattr(settings, "llm_provider", "gemini")
     normalized = str(value or "").strip().lower()

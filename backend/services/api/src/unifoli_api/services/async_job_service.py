@@ -49,20 +49,21 @@ def _normalize_report_mode(value: str | None) -> str:
     return "premium"
 
 
-def _progress_defaults_for_job(job_type: str) -> tuple[str, str]:
+def _progress_defaults_for_job(job_type: str) -> tuple[str, str, str | None]:
+    """Returns (stage, message, phase)"""
     if job_type == AsyncJobType.DIAGNOSIS.value:
-        return "queued", "진단 작업이 대기열에 등록되었습니다."
+        return "queued", "진단 작업이 대기열에 등록되었습니다.", "diagnosis"
     if job_type == AsyncJobType.DIAGNOSIS_REPORT.value:
-        return "queued", "진단 보고서 생성 작업이 대기열에 등록되었습니다."
+        return "queued", "진단 보고서 생성 작업이 대기열에 등록되었습니다.", "report"
     if job_type == AsyncJobType.DOCUMENT_PARSE.value:
-        return "queued", "문서 파싱 작업이 대기열에 등록되었습니다."
+        return "queued", "문서 파싱 작업이 대기열에 등록되었습니다.", "parse"
     if job_type == AsyncJobType.RENDER.value:
-        return "queued", "렌더 작업이 대기열에 등록되었습니다."
+        return "queued", "렌더 작업이 대기열에 등록되었습니다.", "report"
     if job_type == AsyncJobType.RESEARCH_INGEST.value:
-        return "queued", "리서치 문서 수집 작업이 대기열에 등록되었습니다."
+        return "queued", "리서치 문서 수집 작업이 대기열에 등록되었습니다.", "parse"
     if job_type == AsyncJobType.INQUIRY_EMAIL.value:
-        return "queued", "문의 메일 발송 작업이 대기열에 등록되었습니다."
-    return "queued", "작업이 대기열에 등록되었습니다."
+        return "queued", "문의 메일 발송 작업이 대기열에 등록되었습니다.", "other"
+    return "queued", "작업이 대기열에 등록되었습니다.", None
 
 
 def _append_progress_history(job: AsyncJob, *, stage: str, message: str, completed_at_iso: str) -> None:
@@ -128,7 +129,7 @@ def create_async_job(
     max_retries: int | None = None,
 ) -> AsyncJob:
     settings = get_settings()
-    stage, message = _progress_defaults_for_job(job_type)
+    stage, message, phase = _progress_defaults_for_job(job_type)
     job = AsyncJob(
         job_type=job_type,
         resource_type=resource_type,
@@ -136,6 +137,7 @@ def create_async_job(
         project_id=project_id,
         payload=payload or {},
         max_retries=max_retries if max_retries is not None else settings.async_job_max_retries,
+        phase=phase,
     )
     _set_job_progress(job, stage=stage, message=message, progress_percent=0.0)
     db.add(job)
@@ -177,6 +179,7 @@ def set_async_job_progress(
 def heartbeat_async_job(db: Session, job_id: str) -> AsyncJob | None:
     job = db.get(AsyncJob, job_id)
     if job:
+        # Explicitly update timestamp to prevent stale detection
         job.updated_at = utc_now()
         db.add(job)
         db.commit()
@@ -399,7 +402,10 @@ def _claim_next_runnable_job(db: Session) -> AsyncJob | None:
 
 def _requeue_stale_jobs(db: Session) -> None:
     settings = get_settings()
-    stale_before = utc_now() - timedelta(seconds=settings.async_job_stale_after_seconds)
+    # If a job hasn't sent a heartbeat for a long time, it's likely a zombie
+    stale_after = settings.async_job_stale_after_seconds
+    stale_before = utc_now() - timedelta(seconds=stale_after)
+    
     stmt = select(AsyncJob).where(
         AsyncJob.status == AsyncJobStatus.RUNNING.value,
         AsyncJob.updated_at < stale_before,
@@ -409,24 +415,32 @@ def _requeue_stale_jobs(db: Session) -> None:
         return
 
     for job in stale_jobs:
-        reason = "Job execution became stale and was returned to the retry queue."
+        elapsed = (utc_now() - job.updated_at).total_seconds()
+        logger.warning(
+            "Detected stale job. type=%s id=%s last_update=%.1fs ago",
+            job.job_type, job.id, elapsed
+        )
+        
+        reason = f"작업이 {int(elapsed)}초 동안 응답이 없어 자동 복구를 시도합니다."
         if job.retry_count >= job.max_retries:
             job.status = AsyncJobStatus.FAILED.value
             job.failure_reason = reason
+            job.failure_code = "ZOMBIE_JOB_TERMINATED"
             job.dead_lettered_at = utc_now()
             job.completed_at = utc_now()
             _set_job_progress(
                 job,
                 stage="stale_failed",
-                message="작업이 장시간 갱신되지 않아 실패로 처리되었습니다.",
+                message="작업이 장시간 응답하지 않아 실패로 처리되었습니다.",
             )
             _mark_resource_failed(db, job, reason)
+            logger.error("Stale job terminated after exhausting retries. id=%s", job.id)
         else:
             job.schedule_retry(delay_seconds=settings.async_job_retry_delay_seconds, reason=reason)
             _set_job_progress(
                 job,
                 stage="stale_recovering",
-                message="작업이 지연되어 자동 복구를 시도합니다.",
+                message="작업 지연이 감지되어 복구 중입니다.",
             )
             _mark_resource_retrying(db, job, reason)
         db.add(job)
@@ -441,7 +455,13 @@ def _handle_job_failure(
     internal_reason: str | None = None,
 ) -> AsyncJob:
     public_reason = _public_failure_reason(job, reason)
-    logger.warning("Async job failed: %s %s -> %s", job.job_type, job.id, public_reason)
+    failure_code = _map_exception_to_failure_code(reason, internal_reason)
+    
+    logger.warning(
+        "Async job failed: %s %s [code=%s] -> %s", 
+        job.job_type, job.id, failure_code, public_reason
+    )
+    
     if internal_reason:
         logger.warning(
             "Async job internal failure detail: job_type=%s job_id=%s detail=%s",
@@ -452,7 +472,12 @@ def _handle_job_failure(
         payload = dict(job.payload or {})
         payload["last_internal_failure"] = internal_reason
         payload["last_internal_failure_at"] = utc_now().isoformat()
+        payload["failure_code"] = failure_code
         job.payload = payload
+    
+    # Store failure_code in the new DB column
+    job.failure_code = failure_code
+    
     settings = get_settings()
     if _is_non_retryable_failure(job, reason=reason, internal_reason=internal_reason) or job.retry_count >= job.max_retries:
         job.status = AsyncJobStatus.FAILED.value
@@ -461,12 +486,44 @@ def _handle_job_failure(
         job.dead_lettered_at = utc_now()
         _mark_resource_failed(db, job, public_reason)
     else:
-        job.schedule_retry(delay_seconds=settings.async_job_retry_delay_seconds, reason=public_reason)
+        # Schedule next attempt with exponential backoff if possible
+        delay = settings.async_job_retry_delay_seconds * (2 ** (job.retry_count or 0))
+        # Cap at 1 hour
+        delay = min(delay, 3600)
+        job.schedule_retry(delay_seconds=int(delay), reason=public_reason)
         _mark_resource_retrying(db, job, public_reason)
+        
     db.add(job)
     db.commit()
     db.refresh(job)
     return job
+
+
+def _map_exception_to_failure_code(reason: str, internal_reason: str | None) -> str:
+    combined = (reason + (internal_reason or "")).lower()
+    
+    if "timeout" in combined or "deadline" in combined:
+        return "TIMEOUT_EXCEEDED"
+    if "rate limit" in combined or "429" in combined:
+        return "RATE_LIMIT_REACHED"
+    if "permission" in combined or "unauthorized" in combined or "403" in combined:
+        return "PERMISSION_DENIED"
+    if "not found" in combined or "404" in combined:
+        return "RESOURCE_NOT_FOUND"
+    if "token" in combined and "limit" in combined:
+        return "LLM_TOKEN_LIMIT_EXCEEDED"
+    if "malformed" in combined or "invalid pdf" in combined:
+        return "MALFORMED_PDF"
+    if "encrypted" in combined or "password" in combined:
+        return "ENCRYPTED_PDF"
+    if "no usable text" in combined:
+        return "NO_USABLE_TEXT"
+    if "database or disk is full" in combined:
+        return "STORAGE_FULL"
+    if "serverless" in combined and "timeout" in combined:
+        return "SERVERLESS_TIMEOUT"
+        
+    return "INTERNAL_ERROR"
 
 
 def _dispatch_job(db: Session, job: AsyncJob) -> None:

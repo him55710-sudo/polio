@@ -361,15 +361,18 @@ def ingest_upload_asset(
                 with pdfplumber.open(source_path) as pdf:
                     advanced_pipeline = StudentRecordPipelineService()
 
-                    def _heartbeat():
+                    def _heartbeat(stage: str | None = None, message: str | None = None):
                         if job_id:
-                            from unifoli_api.services.async_job_service import heartbeat_async_job
+                            from unifoli_api.services.async_job_service import heartbeat_async_job, set_async_job_progress
                             heartbeat_async_job(db, job_id)
+                            if stage or message:
+                                set_async_job_progress(db, job_id, stage=stage or "running", message=message or "진행 중...")
 
+                    _heartbeat(stage="advanced_parse", message="심층 분석 파이프라인을 가동하고 있습니다...")
                     advanced_artifact = advanced_pipeline.process_document(
                         pdf.pages,
                         parsed.content_text,
-                        heartbeat_callback=_heartbeat,
+                        heartbeat_callback=lambda: _heartbeat(stage="advanced_parse", message="심층 분석을 진행 중입니다..."),
                     )
                     document.parse_metadata["analysis_artifact"] = advanced_artifact
 

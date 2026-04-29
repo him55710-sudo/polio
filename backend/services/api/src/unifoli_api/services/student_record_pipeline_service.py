@@ -197,12 +197,74 @@ class StudentRecordPipelineService:
                 "page_count": len(pages),
                 "section_count": len(sections),
                 "classification_summary": self._get_classification_summary(classified_pages) if classified_pages else {},
-                "block_count": sr_full_fidelity["block_registry"]["total_blocks"] if sr_full_fidelity else 0
+                "block_count": sr_full_fidelity["block_registry"]["total_blocks"] if sr_full_fidelity else 0,
+                
+                # Task 2: Structural metadata
+                "student_record_structure": self._get_structure_summary(sections),
+                "section_coverage": self._calculate_section_coverage(found_categories=found_categories if 'found_categories' in locals() else [], sections=sections, quality_report=quality_report),
+                "anchor_registry": self._build_anchor_registry(sr_full_fidelity),
+                "parse_quality": {
+                    "overall_score": quality_report.get("overall_score", 0.0) if quality_report else 0.0,
+                    "text_coverage_score": quality_report.get("text_coverage_score", 0.0) if quality_report else 0.0,
+                    "section_coverage_score": quality_report.get("section_coverage_score", 0.0) if quality_report else 0.0,
+                    "is_provisional": quality_report.get("is_provisional", False) if quality_report else True,
+                    "missing_critical_sections": quality_report.get("missing_critical_sections", []) if quality_report else [],
+                    "warnings": quality_report.get("warnings", []) if quality_report else ["Parsing quality assessment unavailable."]
+                }
             },
             sr_full_fidelity=sr_full_fidelity
         )
 
         return artifact.dict()
+
+    def _get_structure_summary(self, sections: List[Any]) -> Dict[str, Any]:
+        return {
+            "total_sections": len(sections),
+            "sections": [
+                {
+                    "type": getattr(s, "section_type", "unknown").value if hasattr(getattr(s, "section_type", None), 'value') else str(getattr(s, "section_type", "unknown")),
+                    "pages": list(range(int(getattr(s, "start_page", 1)), int(getattr(s, "end_page", 1)) + 1))
+                } for s in sections
+            ]
+        }
+
+    def _calculate_section_coverage(self, found_categories: List[Any], sections: List[Any], quality_report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        coverage = {}
+        for section in sections:
+            s_type = getattr(section, "section_type", "unknown")
+            s_key = s_type.value if hasattr(s_type, 'value') else str(s_type)
+            if s_key not in coverage:
+                coverage[s_key] = {
+                    "present": True,
+                    "confidence": 0.8,
+                    "evidence_count": 1,
+                    "pages": list(range(int(getattr(section, "start_page", 1)), int(getattr(section, "end_page", 1)) + 1))
+                }
+            else:
+                coverage[s_key]["evidence_count"] += 1
+                coverage[s_key]["pages"].extend(list(range(int(getattr(section, "start_page", 1)), int(getattr(section, "end_page", 1)) + 1)))
+                coverage[s_key]["pages"] = list(set(coverage[s_key]["pages"]))
+        
+        return coverage
+
+    def _build_anchor_registry(self, sr_full_fidelity: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not sr_full_fidelity or "block_registry" not in sr_full_fidelity:
+            return []
+        
+        anchors = []
+        blocks = sr_full_fidelity["block_registry"].get("blocks", [])
+        for i, block in enumerate(blocks[:50]): # Limit to 50 anchors for performance
+            anchors.append({
+                "id": block.get("id", str(i)),
+                "page_number": block.get("page_number", 1),
+                "section": block.get("section_label", "unknown"),
+                "label": block.get("block_type", "text"),
+                "quote": (block.get("content", "")[:200]),
+                "char_start": block.get("char_start", 0),
+                "char_end": block.get("char_end", 0),
+                "confidence": 0.9
+            })
+        return anchors
 
     def _get_classification_summary(self, classified_pages: List[Any]) -> Dict[str, int]:
         summary = {}

@@ -667,8 +667,29 @@ export function Diagnosis() {
   useEffect(() => {
     if (!polledRun || step !== 'ANALYSING') return;
     if (!shouldApplyDiagnosisResource(polledRun.id, diagnosisRunId)) return;
+    
+    // Task 3: Sync timingPhases with Job phase
+    if (diagnosisJob) {
+      const jobPhase = (diagnosisJob as any).phase;
+      const jobMsg = diagnosisJob.progress_message;
+      
+      if (jobPhase === 'diagnosis') {
+        setTimingPhases(prev => ({
+          ...prev,
+          parse: { ...prev.parse, status: 'done', finishedAt: prev.parse.finishedAt || Date.now() },
+          diagnosis: { ...prev.diagnosis, status: 'running', note: jobMsg || prev.diagnosis.note }
+        }));
+      } else if (jobPhase === 'report') {
+        setTimingPhases(prev => ({
+          ...prev,
+          parse: { ...prev.parse, status: 'done' },
+          diagnosis: { ...prev.diagnosis, status: 'done', finishedAt: prev.diagnosis.finishedAt || Date.now() }
+        }));
+      }
+    }
+
     void syncDiagnosisRun(polledRun.id);
-  }, [diagnosisRunId, polledRun, step, syncDiagnosisRun]);
+  }, [diagnosisRunId, polledRun, step, syncDiagnosisRun, diagnosisJob]);
 
   const { data: polledReportRun } = useAsyncJob<DiagnosisRunResponse>({
     url: step === 'RESULT' && diagnosisRun?.id ? `/api/v1/diagnosis/${diagnosisRun.id}` : null,

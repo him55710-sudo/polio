@@ -24,12 +24,28 @@ class Base(DeclarativeBase):
 
 settings = get_settings()
 logger = logging.getLogger("unifoli.api.database")
-engine = create_engine(
-    settings.database_url,
-    future=True,
-    echo=settings.database_echo,
-    pool_pre_ping=True,
-)
+
+# Build engine arguments
+engine_kwargs = {
+    "echo": settings.database_echo,
+    "future": True,
+    "pool_pre_ping": True,
+}
+
+if settings.database_url.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # PostgreSQL specific pool tuning
+    # In serverless, we keep pools very small to avoid "Too many connections" errors
+    # as each lambda instance creates its own pool.
+    if settings.serverless_runtime:
+        engine_kwargs["pool_size"] = 1
+        engine_kwargs["max_overflow"] = 0
+    else:
+        engine_kwargs["pool_size"] = settings.database_pool_size
+        engine_kwargs["max_overflow"] = settings.database_max_overflow
+
+engine = create_engine(settings.database_url, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 _APPLICATION_TABLES: tuple[str, ...] = (
     "projects",
@@ -66,6 +82,10 @@ def _ensure_schema_is_ready() -> None:
 
     has_app_tables = any(inspector.has_table(table_name) for table_name in _APPLICATION_TABLES)
     if settings.database_auto_create_tables:
+        if settings.serverless_runtime and settings.app_env != "local":
+            logger.warning("Skipping automatic migrations in serverless production to avoid race conditions. Run migrations during deployment.")
+            return
+
         logger.info(
             "Auto-applying Alembic migrations at startup. current_revisions=%s head_revisions=%s",
             sorted(current_revisions),

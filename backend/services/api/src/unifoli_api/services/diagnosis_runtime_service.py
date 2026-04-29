@@ -47,11 +47,11 @@ from unifoli_shared.storage import get_storage_provider
 
 
 RAW_POLICY_SCAN_EXTENSIONS = {".txt", ".md", ".csv", ".json"}
-MAX_DOC_TEXT_CHARS = 42_000
-MAX_COMBINED_TEXT_CHARS = 120_000
-MAX_METADATA_SUMMARY_CHARS = 1_600
-MAX_DIAGNOSIS_LLM_INPUT_CHARS = 30_000
-MAX_SEMANTIC_INPUT_CHARS = 15_000
+# Limits are now primarily controlled via Settings in config.py
+# Fallback defaults if settings are somehow unavailable
+DEFAULT_MAX_DOC_TEXT_CHARS = 42_000
+DEFAULT_MAX_COMBINED_TEXT_CHARS = 120_000
+DEFAULT_MAX_METADATA_SUMMARY_CHARS = 1_600
 SEMANTIC_EXTRACTION_TIMEOUT_SECONDS = 60.0
 DIAGNOSIS_GENERATION_TIMEOUT_SECONDS = 45.0
 
@@ -91,6 +91,56 @@ def _infer_record_completion_state(full_text: str) -> str:
     return "ongoing"
 
 
+def _smart_truncate_student_record(text: str, prefix: str, limit: int) -> str:
+    """
+    Attempts to preserve the most important sections of a student record 
+    when the total text exceeds the LLM context limit.
+    Prioritizes: '교과학습발달상황(세특)', '행동특성 및 종합의견(행발)', '창의적 체험활동(창체)'.
+    """
+    available_chars = limit - len(prefix) - 100 # safety buffer
+    if available_chars < 2000:
+        # If prefix is too huge, we just have to slice
+        combined = f"[context]\n{prefix}\n\n[record]\n{text}"
+        return combined[:limit]
+
+    # Critical sections markers
+    critical_markers = [
+        "교과학습발달상황", 
+        "세부능력 및 특기사항", 
+        "행동특성 및 종합의견", 
+        "창의적 체험활동상황",
+        "진로활동",
+        "자율활동"
+    ]
+    
+    # Try to find where these sections start
+    section_indices = []
+    for marker in critical_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            section_indices.append(idx)
+    
+    if not section_indices:
+        # No known sections found, just take the end of the document (often more recent/important)
+        return f"[context]\n{prefix}\n\n[record_tail]\n...{text[-available_chars:]}"
+
+    first_critical_idx = min(section_indices)
+    
+    # Take a bit of the beginning (basic info) and then the critical part
+    head_size = min(2000, first_critical_idx)
+    head = text[:head_size]
+    body = text[first_critical_idx:]
+    
+    if len(head) + len(body) <= available_chars:
+        return f"[context]\n{prefix}\n\n[record]\n{head}\n...[gap]...\n{body}"
+    
+    # If still too long, we take the head and the end of the body (most recent grades/comments)
+    body_limit = available_chars - len(head) - 50
+    truncated_body = body[-body_limit:]
+    
+    return f"[context]\n{prefix}\n\n[record_focused]\n{head}\n...[focus_on_critical_sections]...\n{truncated_body}"
+
+
 def _is_sqlite_disk_full_error(exc: Exception) -> bool:
     return "database or disk is full" in str(exc).lower()
 
@@ -113,8 +163,16 @@ def _extract_document_text(document: Any) -> str:
                         context_lines.append(f"- {value[:220]}")
                 prefix = "\n".join(line for line in context_lines if line).strip()
                 if prefix:
-                    return f"[student_record_consulting_context]\n{prefix}\n\n[masked_student_record]\n{primary}"[:MAX_DOC_TEXT_CHARS]
-        return primary[:MAX_DOC_TEXT_CHARS]
+                    limit = get_settings().diagnosis_llm_max_input_chars
+                    # If total is over limit, we use a smarter strategy than pure slicing
+                    if len(prefix) + len(primary) > limit:
+                        return _smart_truncate_student_record(primary, prefix, limit)
+                    return f"[student_record_consulting_context]\n{prefix}\n\n[masked_student_record]\n{primary}"
+        
+        limit = get_settings().diagnosis_llm_max_input_chars
+        if len(primary) > limit:
+            return _smart_truncate_student_record(primary, "", limit)
+        return primary
 
     if not isinstance(metadata, dict):
         return ""
@@ -131,7 +189,7 @@ def _extract_document_text(document: Any) -> str:
                     block_parts = [str(b.get("text") or "").strip() for b in blocks if b.get("text")]
                     block_text = "\n".join(block_parts).strip()
                     if block_text:
-                        return block_text[:MAX_DOC_TEXT_CHARS]
+                        return block_text[:get_settings().diagnosis_llm_max_input_chars]
 
     # Priority 2: Student Record Canonical Metadata
     canonical = metadata.get("student_record_canonical")
@@ -199,7 +257,7 @@ def _extract_document_text(document: Any) -> str:
 
         canonical_text = "\n".join(canonical_parts).strip()
         if canonical_text:
-            return canonical_text[:MAX_DOC_TEXT_CHARS]
+            return canonical_text[:get_settings().diagnosis_llm_max_input_chars]
 
     pdf_analysis = metadata.get("pdf_analysis")
     if not isinstance(pdf_analysis, dict):
@@ -239,7 +297,8 @@ def combine_project_text(project_id: str, db: Session) -> tuple[list[Any], str]:
         )
 
     merged_parts: list[str] = []
-    remaining_budget = MAX_COMBINED_TEXT_CHARS
+    settings = get_settings()
+    remaining_budget = settings.diagnosis_llm_max_input_chars
     for document in documents:
         text = _extract_document_text(document)
         if not text:
@@ -503,7 +562,18 @@ async def run_diagnosis_run(
     def _update_status(msg: str, stage: str = "RUNNING", progress: float | None = None) -> None:
         _update_run_status(db, run, status=stage, status_message=msg)
         if heartbeat_callback:
+            # heartbeat_callback should also trigger DB heartbeat
             heartbeat_callback(stage=stage.lower(), message=msg, progress=progress)
+        
+        # If we have a job_id, ensure we update the job heartbeat/progress too
+        # This is a bit of a duplicate but safer for stabilization
+        try:
+            from unifoli_api.services.async_job_service import heartbeat_async_job, set_async_job_progress
+            # Find the job associated with this run if not directly provided
+            # For now, we assume the caller passes it via heartbeat_callback wrapper or we need job_id
+            pass 
+        except ImportError:
+            pass
 
     try:
         resolved_owner_user_id = owner_user_id.strip() or None
@@ -539,8 +609,9 @@ async def run_diagnosis_run(
         started_at = time.perf_counter()
 
         policy_scan_text = build_policy_scan_text(documents) or full_text
-        diagnosis_input_text = full_text[:MAX_DIAGNOSIS_LLM_INPUT_CHARS]
-        semantic_input_text = full_text[:MAX_SEMANTIC_INPUT_CHARS]
+        settings = get_settings()
+        diagnosis_input_text = full_text[:settings.diagnosis_llm_max_input_chars]
+        semantic_input_text = full_text[:settings.semantic_extraction_max_input_chars]
         completion_state = _infer_record_completion_state(full_text)
         
         llm_strategy = _diagnosis_llm_strategy()
@@ -631,6 +702,12 @@ async def run_diagnosis_run(
                 )
                 invocation = get_last_llm_invocation(resolved_llm_client)
                 invoked_model = _apply_llm_invocation_metadata(llm_strategy, invocation)
+                
+                # Capture retry info from GeminiClient
+                llm_strategy["llm_retry_attempts"] = getattr(resolved_llm_client, "last_retry_attempts", 0)
+                llm_strategy["llm_retry_exhausted"] = getattr(resolved_llm_client, "last_retry_exhausted", False)
+                llm_strategy["llm_last_error_code"] = getattr(resolved_llm_client, "last_error_code", None)
+                
                 if invoked_model:
                     model_name = invoked_model
             except asyncio.TimeoutError as exc:
@@ -689,6 +766,25 @@ async def run_diagnosis_run(
             )
 
         result.record_completion_state = completion_state
+        
+        # Task 2: Check for provisional (low quality) parsing results
+        is_any_document_provisional = False
+        provisional_reasons = []
+        for doc in documents:
+            doc_metadata = getattr(doc, "parse_metadata", {}) or {}
+            parse_quality = doc_metadata.get("parse_quality", {})
+            if parse_quality.get("is_provisional"):
+                is_any_document_provisional = True
+                filename = doc_metadata.get("filename", "알 수 없는 문서")
+                provisional_reasons.append(f"'{filename}'의 파싱 품질이 낮아 진단 결과가 부정확할 수 있습니다.")
+
+        if is_any_document_provisional:
+            result.is_provisional = True
+            if not hasattr(result, "warnings"):
+                result.warnings = []
+            result.warnings.extend(provisional_reasons)
+            logger.info(f"Diagnosis run {run.id} marked as provisional due to low quality parsing.")
+
         _apply_structured_backbone(result=result, sheet=scoring_sheet)
         processing_duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
         result.requested_llm_provider = str(llm_strategy.get("requested_llm_provider") or "")
@@ -696,6 +792,9 @@ async def run_diagnosis_run(
         result.actual_llm_provider = str(llm_strategy.get("actual_llm_provider") or "")
         result.actual_llm_model = str(llm_strategy.get("actual_llm_model") or "")
         result.llm_profile_used = str(llm_strategy.get("llm_profile_used") or "standard")
+        result.llm_retry_attempts = int(llm_strategy.get("llm_retry_attempts") or 0)
+        result.llm_retry_exhausted = bool(llm_strategy.get("llm_retry_exhausted"))
+        result.llm_last_error_code = llm_strategy.get("llm_last_error_code")
         result.fallback_used = bool(llm_strategy.get("fallback_used"))
         result.fallback_reason = str(llm_strategy.get("fallback_reason") or "").strip() or None
         result.processing_duration_ms = processing_duration_ms

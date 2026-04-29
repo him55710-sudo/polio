@@ -23,5 +23,11 @@
       "source": "/((?!api/).*)",
       "destination": "/"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/jobs/cron/process",
+      "schedule": "* * * * *"
+    }
   ]
 }

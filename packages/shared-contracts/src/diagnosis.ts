@@ -560,10 +560,26 @@ export interface AsyncJobRead {
   max_retries: number;
   failure_reason: string | null;
   failure_history: Array<Record<string, unknown>>;
+  
+  // Advanced stabilization fields
+  phase?: string | null;
+  stale: boolean;
+  retryable: boolean;
+  failure_code?: string | null;
+  public_message?: string | null;
+  debug_detail?: string | null;
+  
   progress_stage?: string | null;
   progress_message?: string | null;
   progress_percent?: number | null;
   progress_history?: Array<{ stage: string; message: string; completed_at: string }>;
+  
+  heartbeat_at?: string | null;
+  next_retry_at?: string | null;
+  
+  attempt_count: number;
+  max_attempts: number;
+
   next_attempt_at: string;
   started_at: string | null;
   completed_at: string | null;

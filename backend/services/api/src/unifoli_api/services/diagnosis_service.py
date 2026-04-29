@@ -249,6 +249,9 @@ class DiagnosisResult(BaseModel):
     actual_llm_provider: str | None = None
     actual_llm_model: str | None = None
     llm_profile_used: str | None = None
+    llm_retry_attempts: int = 0
+    llm_retry_exhausted: bool = False
+    llm_last_error_code: str | None = None
     fallback_used: bool | None = None
     fallback_reason: str | None = None
     processing_duration_ms: int | None = None

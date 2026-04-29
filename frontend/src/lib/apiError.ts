@@ -84,6 +84,8 @@ function mapErrorCodeToUserMessage(code: string): string | null {
       return '프런트가 백엔드 API 대신 웹페이지 HTML을 받고 있습니다. VITE_API_URL이 백엔드 주소를 가리키는지, 또는 같은 오리진 배포의 rewrite 설정이 올바른지 확인해 주세요.';
     case 'NETWORK_UNREACHABLE':
       return '백엔드 서버에 연결할 수 없습니다. API 서버 주소, 배포 상태, CORS 설정을 확인해 주세요.';
+    case 'GEMINI_API_KEY_MISSING':
+      return 'AI 진단에 필요한 Gemini API Key가 설정되지 않았습니다. 관리자 페이지에서 API Key를 입력해 주세요.';
     case 'INTERNAL_ERROR':
       return '서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
     default:
