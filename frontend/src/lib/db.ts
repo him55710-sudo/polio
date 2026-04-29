@@ -1,4 +1,5 @@
 import { app, auth, firestoreDatabaseId, isFirebaseConfigured } from './firebase';
+import type { UserProfile } from '@shared-contracts';
 import { 
   collection, 
   doc, 
@@ -11,6 +12,7 @@ import {
   where, 
   orderBy, 
   onSnapshot,
+  serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
 import { getFirestore, type Firestore } from 'firebase/firestore';
@@ -78,6 +80,69 @@ function requireFirestore() {
     throw new Error('Firebase is not configured for this environment.');
   }
   return db;
+}
+
+function optionalText(value: string | null | undefined, maxLen: number): string | undefined {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return undefined;
+  return normalized.slice(0, maxLen);
+}
+
+function cleanStringList(values: string[] | null | undefined, maxItems: number, maxLen: number): string[] | undefined {
+  if (!Array.isArray(values)) return undefined;
+  const cleaned = values
+    .map(value => optionalText(value, maxLen))
+    .filter((value): value is string => Boolean(value));
+  return cleaned.length ? cleaned.slice(0, maxItems) : undefined;
+}
+
+function compactPayload<T extends Record<string, unknown>>(payload: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
+
+export async function syncUserProfileToFirestore(profile: UserProfile): Promise<boolean> {
+  const uid = optionalText(profile.firebase_uid, 128);
+  const email = optionalText(profile.email, 320);
+  if (!uid || !email || profile.is_guest) {
+    return false;
+  }
+
+  const path = `users/${uid}`;
+  try {
+    const firestore = requireFirestore();
+    const userRef = doc(firestore, 'users', uid);
+    const existing = await getDoc(userRef);
+    const payload = compactPayload({
+      uid,
+      email,
+      displayName: optionalText(profile.name, 80),
+      backendUserId: optionalText(profile.id, 128),
+      grade: optionalText(profile.grade, 40),
+      track: optionalText(profile.track, 80),
+      career: optionalText(profile.career, 500),
+      targetUniversity: optionalText(profile.target_university, 120),
+      targetMajor: optionalText(profile.target_major, 120),
+      admissionType: optionalText(profile.admission_type, 120),
+      interestUniversities: cleanStringList(profile.interest_universities, 20, 120),
+      marketingAgreed: Boolean(profile.marketing_agreed),
+      updatedAt: serverTimestamp(),
+    });
+
+    if (existing.exists()) {
+      await updateDoc(userRef, payload);
+    } else {
+      await setDoc(userRef, {
+        ...payload,
+        createdAt: serverTimestamp(),
+      });
+    }
+    return true;
+  } catch (error) {
+    console.warn('Firestore profile sync skipped:', { path, error });
+    return false;
+  }
 }
 
 // User Profile

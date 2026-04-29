@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { B2BPartnershipModal } from './B2BPartnershipModal';
+import { ReviewModal } from './ReviewModal';
 import { AppFooter } from './layout/AppFooter';
 import { AppSidebar } from './layout/AppSidebar';
 import { AppTopbar } from './layout/AppTopbar';
@@ -25,6 +26,7 @@ export function Layout() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(isDesktopViewport);
   const [isPartnershipModalOpen, setIsPartnershipModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   useEffect(() => {
     const mediaQuery = getDesktopMediaQuery();
@@ -64,6 +66,7 @@ export function Layout() {
   return (
     <>
       <B2BPartnershipModal isOpen={isPartnershipModalOpen} onClose={() => setIsPartnershipModalOpen(false)} />
+      <ReviewModal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} />
       <AppShell
         topbar={
           hideGlobalChrome ? null : (
@@ -76,6 +79,7 @@ export function Layout() {
               userPhotoUrl={user?.photoURL}
               isGuestSession={isGuestSession}
               onLogout={logout}
+              onOpenReview={() => setIsReviewModalOpen(true)}
             />
           )
         }
@@ -87,3 +91,4 @@ export function Layout() {
     </>
   );
 }
+

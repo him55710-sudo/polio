@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING
@@ -146,6 +149,138 @@ class S3StorageProvider(StorageProvider):
         )
 
 
+class GCSStorageProvider(StorageProvider):
+    """Stores files in Google Cloud Storage or Firebase Storage."""
+
+    def __init__(
+        self,
+        bucket_name: str | None = None,
+        service_account_json: str | None = None,
+    ):
+        bucket_name = _strip_matching_quotes(str(bucket_name or ""))
+        if not bucket_name:
+            raise ValueError("GCS_BUCKET_NAME is required when UNIFOLI_STORAGE_PROVIDER=gcs")
+        try:
+            from google.cloud import storage
+            from google.oauth2 import service_account
+        except ImportError as exc:
+            raise ImportError("google-cloud-storage is required for GCSStorageProvider.") from exc
+
+        credentials = None
+        if service_account_json:
+            credentials = service_account.Credentials.from_service_account_info(
+                _load_service_account_info(service_account_json),
+            )
+        self.client = storage.Client(credentials=credentials)
+        self.bucket_name = bucket_name
+        self.bucket = self.client.bucket(bucket_name)
+
+    def store(self, content: bytes, path: str) -> str:
+        blob = self.bucket.blob(path)
+        blob.upload_from_string(content)
+        return path
+
+    def retrieve(self, path: str) -> bytes:
+        return self.bucket.blob(path).download_as_bytes()
+
+    def delete(self, path: str) -> None:
+        self.bucket.blob(path).delete()
+
+    def exists(self, path: str) -> bool:
+        return self.bucket.blob(path).exists()
+
+    def get_url(self, path: str) -> str:
+        return self.bucket.blob(path).generate_signed_url(
+            expiration=timedelta(hours=1),
+            method="GET",
+            version="v4",
+        )
+
+
+class VercelBlobStorageProvider(StorageProvider):
+    """Stores files in Vercel Blob."""
+
+    def __init__(self, token: str | None = None, access: str = "private"):
+        try:
+            from vercel.blob import BlobClient
+        except ImportError as exc:
+            raise ImportError("vercel is required for VercelBlobStorageProvider.") from exc
+
+        self.access = "public" if str(access or "").strip().lower() == "public" else "private"
+        self.client = BlobClient(token=_strip_matching_quotes(str(token or "")) or None)
+
+    def store(self, content: bytes, path: str) -> str:
+        result = self.client.put(path, content, access=self.access, overwrite=True)
+        return result.pathname
+
+    def retrieve(self, path: str) -> bytes:
+        result = self.client.get(path, access=self.access)
+        if result is None or getattr(result, "content", None) is None:
+            raise FileNotFoundError(f"Blob not found: {path}")
+        return bytes(result.content)
+
+    def delete(self, path: str) -> None:
+        self.client.delete(path)
+
+    def exists(self, path: str) -> bool:
+        try:
+            return self.client.head(path) is not None
+        except Exception:
+            return False
+
+    def get_url(self, path: str) -> str:
+        result = self.client.head(path)
+        return result.download_url or result.url
+
+
+def _strip_matching_quotes(value: str) -> str:
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {'"', "'"}:
+        return stripped[1:-1].strip()
+    return stripped
+
+
+def _remove_escaped_json_formatting_newlines(value: str) -> str:
+    normalized = value.replace("\\r\\n", "\\n")
+    normalized = re.sub(r"^\s*\\n\s*", "", normalized)
+    normalized = re.sub(r"(?:\\n\s*)+$", "", normalized)
+    normalized = re.sub(r'\\n\s*(?="[^"\\]*(?:\\.[^"\\]*)*"\s*:)', "", normalized)
+    normalized = re.sub(r"\\n\s*(?=})", "", normalized)
+    return normalized
+
+
+def _load_service_account_info(raw_value: str) -> dict[str, object]:
+    candidates = []
+    stripped = raw_value.strip()
+    unquoted = _strip_matching_quotes(stripped)
+    candidates.extend(
+        candidate
+        for candidate in (
+            stripped,
+            unquoted,
+            _remove_escaped_json_formatting_newlines(unquoted),
+        )
+        if candidate
+    )
+
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+            if isinstance(payload, str):
+                payload = json.loads(_remove_escaped_json_formatting_newlines(_strip_matching_quotes(payload)))
+            if not isinstance(payload, dict):
+                raise ValueError("Service account payload must be a JSON object.")
+            private_key = payload.get("private_key")
+            if isinstance(private_key, str) and "\\n" in private_key:
+                payload = {**payload, "private_key": private_key.replace("\\n", "\n")}
+            return payload
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+
+    raise ValueError("Service account JSON could not be parsed.") from last_error
+
+
 def get_storage_provider(settings=None) -> StorageProvider:
     """Factory to get the configured storage provider."""
     from unifoli_shared.paths import get_storage_root
@@ -164,6 +299,14 @@ def get_storage_provider(settings=None) -> StorageProvider:
                 s3_secret_access_key = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("OBJECT_STORAGE_SECRET_KEY")
                 s3_bucket_name = os.getenv("S3_BUCKET_NAME") or os.getenv("OBJECT_STORAGE_BUCKET")
                 s3_region_name = os.getenv("S3_REGION_NAME")
+                gcs_bucket_name = (
+                    os.getenv("GCS_BUCKET_NAME")
+                    or os.getenv("FIREBASE_STORAGE_BUCKET")
+                    or os.getenv("VITE_FIREBASE_STORAGE_BUCKET")
+                )
+                firebase_service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+                blob_read_write_token = os.getenv("BLOB_READ_WRITE_TOKEN")
+                vercel_blob_access = os.getenv("VERCEL_BLOB_ACCESS", "private")
 
             settings = _FallbackSettings()
 
@@ -178,6 +321,24 @@ def get_storage_provider(settings=None) -> StorageProvider:
             region_name=getattr(settings, "s3_region_name", None),
         )
 
+    if provider_type in {"gcs", "firebase", "firebase_storage"}:
+        return GCSStorageProvider(
+            bucket_name=(
+                getattr(settings, "gcs_bucket_name", None)
+                or os.getenv("GCS_BUCKET_NAME")
+                or os.getenv("FIREBASE_STORAGE_BUCKET")
+                or os.getenv("VITE_FIREBASE_STORAGE_BUCKET")
+            ),
+            service_account_json=getattr(settings, "firebase_service_account_json", None)
+            or os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON"),
+        )
+
+    if provider_type in {"vercel_blob", "blob"}:
+        return VercelBlobStorageProvider(
+            token=getattr(settings, "blob_read_write_token", None) or os.getenv("BLOB_READ_WRITE_TOKEN"),
+            access=getattr(settings, "vercel_blob_access", None) or os.getenv("VERCEL_BLOB_ACCESS", "private"),
+        )
+
     configured_root = getattr(settings, "unifoli_storage_root", None)
     if configured_root:
         return LocalStorageProvider(root=Path(configured_root))
@@ -187,6 +348,10 @@ def get_storage_provider(settings=None) -> StorageProvider:
 def get_storage_provider_name(storage: StorageProvider) -> str:
     if isinstance(storage, S3StorageProvider):
         return "s3"
+    if isinstance(storage, GCSStorageProvider):
+        return "gcs"
+    if isinstance(storage, VercelBlobStorageProvider):
+        return "vercel_blob"
     return "local"
 
 

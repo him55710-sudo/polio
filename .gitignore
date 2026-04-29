@@ -49,3 +49,4 @@ frontend/stats.html
 *.log
 
 .vercel
+.env*.local

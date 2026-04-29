@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,7 @@ from unifoli_api.schemas.guided_chat import (
     TopicSelectionResponse,
     TopicSuggestionRequest,
     TopicSuggestionResponse,
+    TopicStarToggleRequest,
 )
 from unifoli_api.services.guided_chat_service import (
     generate_topic_suggestions,
@@ -24,6 +26,7 @@ from unifoli_api.services.guided_chat_service import (
     select_structure,
     select_topic,
     start_guided_chat,
+    toggle_topic_star,
 )
 
 router = APIRouter()
@@ -51,6 +54,7 @@ async def guided_chat_topic_suggestions_route(
         user=current_user,
         project_id=payload.project_id,
         subject=payload.subject,
+        starred_keywords=payload.starred_keywords,
     )
 
 
@@ -99,4 +103,20 @@ def guided_chat_structure_selection_route(
         user=current_user,
         project_id=payload.project_id,
         selected_structure_id=payload.selected_structure_id,
+    )
+
+
+@router.post("/toggle-star")
+def toggle_topic_star_route(
+    payload: TopicStarToggleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    return toggle_topic_star(
+        db=db,
+        user=current_user,
+        project_id=payload.project_id,
+        topic_id=payload.topic_id,
+        is_starred=payload.is_starred,
+        topic_title=payload.topic_title,
     )

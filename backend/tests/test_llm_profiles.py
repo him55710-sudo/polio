@@ -86,6 +86,7 @@ def test_gemini_missing_key_falls_back_to_remote_ollama(monkeypatch) -> None:
         app_debug=False,
         auth_allow_local_dev_bypass=False,
         llm_provider="gemini",
+        llm_provider_fallback_enabled=True,
         gemini_api_key=None,
         ollama_base_url="https://ollama.example.com/v1",
         ollama_model="gemma4-main",

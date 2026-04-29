@@ -91,8 +91,15 @@ def snapshot_settings_from_env(api_prefix: str | None = None) -> Any:
         serverless_runtime=os.getenv("VERCEL") == "1",
         unifoli_storage_provider=(os.getenv("UNIFOLI_STORAGE_PROVIDER") or os.getenv("OBJECT_STORAGE_PROVIDER") or "local").strip().lower() or "local",
         s3_bucket_name=(os.getenv("S3_BUCKET_NAME") or os.getenv("OBJECT_STORAGE_BUCKET") or "").strip() or None,
+        gcs_bucket_name=(
+            os.getenv("GCS_BUCKET_NAME")
+            or os.getenv("FIREBASE_STORAGE_BUCKET")
+            or os.getenv("VITE_FIREBASE_STORAGE_BUCKET")
+            or ""
+        ).strip()
+        or None,
         llm_provider=llm_provider,
-        llm_provider_fallback_enabled=(os.getenv("LLM_PROVIDER_FALLBACK_ENABLED") or "true").strip().lower() != "false",
+        llm_provider_fallback_enabled=(os.getenv("LLM_PROVIDER_FALLBACK_ENABLED") or "false").strip().lower() == "true",
         guided_chat_llm_provider=(os.getenv("GUIDED_CHAT_LLM_PROVIDER") or "").strip().lower() or None,
         diagnosis_llm_provider=(os.getenv("DIAGNOSIS_LLM_PROVIDER") or "").strip().lower() or None,
         render_llm_provider=(os.getenv("RENDER_LLM_PROVIDER") or "").strip().lower() or None,
@@ -233,9 +240,17 @@ def build_health_payload(
     elif check_db:
         database_info["connected"] = False
 
+    storage_provider = str(getattr(settings, "unifoli_storage_provider", "local") or "local")
+    storage_bucket = None
+    if storage_provider == "s3":
+        storage_bucket = getattr(settings, "s3_bucket_name", None)
+    elif storage_provider in {"gcs", "firebase", "firebase_storage"}:
+        storage_bucket = getattr(settings, "gcs_bucket_name", None)
+    elif storage_provider in {"vercel_blob", "blob"}:
+        storage_bucket = "vercel_blob"
     storage_info = {
-        "provider": str(getattr(settings, "unifoli_storage_provider", "local") or "local"),
-        "bucket": getattr(settings, "s3_bucket_name", None),
+        "provider": storage_provider,
+        "bucket": storage_bucket,
     }
 
     resolved_pdf_ollama = (

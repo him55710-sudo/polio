@@ -28,6 +28,7 @@ import {
   StatusBadge,
   SurfaceCard,
 } from '../components/primitives';
+import { InterestCloud } from '../components/InterestCloud';
 
 type WorkflowStatus = 'done' | 'active' | 'pending';
 
@@ -607,6 +608,16 @@ export default function Dashboard() {
           </div>
         </SectionCard>
       </div>
+
+      {/* Interest Cloud Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <InterestCloud />
+      </motion.div>
 
       {/* Action Plan / Next Step Section */}
       <motion.div

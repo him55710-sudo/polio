@@ -638,6 +638,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       [appendToSection, editor, replaceSection, updateCoverMetadata, updateReferences],
     );
 
+    const setEditorContent = useCallback(
+      (content: JSONContent | string | null) => {
+        if (!editor) return;
+        const nextContent = typeof content === 'string' ? normalizeInitialStringContent(content) : content || getResearchReportTemplate();
+        editor.commands.setContent(nextContent, { emitUpdate: false });
+        contentRef.current = editor.getJSON();
+      },
+      [editor],
+    );
+
     // Expose imperative handle so parent can call getJSON / insertTemplate
     useImperativeHandle(
       ref,
@@ -646,7 +656,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         getHTML: () => editor?.getHTML() || '',
         getMarkdown: () => jsonContentToMarkdown(contentRef.current || editor?.getJSON() || { type: 'doc', content: [] }),
         insertTemplate,
-        setContent: (content: any) => editor?.commands.setContent(content),
+        setContent: setEditorContent,
         applyPatch,
         appendToSection,
         replaceSection,
@@ -665,6 +675,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         insertMathBlock,
         insertTemplate,
         replaceSection,
+        setEditorContent,
         updateCoverMetadata,
         updateReferences,
       ],

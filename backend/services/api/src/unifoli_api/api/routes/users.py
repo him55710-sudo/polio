@@ -64,3 +64,13 @@ def onboarding_my_goals(
         interest_universities=payload.interest_universities,
     )
     return UserProfileRead.model_validate(user)
+@router.get("/me/interests")
+def get_my_interests(current_user: User = Depends(get_current_user)):
+    import json
+    keywords = []
+    if current_user.starred_keywords_json:
+        try:
+            keywords = json.loads(current_user.starred_keywords_json)
+        except:
+            keywords = []
+    return {"starred_keywords": keywords}

@@ -19,7 +19,7 @@ interface ChoiceCardGroupProps {
   selectingTopicId?: string | null;
   disabled?: boolean;
   onSelect: (groupId: string, option: GuidedChoiceOption) => void;
-  onStarToggle?: (optionId: string, isStarred: boolean) => void;
+  onStarToggle?: (optionId: string, isStarred: boolean, label: string) => void;
 }
 
 const TYPE_LABELS = {
@@ -140,7 +140,7 @@ export function ChoiceCardGroup({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onStarToggle(option.id, !option.is_starred);
+                      onStarToggle(option.id, !option.is_starred, option.label);
                     }}
                     className={cn(
                       'flex h-8 w-8 items-center justify-center rounded-full transition-all',

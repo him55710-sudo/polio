@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import api from '../../../lib/api';
 import type { GuidedChoiceGroup } from '../../../lib/guidedChat';
 import type { WorkshopChatMessage, WorkshopMessageRole } from '../types/workshopMessages';
 import type { ReviewablePatch } from '../utils/messageFormatters';
@@ -64,31 +65,46 @@ export function useWorkshopMessages(initialMessages: WorkshopChatMessage[] = [])
     setMessages((prev) => prev.map((message) => (message.id === id ? { ...message, choiceGroups } : message)));
   }, []);
 
-  const toggleTopicStar = useCallback((messageId: string, topicId: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== messageId) return m;
-        
-        // choiceGroups 내의 주제 찾기
-        const nextGroups = m.choiceGroups?.map((group) => {
-          if (group.id !== 'topic-selection') return group;
-          return {
-            ...group,
-            options: group.options.map((opt: any) =>
-              opt.id === topicId ? { ...opt, is_starred: !opt.is_starred } : opt
-            ),
-          };
+  const toggleTopicStar = useCallback(
+    async (messageId: string, topicId: string, isStarred: boolean, topicTitle: string, projectId?: string) => {
+      // 1. 낙관적 UI 업데이트
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+
+          const nextGroups = m.choiceGroups?.map((group) => {
+            if (group.id !== 'topic-selection') return group;
+            return {
+              ...group,
+              options: group.options.map((opt: any) =>
+                opt.id === topicId ? { ...opt, is_starred: isStarred } : opt,
+              ),
+            };
+          });
+
+          const nextSuggestions = m.topicSuggestions?.map((s) =>
+            s.id === topicId ? { ...s, is_starred: isStarred } : s,
+          );
+
+          return { ...m, choiceGroups: nextGroups, topicSuggestions: nextSuggestions };
+        }),
+      );
+
+      // 2. 백엔드 연동
+      try {
+        await api.post('/api/v1/guided-chat/toggle-star', {
+          project_id: projectId,
+          topic_id: topicId,
+          is_starred: isStarred,
+          topic_title: topicTitle,
         });
-
-        // topicSuggestions 내의 주제 찾기 (레거시 대응)
-        const nextSuggestions = m.topicSuggestions?.map((s) =>
-          s.id === topicId ? { ...s, is_starred: !s.is_starred } : s
-        );
-
-        return { ...m, choiceGroups: nextGroups, topicSuggestions: nextSuggestions };
-      })
-    );
-  }, []);
+      } catch (error) {
+        console.error('Failed to toggle star:', error);
+        // 실패 시 롤백 로직을 넣을 수 있지만, 여기서는 사용자 경험을 위해 생략하거나 간단히 알림만 줍니다.
+      }
+    },
+    [],
+  );
 
   const clearMessages = useCallback(() => setMessages([]), []);
 

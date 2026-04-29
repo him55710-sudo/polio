@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { api } from '../lib/api';
+import { syncUserProfileToFirestore } from '../lib/db';
 import { isGuestSessionActive, readGuestProfile } from '../lib/guestProfile';
 import { buildLocalAuthProfile, readLocalAuthProfile } from '../lib/localAuthProfile';
 import { clearAppAccessToken } from '../lib/appAccessToken';
@@ -35,6 +36,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const profile = await api.get<UserProfile>('/api/v1/users/me');
       // Backend profile normally means real auth
       set({ user: profile, isAuthenticated: true, isLoading: false });
+      void syncUserProfileToFirestore(profile);
 
       // Sync marketing consent if pending
       const pendingConsent = localStorage.getItem('uni_foli_pending_marketing_consent');
@@ -43,9 +45,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         try {
           await api.post('/api/v1/users/onboarding/profile', { marketing_agreed: agreed });
           localStorage.removeItem('uni_foli_pending_marketing_consent');
+          const nextProfile = { ...profile, marketing_agreed: agreed };
           set((state) => ({
             user: state.user ? { ...state.user, marketing_agreed: agreed } : null
           }));
+          void syncUserProfileToFirestore(nextProfile);
         } catch (err) {
           console.error('Failed to sync marketing consent:', err);
         }

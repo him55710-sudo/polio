@@ -164,3 +164,10 @@ class GuidedChatStatePayload(BaseModel):
     state_summary: dict[str, Any] = Field(default_factory=dict)
     limited_mode: bool | None = None
     limited_reason: str | None = None
+
+
+class TopicStarToggleRequest(BaseModel):
+    project_id: str | None = None
+    topic_id: str
+    is_starred: bool
+    topic_title: str | None = None

@@ -11,9 +11,9 @@ tests/
 tmp/
 tmp_*.json
 tmp_*.txt
-.pytest-*/
-tmps*/
-tmpt*/
+.pytest-*
+tmps*
+tmpt*
 .npm-cache/
 .codex-temp-*/
 artifacts/

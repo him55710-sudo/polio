@@ -6,6 +6,7 @@ import type {
   OnboardingProfileUpdateResponse,
 } from '@shared-contracts';
 import { api } from '../lib/api';
+import { syncUserProfileToFirestore } from '../lib/db';
 import { auth } from '../lib/firebase';
 import { isGuestSessionActive, updateGuestProfile, updateGuestTargets } from '../lib/guestProfile';
 import { updateLocalAuthProfile, updateLocalAuthTargets } from '../lib/localAuthProfile';
@@ -139,6 +140,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
 
       const updatedUser = await api.post<OnboardingProfileUpdateResponse>('/api/v1/users/onboarding/profile', payload);
       useAuthStore.getState().setUser(updatedUser);
+      void syncUserProfileToFirestore(updatedUser);
       set({ diagnosisStep: 'GOALS', isLoading: false, hasInitialized: true });
       return true;
     } catch (err: any) {
@@ -196,6 +198,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
 
       const updatedUser = await api.post<OnboardingGoalsUpdateResponse>('/api/v1/users/onboarding/goals', payload);
       useAuthStore.getState().setUser(updatedUser);
+      void syncUserProfileToFirestore(updatedUser);
       set({ diagnosisStep: 'UPLOAD', isLoading: false });
       return true;
     } catch (err: any) {

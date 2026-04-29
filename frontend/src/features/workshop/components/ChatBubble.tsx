@@ -14,6 +14,7 @@ import { buildTopicChoiceGroupFromSuggestions } from '../utils/guidedChoiceHelpe
 import { ChoiceCardGroup } from './ChoiceCardGroup';
 import { PatchReviewCard } from './PatchReviewCard';
 import { ResearchCandidateCard } from './ResearchCandidateCard';
+import { useWorkshopStar } from '../hooks/useWorkshopStar';
 
 type ReviewPatch = ReportPatch | WorkshopDraftPatchProposal;
 
@@ -30,7 +31,7 @@ interface ChatBubbleProps {
   onUseResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onRefineResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onExcludeResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
-  onStarToggle?: (topicId: string) => void | Promise<void>;
+  onStarToggle?: (topicId: string, isStarred: boolean, label: string) => void | Promise<void>;
   isGuidedActionLoading?: boolean;
   selectingTopicId?: string | null;
 }
@@ -114,12 +115,17 @@ export const ChatBubble = memo(function ChatBubble({
   onUseResearchCandidate,
   onRefineResearchCandidate,
   onExcludeResearchCandidate,
+  onStarToggle: _onStarToggleProp, // 부모의 prop은 무시 (훅 사용)
   isGuidedActionLoading,
   selectingTopicId,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const isStreaming = Boolean(message.isStreaming || (message as unknown as Record<string, unknown>).isStreaming);
   const reviewPatch = message.reportPatch || message.draftPatch || null;
+  
+  // 훅을 사용하여 직접 서버 동기화 처리 (Workshop.tsx 수정 최소화)
+  const { toggleTopicStar } = useWorkshopStar();
+
   const interactiveGroups = useMemo<GuidedChoiceGroup[]>(() => {
     if (message.choiceGroups?.length) return message.choiceGroups;
     if (message.phase === 'topic_selection' && message.topicSuggestions?.length) {
@@ -192,7 +198,7 @@ export const ChatBubble = memo(function ChatBubble({
                 isGuidedActionLoading={isGuidedActionLoading}
                 selectingTopicId={selectingTopicId}
                 onSelect={(groupId, option) => void onGuidedChoiceSelect(groupId, option, message)}
-                onStarToggle={onStarToggle}
+                onStarToggle={toggleTopicStar}
               />
             ))}
           </div>

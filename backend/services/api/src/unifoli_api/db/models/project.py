@@ -50,6 +50,7 @@ class Project(Base):
     target_university: Mapped[str | None] = mapped_column(String(200), nullable=True)
     target_major: Mapped[str | None] = mapped_column(String(200), nullable=True)
     discussion_log: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    starred_topics_json: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=ProjectStatus.ACTIVE.value)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)

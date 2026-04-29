@@ -156,10 +156,19 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("S3_BUCKET_NAME", "OBJECT_STORAGE_BUCKET"),
     )
     s3_region_name: str | None = None
+    gcs_bucket_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GCS_BUCKET_NAME", "FIREBASE_STORAGE_BUCKET", "VITE_FIREBASE_STORAGE_BUCKET"),
+    )
+    blob_read_write_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BLOB_READ_WRITE_TOKEN", "VERCEL_BLOB_READ_WRITE_TOKEN"),
+    )
+    vercel_blob_access: str = "private"
 
     # LLM Settings
     llm_provider: str = Field(default="gemini", description="LLM provider: 'gemini' or 'ollama'")
-    llm_provider_fallback_enabled: bool = True
+    llm_provider_fallback_enabled: bool = False
     guided_chat_llm_provider: str | None = None
     diagnosis_llm_provider: str | None = None
     render_llm_provider: str | None = None
@@ -368,6 +377,16 @@ class Settings(BaseSettings):
         if self.unifoli_storage_provider == "s3":
             if not self.s3_bucket_name:
                 raise ValueError("S3_BUCKET_NAME is required when UNIFOLI_STORAGE_PROVIDER=s3")
+        if self.unifoli_storage_provider in {"gcs", "firebase", "firebase_storage"}:
+            if not self.gcs_bucket_name:
+                raise ValueError("GCS_BUCKET_NAME is required when UNIFOLI_STORAGE_PROVIDER=gcs")
+        if self.unifoli_storage_provider in {"vercel_blob", "blob"}:
+            if not self.blob_read_write_token:
+                raise ValueError("BLOB_READ_WRITE_TOKEN is required when UNIFOLI_STORAGE_PROVIDER=vercel_blob")
+            normalized_blob_access = (self.vercel_blob_access or "").strip().lower() or "private"
+            if normalized_blob_access not in {"private", "public"}:
+                raise ValueError("VERCEL_BLOB_ACCESS must be 'private' or 'public'.")
+            object.__setattr__(self, "vercel_blob_access", normalized_blob_access)
 
         normalized_live_web_provider = (self.live_web_search_provider or "").strip().lower()
         if normalized_live_web_provider in {"", "disabled"}:
