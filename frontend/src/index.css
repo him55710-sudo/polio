@@ -145,6 +145,17 @@ li {
   transform: translateZ(26px);
 }
 
+/* Contact page: give the left 연락 채널 cards more breathing room without touching the form layout. */
+main:has(a[href^="mailto:"]) > .grid > :first-child .min-h-0.flex-1 > * + * {
+  margin-top: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  main:has(a[href^="mailto:"]) > .grid > :first-child .min-h-0.flex-1 > * + * {
+    margin-top: 1.75rem;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
