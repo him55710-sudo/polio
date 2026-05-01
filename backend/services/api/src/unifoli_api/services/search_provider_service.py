@@ -43,6 +43,7 @@ _OFFICIAL_DOMAIN_HINTS: tuple[str, ...] = (
     "moe.go.kr",
     "keris.or.kr",
 )
+_RECOVERABLE_SCHOLAR_STATUS_CODES = {429, 502, 503, 504}
 
 
 @dataclass(slots=True)
@@ -258,6 +259,107 @@ def _dedupe_and_cap(papers: list[ScholarPaper], *, limit: int) -> list[ScholarPa
     return unique
 
 
+def _is_recoverable_scholar_error(exc: ScholarServiceError) -> bool:
+    return exc.status_code in _RECOVERABLE_SCHOLAR_STATUS_CODES
+
+
+def _provider_error_note(provider: str, exc: ScholarServiceError) -> str:
+    note = f"{provider}: {exc.detail}"
+    if exc.retry_after:
+        note = f"{note} Retry after {exc.retry_after} seconds."
+    return note
+
+
+def _join_limitation_notes(*notes: str | None) -> str | None:
+    cleaned = [note.strip() for note in notes if note and note.strip()]
+    if not cleaned:
+        return None
+    return " ".join(cleaned)[:500]
+
+
+def _empty_fallback_result(
+    *,
+    query: str,
+    requested_source: SearchSource,
+    resolved_source: SearchSource,
+    providers_used: list[str],
+    limitation_note: str | None,
+) -> ScholarSearchResult:
+    return ScholarSearchResult(
+        query=query.strip(),
+        total=0,
+        papers=[],
+        source=resolved_source,
+        requested_source=requested_source,
+        fallback_applied=True,
+        limitation_note=limitation_note,
+        providers_used=providers_used,
+        retrieved_at=None,
+        source_type_counts={},
+    )
+
+
+async def _semantic_fallback_to_kci_or_empty(
+    *,
+    query: str,
+    limit: int,
+    requested_source: SearchSource,
+    semantic_error: ScholarServiceError,
+    prefix_note: str | None = None,
+) -> ScholarSearchResult:
+    semantic_note = _provider_error_note("Semantic Scholar", semantic_error)
+    try:
+        kci = await search_kci_papers(query=query, limit=limit)
+    except ScholarServiceError as kci_error:
+        if not _is_recoverable_scholar_error(kci_error):
+            raise
+        limitation_note = _join_limitation_notes(
+            prefix_note,
+            semantic_note,
+            _provider_error_note("KCI fallback unavailable", kci_error),
+            "Returned no external paper results so the conversation can continue.",
+        )
+        empty = _empty_fallback_result(
+            query=query,
+            requested_source=requested_source,
+            resolved_source="semantic",
+            providers_used=["semantic_scholar"],
+            limitation_note=limitation_note,
+        )
+        return _annotate_result(
+            empty,
+            requested_source=requested_source,
+            resolved=SearchProviderResolution(
+                source="semantic",
+                providers_used=["semantic_scholar"],
+                fallback_applied=True,
+                limitation_note=limitation_note,
+            ),
+        )
+
+    limitation_note = _join_limitation_notes(
+        prefix_note,
+        semantic_note,
+        "KCI fallback results were returned.",
+    )
+    enriched = kci.model_copy(
+        update={
+            "fallback_applied": True,
+            "limitation_note": limitation_note,
+        }
+    )
+    return _annotate_result(
+        enriched,
+        requested_source=requested_source,
+        resolved=SearchProviderResolution(
+            source="kci",
+            providers_used=["kci"],
+            fallback_applied=True,
+            limitation_note=limitation_note,
+        ),
+    )
+
+
 async def search_research_sources(
     *,
     query: str,
@@ -267,7 +369,17 @@ async def search_research_sources(
     requested_source = normalize_search_source(source)
 
     if requested_source == "semantic":
-        result = await search_semantic_scholar_papers(query=query, limit=limit)
+        try:
+            result = await search_semantic_scholar_papers(query=query, limit=limit)
+        except ScholarServiceError as exc:
+            if not _is_recoverable_scholar_error(exc):
+                raise
+            return await _semantic_fallback_to_kci_or_empty(
+                query=query,
+                limit=limit,
+                requested_source=requested_source,
+                semantic_error=exc,
+            )
         return _annotate_result(
             result,
             requested_source=requested_source,
@@ -283,17 +395,60 @@ async def search_research_sources(
         )
 
     if requested_source == "both":
-        semantic = await search_semantic_scholar_papers(query=query, limit=limit)
-        kci = await search_kci_papers(query=query, limit=limit)
+        papers: list[ScholarPaper] = []
+        providers_used: list[str] = []
+        limitation_notes: list[str] = []
+
+        try:
+            semantic = await search_semantic_scholar_papers(query=query, limit=limit)
+            papers.extend(semantic.papers)
+            providers_used.append("semantic_scholar")
+        except ScholarServiceError as exc:
+            if not _is_recoverable_scholar_error(exc):
+                raise
+            limitation_notes.append(_provider_error_note("Semantic Scholar", exc))
+
+        try:
+            kci = await search_kci_papers(query=query, limit=limit)
+            papers.extend(kci.papers)
+            providers_used.append("kci")
+        except ScholarServiceError as exc:
+            if not _is_recoverable_scholar_error(exc) or (not providers_used and not limitation_notes):
+                raise
+            limitation_notes.append(_provider_error_note("KCI", exc))
+
+        limitation_note = _join_limitation_notes(*limitation_notes)
+        if not providers_used and limitation_note:
+            empty = _empty_fallback_result(
+                query=query,
+                requested_source=requested_source,
+                resolved_source="both",
+                providers_used=["semantic_scholar", "kci"],
+                limitation_note=_join_limitation_notes(
+                    limitation_note,
+                    "Returned no external paper results so the conversation can continue.",
+                ),
+            )
+            return _annotate_result(
+                empty,
+                requested_source=requested_source,
+                resolved=SearchProviderResolution(
+                    source="both",
+                    providers_used=["semantic_scholar", "kci"],
+                    fallback_applied=True,
+                    limitation_note=empty.limitation_note,
+                ),
+            )
+
         merged = ScholarSearchResult(
             query=query.strip(),
             total=0,
-            papers=_dedupe_and_cap([*semantic.papers, *kci.papers], limit=limit),
+            papers=_dedupe_and_cap(papers, limit=limit),
             source="both",
             requested_source="both",
-            fallback_applied=False,
-            limitation_note=None,
-            providers_used=["semantic_scholar", "kci"],
+            fallback_applied=bool(limitation_note),
+            limitation_note=limitation_note,
+            providers_used=providers_used or ["semantic_scholar", "kci"],
             retrieved_at=None,
             source_type_counts={},
         )
@@ -301,7 +456,12 @@ async def search_research_sources(
         return _annotate_result(
             merged,
             requested_source=requested_source,
-            resolved=SearchProviderResolution(source="both", providers_used=["semantic_scholar", "kci"]),
+            resolved=SearchProviderResolution(
+                source="both",
+                providers_used=providers_used or ["semantic_scholar", "kci"],
+                fallback_applied=bool(limitation_note),
+                limitation_note=limitation_note,
+            ),
         )
 
     try:
@@ -313,10 +473,21 @@ async def search_research_sources(
             resolved=SearchProviderResolution(source="live_web", providers_used=providers_used),
         )
     except (LiveWebSearchUnavailable, LiveWebSearchError) as live_exc:
-        fallback = await search_semantic_scholar_papers(query=query, limit=limit)
         limitation = live_exc.reason
         if isinstance(live_exc, LiveWebSearchError) and live_exc.retry_after:
             limitation = f"{limitation} Retry after {live_exc.retry_after} seconds."
+        try:
+            fallback = await search_semantic_scholar_papers(query=query, limit=limit)
+        except ScholarServiceError as semantic_exc:
+            if not _is_recoverable_scholar_error(semantic_exc):
+                raise
+            return await _semantic_fallback_to_kci_or_empty(
+                query=query,
+                limit=limit,
+                requested_source=requested_source,
+                semantic_error=semantic_exc,
+                prefix_note=limitation,
+            )
         fallback_enriched = fallback.model_copy(
             update={
                 "requested_source": "live_web",

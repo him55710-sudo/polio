@@ -5,7 +5,9 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  FileText,
   Loader2,
+  PanelRightClose,
   PenSquare,
   Presentation,
   Save,
@@ -13,6 +15,7 @@ import {
   ToggleLeft,
   ToggleRight,
   User,
+  X,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
@@ -761,6 +764,7 @@ export function Workshop() {
   const [chatbotMode, setChatbotMode] = useState<ChatbotMode>(requestedChatbotMode);
   const [chatMeta, setChatMeta] = useState<ChatStreamMetaPayload | null>(null);
   const [mobileView, setMobileView] = useState<'chat' | 'draft'>('chat');
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<TiptapEditorHandle | null>(null);
   const reportDocumentState = useMemo(() => structuredDraftToReportDocumentState(structuredDraft), [structuredDraft]);
@@ -2224,40 +2228,30 @@ export function Workshop() {
 
         <div className="mt-6 lg:hidden">
           <WorkshopMobileToggle value={mobileView} onChange={setMobileView} />
-          <div className="hidden w-full items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setMobileView('chat')}
-              className={cn(
-                'h-10 flex-1 rounded-xl px-3 text-sm font-bold transition-all',
-                mobileView === 'chat' ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#06b6d4_100%)] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
-              )}
-            >
-              채팅
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileView('draft')}
-              className={cn(
-                'h-10 flex-1 rounded-xl px-3 text-sm font-bold transition-all',
-                mobileView === 'draft' ? 'bg-[linear-gradient(135deg,#7c3aed_0%,#06b6d4_100%)] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50',
-              )}
-            >
-              문서
-            </button>
-          </div>
         </div>
 
-        <div className="mt-2 flex-1 min-h-0 grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)]">
-          <SectionCard
-            title="코파일럿"
-            eyebrow="대화"
-            className={cn(
-              'flex min-h-0 flex-col min-h-[70dvh] max-h-[calc(100dvh-12rem)] lg:h-[calc(100dvh-16rem)] lg:min-h-[600px] lg:max-h-[900px]',
-              mobileView !== 'chat' && 'hidden lg:flex'
-            )}
-            bodyClassName="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0"
-          >
+        <div className="mt-2 flex-1 min-h-0 relative flex overflow-hidden justify-center">
+          <div className={cn("flex flex-col min-h-0 flex-1 transition-all duration-500 items-center w-full", isEditorOpen ? "lg:mr-[400px] xl:mr-[500px]" : "")}>
+            <div className="w-full max-w-4xl flex-1 flex flex-col relative h-full">
+              <div className="absolute top-2 right-4 z-20 hidden lg:block">
+                <button
+                  type="button"
+                  onClick={() => setIsEditorOpen(!isEditorOpen)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-all"
+                >
+                  <FileText size={16} className={isEditorOpen ? "text-indigo-600" : ""} />
+                  {isEditorOpen ? '문서 닫기' : '작성된 문서 보기'}
+                </button>
+              </div>
+              <SectionCard
+                title="코파일럿"
+                eyebrow="대화"
+                className={cn(
+                  'flex min-h-0 flex-col h-full border-none shadow-none bg-transparent',
+                  mobileView !== 'chat' && 'hidden lg:flex'
+                )}
+                bodyClassName="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0 bg-transparent"
+              >
             <div className="flex h-full flex-col">
               <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4 scroll-smooth">
                 {workshopState?.render_requirements && (
@@ -2338,7 +2332,7 @@ export function Workshop() {
                 )}
               </div>
 
-              <div className="border-t border-slate-100 bg-white p-4">
+              <div className="border-t border-slate-100 bg-white p-4 lg:rounded-b-2xl">
                 <div className="flex items-center gap-3">
                   <input
                     value={input}
@@ -2365,33 +2359,49 @@ export function Workshop() {
               </div>
             </div>
           </SectionCard>
+            </div>
+          </div>
 
           <div
             className={cn(
-              'flex min-h-0 flex-col h-full bg-slate-50/50 rounded-[2rem] border border-slate-200 overflow-hidden relative',
-              mobileView !== 'draft' && 'hidden lg:flex'
+              'flex min-h-0 flex-col h-full bg-white lg:border-l border-slate-200 lg:shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.05)] transition-all duration-500 absolute right-0 top-0 bottom-0 z-10 w-full lg:w-[400px] xl:w-[500px]',
+              mobileView !== 'draft' && 'hidden lg:flex',
+              !isEditorOpen && 'lg:translate-x-full lg:opacity-0 lg:invisible',
+              isEditorOpen && 'lg:translate-x-0 lg:opacity-100 lg:visible'
             )}
           >
-            <div className="absolute top-4 right-6 z-10 flex items-center gap-2">
-              <PrimaryButton size="sm" onClick={handleSaveDraft} className="shadow-md">
-                <Save size={14} className="mr-1.5" />
-                저장
-              </PrimaryButton>
-              <SecondaryButton size="sm" className="shadow-md bg-white" onClick={() => {
-                const blob = new Blob([documentContent], { type: 'text/markdown' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName.replace('.hwpx', '.md');
-                a.click();
-                URL.revokeObjectURL(url);
-              }}>
-                <Download size={14} className="mr-1.5" />
-                내보내기
-              </SecondaryButton>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80 backdrop-blur">
+              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <FileText size={16} className="text-indigo-600"/>
+                문서 편집기
+              </h2>
+              <div className="flex items-center gap-2">
+                <PrimaryButton size="sm" onClick={handleSaveDraft} className="shadow-sm py-1.5 px-3 h-auto text-xs">
+                  <Save size={14} className="mr-1.5" />
+                  저장
+                </PrimaryButton>
+                <SecondaryButton size="sm" className="shadow-sm bg-white py-1.5 px-3 h-auto text-xs" onClick={() => {
+                  const blob = new Blob([documentContent], { type: 'text/markdown' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = fileName.replace('.hwpx', '.md');
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}>
+                  <Download size={14} className="mr-1.5" />
+                  내보내기
+                </SecondaryButton>
+                <button 
+                  onClick={() => setIsEditorOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-full transition-colors hidden lg:block ml-1"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
             
-            <div className="flex flex-1 flex-col overflow-hidden p-2 sm:p-4 pt-16 sm:pt-16">
+            <div className="flex flex-1 flex-col overflow-hidden p-2 sm:p-4 pt-4 sm:pt-4">
               {isDraftOutOfSync && (
                 <WorkflowNotice
                   tone="warning"

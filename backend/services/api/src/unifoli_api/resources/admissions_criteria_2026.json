@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0.0",
+  "corpus_name": "admissions_criteria_2026",
+  "storage_policy": "Store only source metadata, short evidence summaries, and axis mappings. Do not store full copyrighted guidebook text.",
+  "sources": [
+    {
+      "id": "kcue_2026_basic",
+      "title": "2026학년도 대학입학전형기본사항",
+      "publisher": "한국대학교육협의회",
+      "school_year": 2026,
+      "source_type": "official_policy",
+      "url": "https://www.kcue.or.kr/news/sub02/sub01.php?at=view&idx=24138",
+      "retrieved_at": "2026-05-01",
+      "summary": "대입전형 공정성, 다수 평가자, 학교폭력 조치사항 반영 등 2026학년도 대입 운영의 상위 기준을 제시한다."
+    },
+    {
+      "id": "common_elements_2022",
+      "title": "학생부종합전형 공통 평가요소 및 항목 개선 연구",
+      "publisher": "건국대·경희대·연세대·중앙대·한국외대 공동연구",
+      "basis_year": 2022,
+      "source_type": "common_research",
+      "url": "https://www.ice.go.kr/upload/board/3818/2022/04/1649378690115.pdf",
+      "retrieved_at": "2026-05-01",
+      "summary": "학생부종합전형 평가를 학업역량, 진로역량, 공동체역량 중심으로 재구조화하고 수업 중심, 학교 맥락, 과도한 스펙 경쟁 방지를 강조한다."
+    },
+    {
+      "id": "yonsei_2026_guide",
+      "title": "2026학년도 연세대학교 학생부종합전형 안내서",
+      "publisher": "연세대학교 입학처",
+      "school_year": 2026,
+      "source_type": "university_guide",
+      "url": "https://www2.yonsei.ac.kr/entrance/2025/2026%ED%95%99%EB%85%84%EB%8F%84_%EC%97%B0%EC%84%B8%EB%8C%80%ED%95%99%EA%B5%90_%ED%95%99%EC%83%9D%EB%B6%80%EC%A2%85%ED%95%A9%EC%A0%84%ED%98%95%EC%95%88%EB%82%B4%EC%84%9C.pdf",
+      "retrieved_at": "2026-05-01",
+      "summary": "학업역량, 진로역량, 공동체역량을 평가하고 다수 평가자, 독립평가, 편차 발생 시 재평가를 안내한다.",
+      "university_aliases": ["연세대", "연세대학교", "yonsei"]
+    },
+    {
+      "id": "jeju_2026_guideline",
+      "title": "2026학년도 제주대학교 학생부종합전형 평가지침",
+      "publisher": "제주대학교 입학처",
+      "school_year": 2026,
+      "source_type": "university_guideline",
+      "url": "https://ibsi.jejunu.ac.kr/files/ibsi/content/202509/226bab76fada0002ba336e3c8eba73de.pdf",
+      "retrieved_at": "2026-05-01",
+      "summary": "학업역량, 진로역량, 인성·공동체역량의 평가요소와 배점, 평가자 평균 및 재평가 절차를 제시한다.",
+      "university_aliases": ["제주대", "제주대학교", "jejunu"]
+    },
+    {
+      "id": "pusan_2026_guide",
+      "title": "2026학년도 부산대학교 학생부위주전형 가이드북",
+      "publisher": "부산대학교 입학처",
+      "school_year": 2026,
+      "source_type": "university_guide",
+      "url": "https://go.pusan.ac.kr/down/board/RF%280%29_25061610255.pdf",
+      "retrieved_at": "2026-05-01",
+      "summary": "학생부 항목 간 연계 평가를 통해 학업역량, 탐구역량, 사회역량을 종합평가하고 결과보다 고교 재학 중 경험과 노력 과정을 중시한다.",
+      "university_aliases": ["부산대", "부산대학교", "pusan", "pnu"]
+    },
+    {
+      "id": "uos_2026_guide",
+      "title": "서울시립대학교 학생부종합전형 가이드북",
+      "publisher": "서울시립대학교 입학처",
+      "school_year": 2026,
+      "source_type": "university_guide",
+      "url": "https://admission.uos.ac.kr/files/admission/guidebook/UOS%20%ED%95%99%EC%83%9D%EB%B6%80%EC%A2%85%ED%95%A9%EC%A0%84%ED%98%95%20%EA%B0%80%EC%9D%B4%EB%93%9C%EB%B6%81_%EC%97%85%EB%A1%9C%EB%93%9C.pdf",
+      "retrieved_at": "2026-05-01",
+      "summary": "모집단위 인재상을 실제 평가 척도로 활용하며 과목 선택명 자체보다 선택 과정과 이유, 학과별 맥락을 중시한다.",
+      "university_aliases": ["서울시립대", "서울시립대학교", "uos"]
+    },
+    {
+      "id": "sangmyung_2026_guide",
+      "title": "2026학년도 상명대학교 학생부종합전형 안내",
+      "publisher": "상명대학교 입학처",
+      "school_year": 2026,
+      "source_type": "university_page",
+      "url": "https://admission.smu.ac.kr/_cheonan/iphak/hakjong.html",
+      "retrieved_at": "2026-05-01",
+      "summary": "교과성적을 정량평가하지 않고 학생부 교과·비교과를 바탕으로 학업역량, 진로역량, 공동체역량을 종합적으로 평가한다.",
+      "university_aliases": ["상명대", "상명대학교", "sangmyung", "smu"]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "academic_achievement_and_attitude",
+      "group": "academic",
+      "label": "학업역량",
+      "axis_keys": ["universal_rigor", "universal_specificity"],
+      "source_ids": ["common_elements_2022", "yonsei_2026_guide", "jeju_2026_guideline", "sangmyung_2026_guide"],
+      "summary": "대학 교육을 이수할 수 있는 교과 성취, 학업태도, 탐구력, 자기주도적 학습 노력을 본다.",
+      "evidence_excerpt": "학업성취도, 학업태도, 탐구력은 단순 평균 성적보다 교과 이수 맥락과 수업 참여, 자기주도적 탐구를 함께 본다.",
+      "input_factors": ["parse_reliability_score", "total_records", "evidence_density", "evidence_reference_count", "narrative_density"]
+    },
+    {
+      "id": "career_coursework_and_exploration",
+      "group": "career",
+      "label": "진로역량",
+      "axis_keys": ["relational_continuity", "cluster_depth", "cluster_suitability"],
+      "source_ids": ["common_elements_2022", "yonsei_2026_guide", "jeju_2026_guideline", "uos_2026_guide", "sangmyung_2026_guide"],
+      "summary": "전공이라는 좁은 틀보다 진로와 계열에 대한 탐색, 관련 교과 이수 노력, 선택 과정과 이유를 본다.",
+      "evidence_excerpt": "진로 탐색 활동과 경험은 학교 교육 안에서 관심 분야를 탐색하고 성장한 과정과 전공·계열 관련 교과 이수 노력을 함께 확인한다.",
+      "input_factors": ["major_term_overlap_ratio", "repeated_subject_ratio", "unique_subject_count", "subject_distribution", "target_university_context"]
+    },
+    {
+      "id": "process_growth_and_inquiry",
+      "group": "academic",
+      "label": "성장·탐구 과정",
+      "axis_keys": ["relational_narrative", "relational_continuity", "cluster_depth"],
+      "source_ids": ["common_elements_2022", "pusan_2026_guide", "yonsei_2026_guide"],
+      "summary": "결과 자체보다 고교 재학 중 다양한 경험, 노력, 탐구의 발전 흐름을 평가한다.",
+      "evidence_excerpt": "학생부종합전형은 양적으로 나타나는 결과보다 학교생활 과정에서 드러난 경험과 노력의 과정을 중시한다.",
+      "input_factors": ["narrative_density", "repeated_subject_ratio", "relational_graph", "semantic_rationale"]
+    },
+    {
+      "id": "community_and_character",
+      "group": "community",
+      "label": "공동체역량",
+      "axis_keys": ["community_contribution"],
+      "source_ids": ["kcue_2026_basic", "common_elements_2022", "yonsei_2026_guide", "jeju_2026_guideline", "pusan_2026_guide", "sangmyung_2026_guide"],
+      "summary": "협업과 소통, 배려, 성실성, 규칙준수, 책임감, 공동체 기여를 학생부 맥락에서 평가한다.",
+      "evidence_excerpt": "공동체역량은 협업과 소통능력, 나눔과 배려, 성실성과 규칙준수, 책임 있는 역할 수행을 포함한다.",
+      "input_factors": ["behavior_opinion_presence", "attendance_or_record_count", "creative_activity_presence", "risk_flags"]
+    },
+    {
+      "id": "authenticity_and_fairness",
+      "group": "authenticity",
+      "label": "진정성·공정성 위험",
+      "axis_keys": ["authenticity_risk"],
+      "source_ids": ["kcue_2026_basic", "common_elements_2022", "jeju_2026_guideline"],
+      "summary": "공식 기준과 외부 자료는 평가 맥락으로만 사용하고, 학생 행동과 성취 주장은 업로드된 학생부 근거로만 판단한다.",
+      "evidence_excerpt": "학생부종합전형은 공정성·투명성을 확보하고 다수 평가자, 블라인드, 학교폭력 조치사항 반영 등 신뢰도 장치를 둔다.",
+      "input_factors": ["needs_review", "needs_review_documents", "parse_reliability_score", "evidence_density", "policy_flags"]
+    }
+  ]
+}

@@ -34,6 +34,7 @@ function buildDefaultGuestProfile(): UserProfile {
     firebase_uid: 'guest-local',
     email: null,
     name: '게스트',
+    is_guest: true,
     target_university: null,
     target_major: null,
     grade: null,
@@ -58,6 +59,7 @@ function normalizeGuestProfile(raw: unknown): UserProfile {
     firebase_uid: sanitizeText(value.firebase_uid, 120) || base.firebase_uid,
     email: sanitizeText(value.email, 320) || null,
     name: sanitizeText(value.name, 120) || base.name,
+    is_guest: true,
     target_university: sanitizeText(value.target_university, 200) || null,
     target_major: sanitizeText(value.target_major, 200) || null,
     grade: sanitizeText(value.grade, 50) || null,
@@ -76,15 +78,15 @@ export function isGuestSessionActive() {
   return window.localStorage.getItem(GUEST_SESSION_KEY) === '1';
 }
 
-export function readGuestProfile(): UserProfile | null {
-  if (!isBrowser()) return null;
+export function readGuestProfile(): UserProfile {
+  if (!isBrowser()) return buildDefaultGuestProfile();
 
   try {
     const raw = window.localStorage.getItem(GUEST_PROFILE_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) return buildDefaultGuestProfile();
     return normalizeGuestProfile(JSON.parse(raw));
   } catch {
-    return null;
+    return buildDefaultGuestProfile();
   }
 }
 

@@ -108,12 +108,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await useAuthStore.getState().fetchProfile();
         useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
       } else {
-        setGuestSessionActive(false);
-        localStorage.removeItem(GUEST_SESSION_KEY);
-        if (hasAppAccessToken()) {
-          await useAuthStore.getState().fetchProfile();
-          useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
-        } else if (allowLocalBackendBypass) {
+        // Check for local guest session even if Firebase user is null
+        const localGuestActive = localStorage.getItem(GUEST_SESSION_KEY) === '1';
+
+        if (hasAppAccessToken() || allowLocalBackendBypass || localGuestActive) {
           await useAuthStore.getState().fetchProfile();
           useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
         } else {
@@ -187,27 +185,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Guest mode is disabled in this environment.');
     }
 
-    if (!auth || !isFirebaseConfigured) {
-      setGuestSessionActive(true);
-      localStorage.setItem(GUEST_SESSION_KEY, '1');
-      return;
-    }
-
     try {
-      await signInAnonymously(auth);
+      if (auth && isFirebaseConfigured) {
+        await signInAnonymously(auth);
+        // onAuthStateChanged will handle profile fetching
+      } else {
+        // Local-only guest mode fallback
+        setGuestSessionActive(true);
+        localStorage.setItem(GUEST_SESSION_KEY, '1');
+        await useAuthStore.getState().fetchProfile();
+        useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
+      }
+    } catch (error) {
+      console.error('Firebase anonymous sign-in failed, falling back to local guest session:', error);
+      // Always ensure guest session is active locally if guest mode is allowed
       setGuestSessionActive(true);
       localStorage.setItem(GUEST_SESSION_KEY, '1');
-    } catch (error) {
-      const authError = error as Partial<AuthError>;
-      if (authError.code === 'auth/operation-not-allowed' || authError.code === 'auth/admin-restricted-operation') {
-        throw new Error(
-          '현재 Firebase에서 익명 로그인이 꺼져 있어요. Firebase Console > Authentication > Sign-in method에서 Anonymous를 켜 주세요.',
-        );
-      }
-      if (authError.code === 'auth/invalid-api-key') {
-        throw new Error('Firebase API 키가 올바르지 않아요. .env의 VITE_FIREBASE_API_KEY를 확인해 주세요.');
-      }
-      throw error;
+      await useAuthStore.getState().fetchProfile();
+      useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
     }
   };
 

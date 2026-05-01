@@ -22,6 +22,8 @@ def test_prompt_registry_loads_known_asset() -> None:
     composed = registry.compose_prompt("diagnosis.grounded-analysis")
     assert "Never fabricate student activities" in composed
     assert "diagnosis engine and guided-choice planner" in composed
+    assert "학업역량" in composed
+    assert "community_contribution" in composed
 
 
 def test_prompt_registry_falls_back_to_backend_registry_assets() -> None:
@@ -31,6 +33,8 @@ def test_prompt_registry_falls_back_to_backend_registry_assets() -> None:
 
     assert asset.meta.category == "diagnosis"
     assert asset.full_path.name == "prompt.md"
+    assert "{{criteria_context}}" in asset.markdown
+    assert "공식 기준은 학생 행동의 증거가 아니라 평가 맥락" in asset.markdown
 
 
 def test_prompt_registry_missing_prompt_has_clear_error() -> None:

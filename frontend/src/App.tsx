@@ -24,6 +24,7 @@ const Archive = lazy(() => import('./pages/Archive').then(m => ({ default: m.Arc
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Trends = lazy(() => import('./pages/Trends').then(m => ({ default: m.Trends })));
 const Diagnosis = lazy(() => import('./pages/Diagnosis').then(m => ({ default: m.Diagnosis })));
+const DiagnosisReports = lazy(() => import('./pages/DiagnosisReports').then(m => ({ default: m.DiagnosisReports })));
 const Interview = lazy(() => import('./pages/Interview').then(m => ({ default: m.Interview })));
 const RecordPdfHelp = lazy(() => import('./pages/RecordPdfHelp').then(m => ({ default: m.RecordPdfHelp })));
 const TermsOfService = lazy(() => import('./pages/legal/LegalPages').then(m => ({ default: m.TermsOfService })));
@@ -150,7 +151,7 @@ export default function App() {
                 <Route path="record" element={<Navigate to="/app/diagnosis" replace />} />
                 <Route path="help/student-record-pdf" element={<RecordPdfHelp />} />
                 <Route path="diagnosis" element={<Diagnosis />} />
-                <Route path="diagnosis/history" element={<Archive />} />
+                <Route path="diagnosis/history" element={<DiagnosisReports />} />
                 <Route path="workshop" element={<Workshop />} />
                 <Route path="workshop/:projectId" element={<Workshop />} />
                 <Route path="editor/:projectId" element={<DocumentEditorPage />} />

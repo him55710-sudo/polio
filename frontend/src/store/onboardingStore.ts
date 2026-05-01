@@ -167,7 +167,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         return true;
       }
 
-      set({ error: err.response?.data?.detail || '?꾨줈????μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.', isLoading: false });
+      set({ error: err.response?.data?.detail || '프로필 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
       return false;
     }
   },
@@ -179,7 +179,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (!goals) {
         const currentGoalList = get().goalList;
         if (currentGoalList.length === 0) {
-          set({ isLoading: false, error: '理쒖냼 1媛쒖쓽 紐⑺몴瑜??ㅼ젙?댁빞 ?⑸땲??' });
+          set({ isLoading: false, error: '최소 1개의 목표를 설정해야 합니다.' });
           return false;
         }
 
@@ -189,7 +189,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           target_university: main.university,
           target_major: main.major,
           interest_universities: others,
-          admission_type: get().goals.admission_type || '?숈깮遺醫낇빀',
+          admission_type: get().goals.admission_type || '학생부종합',
         };
       }
 
@@ -224,7 +224,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         return true;
       }
 
-      set({ error: err.response?.data?.detail || '紐⑺몴 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.', isLoading: false });
+      set({ error: err.response?.data?.detail || '목표 저장에 실패했습니다. 다시 시도해주세요.', isLoading: false });
       return false;
     }
   },
@@ -258,7 +258,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         interest_universities: otherGoals
           .filter((goal) => goal.major)
           .map((goal) => `${goal.university} (${goal.major})`),
-        admission_type: user.admission_type || '?숈깮遺醫낇빀',
+        admission_type: user.admission_type || '학생부종합',
       },
       lastSyncedUserKey: nextUserKey,
     };
@@ -323,7 +323,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       });
       return true;
     } catch (err: any) {
-      set({ isLoading: false, error: '?꾨줈?앺듃 ?뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??' });
+      set({ isLoading: false, error: '프로젝트 정보를 불러오지 못했습니다.' });
       return false;
     }
   },

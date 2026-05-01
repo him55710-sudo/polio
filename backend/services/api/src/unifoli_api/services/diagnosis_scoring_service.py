@@ -1,45 +1,57 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
+from unifoli_api.core.config import get_settings
+from unifoli_api.services.admissions_criteria_service import (
+    AdmissionsCriteriaProfile,
+    confidence_note_for_axis,
+    criteria_refs_for_axis,
+    input_factors_for_axis,
+    resolve_admissions_criteria_profile,
+)
 from unifoli_api.services.diagnosis_axis_schema import AdmissionAxisKey, POSITIVE_AXIS_LABELS, PositiveAxisKey
 from unifoli_api.services.student_record_feature_service import StudentRecordFeatures
 
 RiskLevel = Literal["safe", "warning", "danger"]
 
 _SECTION_CONSULTING_LABELS: dict[str, str] = {
-    "교과학습발달상황": "교과 성취·세특 기반",
-    "창의적 체험활동": "창체 활동 서사",
-    "행동특성 및 종합의견": "행특·종합의견 신뢰도",
-    "독서활동": "독서/지적 확장성",
-    "수상경력": "수상·성과 근거",
+    "援먭낵?숈뒿諛쒕떖?곹솴": "교과 성취·세부능력",
+    "李쎌쓽??泥댄뿕?쒕룞": "창의적 체험활동",
+    "?됰룞?뱀꽦 諛?醫낇빀?섍껄": "행동특성·종합의견",
+    "?낆꽌?쒕룞": "독서/지식 확장",
+    "?섏긽寃쎈젰": "수상·성과 기록",
+    "교과학습발달상황": "교과 성취·세부능력",
+    "창의적 체험활동": "창의적 체험활동",
+    "행동특성 및 종합의견": "행동특성·종합의견",
+    "독서활동": "독서/지식 확장",
 }
 
 
 class AxisSemanticGrade(BaseModel):
-    score: int = Field(ge=0, le=100, description="0~100점 사이의 정량 점수")
-    rationale: str = Field(description="점수 부여 근거 (전문적인 입학사정관 톤의 한국어)")
-    evidence_hints: list[str] = Field(default_factory=list, description="점수의 근거가 된 학생부 내 핵심 문구 및 단서")
+    score: int = Field(ge=0, le=100, description="0~100 사이의 정성 점수")
+    rationale: str = Field(description="점수 부여 근거")
+    evidence_hints: list[str] = Field(default_factory=list, description="점수 근거가 되는 학생부 문구나 단서")
 
 
 class ContinuityLink(BaseModel):
-    title: str = Field(description="탐구 연속성 헤드라인 (예: 1학년 수학에서 2학년 심화수학으로의 연계)")
-    description: str = Field(description="학년별/기록별로 탐구가 어떻게 심화되거나 연결되었는지에 대한 상세 설명")
-    evidence_hooks: list[str] = Field(default_factory=list, description="연속성을 증명하는 학생부 내 핵심 추출 문구")
+    title: str = Field(description="탐구 연속성 라인")
+    description: str = Field(description="학년별·과목별 기록이 어떻게 이어지는지 설명")
+    evidence_hooks: list[str] = Field(default_factory=list, description="연속성을 보여주는 학생부 단서")
 
 
 class ThemeCluster(BaseModel):
-    theme_name: str = Field(description="융합 탐구 테마 명칭 (예: '신재생 에너지의 경제적 타당성')")
-    description: str = Field(description="서로 다른 과목이나 활동이 이 테마를 중심으로 어떻게 융합되었는지에 대한 설명")
-    subjects_involved: list[str] = Field(default_factory=list, description="관여된 교과목 목록")
-    evidence_hooks: list[str] = Field(default_factory=list, description="융합을 증명하는 학생부 내 핵심 추출 문구")
+    theme_name: str = Field(description="통합 탐구 테마명")
+    description: str = Field(description="서로 다른 과목이나 활동이 하나의 테마로 연결되는 방식")
+    subjects_involved: list[str] = Field(default_factory=list, description="관련 교과목")
+    evidence_hooks: list[str] = Field(default_factory=list, description="통합성을 보여주는 학생부 단서")
 
 
 class OutlierActivity(BaseModel):
     activity_name: str
-    description: str = Field(description="이 활동이 왜 핵심 학업 역량과 단절되어 보이거나 표면적으로 느껴지는지에 대한 사유")
+    description: str = Field(description="주요 학업·진로 흐름과 분리되어 보이는 이유")
 
 
 class RelationalGraph(BaseModel):
@@ -49,16 +61,17 @@ class RelationalGraph(BaseModel):
 
 
 class SemanticDiagnosisExtraction(BaseModel):
-    universal_rigor: AxisSemanticGrade = Field(description="학업 및 근거 엄밀성: 기록의 신뢰도와 학업 성취 수준")
-    universal_specificity: AxisSemanticGrade = Field(description="근거 구체성: 구체적 사실, 수치, 방법론의 기재 정도")
-    relational_narrative: AxisSemanticGrade = Field(description="서사적 발전성: 섹션 간 조화와 성장 서사의 풍부함")
-    relational_continuity: AxisSemanticGrade = Field(description="탐구의 연속성: 학년별/과목별 탐구 주제의 반복 및 심화 과정")
-    cluster_depth: AxisSemanticGrade = Field(description="전공 심층성: 목표 전공 관련 심화 활동 및 지적 호기심의 깊이")
-    cluster_suitability: AxisSemanticGrade = Field(description="전공 적합성: 기록 전반에 나타난 진로 지향성과 계열 적합 인성")
-    relational_graph: RelationalGraph | None = Field(None, description="기록 간의 관계망 (연속성, 융합, 단절 활동)")
-    summary_insight: str = Field(description="전체 진단 요약 및 총평 (입학사정관 스타일의 전문적 조언)")
-    strengths: list[str] = Field(default_factory=list, description="발굴된 강점 후보군 리스트")
-    gaps: list[str] = Field(default_factory=list, description="보강이 필요한 약점/공백 후보군 리스트")
+    universal_rigor: AxisSemanticGrade = Field(description="학업 엄밀성")
+    universal_specificity: AxisSemanticGrade = Field(description="근거 구체성")
+    relational_narrative: AxisSemanticGrade = Field(description="성장/탐구 과정")
+    relational_continuity: AxisSemanticGrade = Field(description="진로 탐색 연속성")
+    cluster_depth: AxisSemanticGrade = Field(description="전공 탐구 깊이")
+    cluster_suitability: AxisSemanticGrade = Field(description="전공/계열 적합성")
+    community_contribution: AxisSemanticGrade | None = Field(default=None, description="공동체 기여")
+    relational_graph: RelationalGraph | None = Field(None, description="기록 간 관계망")
+    summary_insight: str = Field(description="전체 진단 요약")
+    strengths: list[str] = Field(default_factory=list, description="강점 후보")
+    gaps: list[str] = Field(default_factory=list, description="보완이 필요한 약점/공백 후보")
 
 
 class AdmissionAxisResult(BaseModel):
@@ -69,6 +82,9 @@ class AdmissionAxisResult(BaseModel):
     severity: Literal["low", "medium", "high"]
     rationale: str
     evidence_hints: list[str] = Field(default_factory=list)
+    criteria_refs: list[str] = Field(default_factory=list)
+    input_factors: list[str] = Field(default_factory=list)
+    confidence_note: str | None = None
 
 
 class SectionAnalysisItem(BaseModel):
@@ -108,37 +124,28 @@ class DiagnosisScoringSheet(BaseModel):
 
 
 async def normalize_major_name(major_name: str | None) -> str | None:
-    """사용자가 입력한 전공 명칭의 오타를 교정하거나 표준 명칭으로 변환합니다."""
+    """Normalize a free-form major name with an LLM when available."""
     if not major_name or len(major_name.strip()) < 2:
         return major_name
 
     from unifoli_api.core.llm import get_llm_client
+
     try:
-        llm = get_llm_client(profile="fast", concern="diagnosis") # 빠른 응답을 위해 fast 프로필 사용
+        llm = get_llm_client(profile="fast", concern="diagnosis")
     except Exception:
         return major_name
 
+    class NormalizationResult(BaseModel):
+        corrected_name: str
+
     prompt = (
-        f"다음은 사용자가 입력한 대학교 희망 전공 명칭입니다: '{major_name}'\n"
-        "만약 오타가 있다면 올바른 명칭으로 교정하고, 줄임말이나 비표준 명칭이라면 "
-        "한국 대학교에서 사용하는 표준 학과 명칭으로 변환해 주세요.\n"
-        "결과는 다른 부연 설명 없이 오직 교정된 전공 명칭만 출력하십시오.\n"
-        "만약 이미 표준 명칭이거나 교정이 불필요하다면 원문 그대로 출력하십시오."
+        f"사용자가 입력한 전공명은 '{major_name}'입니다.\n"
+        "한국 대학 입시 맥락에서 쓰는 표준 학과/전공명으로만 정리하세요. "
+        "확신할 수 없으면 원문을 그대로 반환하세요."
     )
 
     try:
-        # stream_chat 대신 단순 생성을 위해 generate_json을 활용하거나 
-        # 간단한 텍스트 반환을 위해 직접 호출 로직을 사용 (llm.py의 구조에 따라)
-        # 여기서는 generate_json 스키마 대신 일반 텍스트가 필요할 수 있으나 
-        # 현재 llm 클라이언트는 generate_json 위주이므로 스카마 정의
-        class NormalizationResult(BaseModel):
-            corrected_name: str
-
-        res = await llm.generate_json(
-            prompt=prompt,
-            response_model=NormalizationResult,
-            temperature=0.0
-        )
+        res = await llm.generate_json(prompt=prompt, response_model=NormalizationResult, temperature=0.0)
         return res.corrected_name.strip()
     except Exception:
         return major_name
@@ -152,33 +159,31 @@ async def extract_semantic_diagnosis(
     interest_universities: list[str] | None = None,
 ) -> SemanticDiagnosisExtraction:
     from unifoli_api.core.llm import get_llm_client
-
     from unifoli_api.services.prompt_registry import get_prompt_registry
 
     try:
         llm = get_llm_client(profile="standard", concern="diagnosis")
     except TypeError:
         llm = get_llm_client()  # type: ignore[call-arg]
-    registry = get_prompt_registry()
 
-    # Get base instruction from registry
-    base_instruction = registry.compose_prompt("diagnosis.semantic-scoring")
-
-    interest_context = ""
-    if interest_universities:
-        interest_context = f" / 추가 목표 대학: {', '.join(interest_universities)}"
-
-    # Perform variable substitution
+    criteria_profile = resolve_admissions_criteria_profile(
+        target_university=target_university,
+        interest_universities=interest_universities,
+    )
+    base_instruction = get_prompt_registry().compose_prompt("diagnosis.semantic-scoring")
+    interest_context = f" / 추가 목표 대학: {', '.join(interest_universities)}" if interest_universities else ""
     system_instruction = (
         base_instruction.replace("{{target_major}}", target_major or "미정")
         .replace("{{target_university}}", target_university or "미정")
         .replace("{{interest_context}}", interest_context)
+        .replace("{{criteria_context}}", _criteria_context_block(criteria_profile))
     )
 
     prompt = (
-        "다음 학생부 텍스트를 바탕으로 심층적인 의미론적 진단을 수행하십시오. "
-        "반드시 부여된 SemanticDiagnosisExtraction 스키마를 엄격히 준수하여 JSON 형태로 출력하십시오.\n\n"
-        f"분석 대상 텍스트:\n{masked_text[:get_settings().semantic_extraction_max_input_chars]}"
+        "다음 학생부 텍스트를 바탕으로 보수적인 의미 기반 진단을 수행하세요. "
+        "공식 기준은 평가 맥락으로만 사용하고, 학생 행동 주장은 반드시 학생부 텍스트에 근거해야 합니다. "
+        "반드시 SemanticDiagnosisExtraction JSON 스키마를 따르세요.\n\n"
+        f"[학생부 텍스트]\n{masked_text[:get_settings().semantic_extraction_max_input_chars]}"
     )
     return await llm.generate_json(
         prompt=prompt,
@@ -197,9 +202,17 @@ def build_diagnosis_scoring_sheet(
     interest_universities: list[str] | None = None,
     semantic: SemanticDiagnosisExtraction | None = None,
 ) -> DiagnosisScoringSheet:
+    criteria_profile = resolve_admissions_criteria_profile(
+        target_university=target_university,
+        interest_universities=interest_universities,
+    )
     section_analysis = _build_section_analysis(features)
     document_quality = _build_document_quality(features)
-    admission_axes = _build_admission_axes(features, semantic=semantic)
+    admission_axes = _build_admission_axes(
+        features,
+        criteria_profile=criteria_profile,
+        semantic=semantic,
+    )
     risk_level = _derive_risk_level(admission_axes=admission_axes)
 
     strengths = _build_strengths(features=features, admission_axes=admission_axes, semantic=semantic)
@@ -217,7 +230,7 @@ def build_diagnosis_scoring_sheet(
         key=lambda axis: axis.score,
         default=None,
     )
-    weakest_label = weakest_axis.label if weakest_axis else "핵심 축"
+    weakest_label = weakest_axis.label if weakest_axis else "학생부 근거"
 
     targets: list[str] = []
     if target_university:
@@ -231,12 +244,12 @@ def build_diagnosis_scoring_sheet(
         target_context = target_major or "목표 전공"
 
     overview = (
-        f"{project_title} 기준 문서 신뢰도는 {document_quality.parse_reliability_band} 수준이며, "
-        f"현재는 {weakest_label} 보강이 우선입니다."
+        f"{project_title} 기준 학생부 해석 신뢰도는 {document_quality.parse_reliability_band}이며, "
+        f"2026 학종 기준상 현재는 {weakest_label} 보완이 우선입니다."
     )
     recommended_focus = (
-        f"{target_context} 맥락에서 {weakest_label}을 먼저 보강하세요. "
-        "점수는 현재 기록 근거를 기준으로 보수적으로 계산했습니다."
+        f"{target_context} 맥락에서 {weakest_label}을 먼저 보완하세요. "
+        "점수는 공식 기준과 학생부 기록 근거를 분리해 보수적으로 산출했습니다."
     )
 
     return DiagnosisScoringSheet(
@@ -263,13 +276,13 @@ def _build_section_analysis(features: StudentRecordFeatures) -> list[SectionAnal
         count = int(features.section_record_counts.get(key) or 0)
         label = _SECTION_CONSULTING_LABELS.get(str(key), str(key))
         if present and count >= 5:
-            note = "근거 총량이 좋아 대표 사례 2개를 선별해 강점 축으로 전환할 수 있습니다."
+            note = "근거량이 충분해 강점 후보로 전환할 수 있습니다."
         elif present and count >= 3:
-            note = "활용 가능한 기록은 있으나 전공 연결 문장과 과정 설명을 붙이면 설득력이 올라갑니다."
+            note = "활용 가능한 기록이 있으므로 전공 연결 문장과 과정 설명을 붙이면 밀도가 올라갑니다."
         elif present:
-            note = "기록은 확인되지만 단독 근거로는 약합니다. 페이지 앵커와 보완 활동을 함께 묶어야 합니다."
+            note = "기록은 확인되지만 단독 근거로는 약합니다. 페이지 단서와 보완 활동을 함께 묶어야 합니다."
         else:
-            note = "해당 섹션 근거가 부족합니다. 원문 누락 여부를 확인하고 최소 1개 방어 가능한 문장을 확보하세요."
+            note = "해당 섹션 근거가 부족합니다. 원문 누락 여부를 확인하고 방어 가능한 문장을 확보하세요."
         rows.append(
             SectionAnalysisItem(
                 key=str(key),
@@ -292,9 +305,9 @@ def _build_document_quality(features: StudentRecordFeatures) -> DocumentQualityS
         reliability_band = "주의"
 
     summary = (
-        f"{features.document_count}개 문서, 총 {features.total_records}개 기록 기준 파싱 신뢰도 {reliability_score}점입니다. "
+        f"{features.document_count}개 문서, 총 {features.total_records}개 기록 기준 파싱 신뢰도는 {reliability_score}점입니다. "
         f"근거 밀도 {round(features.evidence_density, 2)}, 서사 밀도 {round(features.narrative_density, 2)}로 "
-        "진단서는 확인 가능한 기록과 보완 필요 기록을 분리해 해석합니다."
+        "확인 가능한 학생부 근거와 보완 필요 기록을 분리해 해석합니다."
     )
     return DocumentQualitySummary(
         source_mode=features.source_mode,
@@ -312,19 +325,19 @@ def _build_document_quality(features: StudentRecordFeatures) -> DocumentQualityS
 
 def _build_admission_axes(
     features: StudentRecordFeatures,
+    *,
+    criteria_profile: AdmissionsCriteriaProfile,
     semantic: SemanticDiagnosisExtraction | None = None,
 ) -> list[AdmissionAxisResult]:
-    # Layer 1: Universal
+    active_sections = sum(1 for present in features.section_presence.values() if present)
+
     rigor_base = _bounded_int(18 + features.reliability_score * 47 + min(features.total_records, 30) * 1.35)
     spec_base = _bounded_int(13 + features.evidence_density * 60 + min(features.evidence_reference_count, 20) * 1.6)
-    
-    # Layer 2: Relational
-    narrative_base = _bounded_int(23 + features.narrative_density * 52 + len(features.section_presence) * 4.2)
+    narrative_base = _bounded_int(23 + features.narrative_density * 52 + active_sections * 4.2)
     continuity_base = _bounded_int(18 + features.repeated_subject_ratio * 65 + min(features.unique_subject_count, 12) * 1.6)
-    
-    # Layer 3: Cluster (Major-specific)
     depth_base = _bounded_int(13 + features.major_term_overlap_ratio * 80 + min(features.unique_subject_count, 8) * 2.1)
-    suitability_base = depth_base # Heuristic fallback matches depth unless semantic provides better
+    suitability_base = depth_base
+    community_base = _community_base_score(features=features, active_sections=active_sections)
 
     def _merge(
         key: PositiveAxisKey,
@@ -337,58 +350,105 @@ def _build_admission_axes(
         score = _calibrate_positive_axis_score(key=key, score=score, features=features)
         return score, semantic_grade.rationale, semantic_grade.evidence_hints
 
-    u_rigor_score, u_rigor_rat, u_rigor_hints = _merge("universal_rigor", rigor_base, semantic.universal_rigor if semantic else None)
-    u_spec_score, u_spec_rat, u_spec_hints = _merge("universal_specificity", spec_base, semantic.universal_specificity if semantic else None)
-    r_narr_score, r_narr_rat, r_narr_hints = _merge("relational_narrative", narrative_base, semantic.relational_narrative if semantic else None)
-    r_cont_score, r_cont_rat, r_cont_hints = _merge("relational_continuity", continuity_base, semantic.relational_continuity if semantic else None)
-    c_depth_score, c_depth_rat, c_depth_hints = _merge("cluster_depth", depth_base, semantic.cluster_depth if semantic else None)
-    c_suit_score, c_suit_rat, c_suit_hints = _merge("cluster_suitability", suitability_base, semantic.cluster_suitability if semantic else None)
+    u_rigor_score, u_rigor_rat, u_rigor_hints = _merge(
+        "universal_rigor",
+        rigor_base,
+        semantic.universal_rigor if semantic else None,
+    )
+    u_spec_score, u_spec_rat, u_spec_hints = _merge(
+        "universal_specificity",
+        spec_base,
+        semantic.universal_specificity if semantic else None,
+    )
+    r_narr_score, r_narr_rat, r_narr_hints = _merge(
+        "relational_narrative",
+        narrative_base,
+        semantic.relational_narrative if semantic else None,
+    )
+    r_cont_score, r_cont_rat, r_cont_hints = _merge(
+        "relational_continuity",
+        continuity_base,
+        semantic.relational_continuity if semantic else None,
+    )
+    c_depth_score, c_depth_rat, c_depth_hints = _merge(
+        "cluster_depth",
+        depth_base,
+        semantic.cluster_depth if semantic else None,
+    )
+    c_suit_score, c_suit_rat, c_suit_hints = _merge(
+        "cluster_suitability",
+        suitability_base,
+        semantic.cluster_suitability if semantic else None,
+    )
+    community_score, community_rat, community_hints = _merge(
+        "community_contribution",
+        community_base,
+        semantic.community_contribution if semantic else None,
+    )
 
     authenticity_risk = _bounded_int(
-        78 - features.reliability_score * 40 - features.evidence_density * 26 - features.repeated_subject_ratio * 16
+        78
+        - features.reliability_score * 40
+        - features.evidence_density * 26
+        - features.repeated_subject_ratio * 16
         + (20 if features.needs_review else 0)
+        + _policy_risk_penalty(features.risk_flags)
     )
 
     return [
         _positive_axis(
             key="universal_rigor",
             score=u_rigor_score,
-            rationale=u_rigor_rat or "학업 성취와 기록의 신뢰도를 바탕으로 산출된 학업 엄밀성입니다.",
-            hints=u_rigor_hints or [f"신뢰도 점수: {round(features.reliability_score, 2)}", f"전체 기록 수: {features.total_records}"],
+            rationale=u_rigor_rat or "교과 성취와 세부능력 기록의 신뢰도, 기록량, 학업 맥락을 바탕으로 산출한 학업 엄밀성입니다.",
+            hints=u_rigor_hints or [f"파싱 신뢰도: {round(features.reliability_score, 2)}", f"전체 기록 수: {features.total_records}"],
+            criteria_profile=criteria_profile,
         ),
         _positive_axis(
             key="universal_specificity",
             score=u_spec_score,
-            rationale=u_spec_rat or "기록 내 구체적 사실과 근거 참조 빈도를 분석한 결과입니다.",
+            rationale=u_spec_rat or "구체적인 관찰·수치·결과·근거 참조 빈도를 바탕으로 학생부 주장의 방어 가능성을 평가했습니다.",
             hints=u_spec_hints or [f"근거 밀도: {round(features.evidence_density, 2)}", f"근거 참조 수: {features.evidence_reference_count}"],
+            criteria_profile=criteria_profile,
         ),
         _positive_axis(
             key="relational_narrative",
             score=r_narr_score,
-            rationale=r_narr_rat or "섹션 간 조화와 서술의 풍부함을 바탕으로 평가한 서사 발전성입니다.",
-            hints=r_narr_hints or [f"서술 밀도: {round(features.narrative_density, 2)}", f"활성화 섹션 수: {sum(1 for p in features.section_presence.values() if p)}"],
+            rationale=r_narr_rat or "활동을 나열하는 수준을 넘어 과정, 시행착오, 배운 점이 연결되는지 평가했습니다.",
+            hints=r_narr_hints or [f"서사 밀도: {round(features.narrative_density, 2)}", f"활성 섹션 수: {active_sections}"],
+            criteria_profile=criteria_profile,
         ),
         _positive_axis(
             key="relational_continuity",
             score=r_cont_score,
-            rationale=r_cont_rat or "학년별/과목별 탐구 주제의 반복과 심화 과정을 분석했습니다.",
+            rationale=r_cont_rat or "학년별·과목별 탐구 주제가 반복되고 확장되는 흐름을 평가했습니다.",
             hints=r_cont_hints or [f"반복 과목 비율: {round(features.repeated_subject_ratio, 2)}", f"고유 과목 수: {features.unique_subject_count}"],
+            criteria_profile=criteria_profile,
         ),
         _positive_axis(
             key="cluster_depth",
             score=c_depth_score,
-            rationale=c_depth_rat or "목표 전공 관련 키워드와 심화 활동의 깊이를 평가했습니다.",
+            rationale=c_depth_rat or "목표 전공·계열과 관련된 개념, 방법, 산출물의 깊이를 평가했습니다.",
             hints=c_depth_hints or [f"전공 키워드 중첩도: {round(features.major_term_overlap_ratio, 2)}"],
+            criteria_profile=criteria_profile,
         ),
         _positive_axis(
             key="cluster_suitability",
             score=c_suit_score,
-            rationale=c_suit_rat or "기록 전반에 나타난 진로 지향성과 전공 적합성을 종합 분석했습니다.",
-            hints=c_suit_hints or [f"전공 일치 단서 존재 여부", f"진로 탐색 구체성"],
+            rationale=c_suit_rat or "기록 전반이 목표 진로와 계열에 자연스럽게 이어지는지 종합적으로 평가했습니다.",
+            hints=c_suit_hints or ["전공 관련 과목·활동 신호", "진로 탐색 구체성"],
+            criteria_profile=criteria_profile,
+        ),
+        _positive_axis(
+            key="community_contribution",
+            score=community_score,
+            rationale=community_rat or "행동특성, 창체, 출결·역할 수행 단서에서 협업·책임감·소통과 공동체 기여가 드러나는지 평가했습니다.",
+            hints=community_hints or _community_hints(features=features, active_sections=active_sections),
+            criteria_profile=criteria_profile,
         ),
         _authenticity_risk_axis(
             score=authenticity_risk,
             hints=[f"파싱 신뢰도: {round(features.reliability_score, 2)}", f"검토 필요 문서: {features.needs_review_documents}"],
+            criteria_profile=criteria_profile,
         ),
     ]
 
@@ -399,7 +459,7 @@ def _calibrate_positive_axis_score(
     score: int,
     features: StudentRecordFeatures,
 ) -> int:
-    """Apply a slightly warmer but evidence-gated admission score calibration."""
+    """Apply evidence-gated calibration based on 2026 admissions criteria."""
 
     bonus = 0
     if features.reliability_score >= 0.65:
@@ -422,6 +482,8 @@ def _calibrate_positive_axis_score(
         bonus += 3
     elif key in {"cluster_depth", "cluster_suitability"} and features.major_term_overlap_ratio >= 0.32:
         bonus += 3
+    elif key == "community_contribution" and _community_base_signal(features):
+        bonus += 2
 
     if score < 45:
         bonus = min(bonus, 2)
@@ -460,6 +522,8 @@ def _positive_axis_score_cap(
         cap = min(cap, 74)
     if key in {"cluster_depth", "cluster_suitability"} and features.major_term_overlap_ratio < 0.18:
         cap = min(cap, 74)
+    if key == "community_contribution" and not _community_base_signal(features):
+        cap = min(cap, 74)
     return cap
 
 
@@ -483,6 +547,8 @@ def _positive_axis_allows_80(
         return features.repeated_subject_ratio >= 0.35
     if key in {"cluster_depth", "cluster_suitability"}:
         return features.major_term_overlap_ratio >= 0.32 and features.evidence_reference_count >= 6
+    if key == "community_contribution":
+        return _community_base_signal(features) and active_sections >= 3
     return True
 
 
@@ -506,6 +572,8 @@ def _positive_axis_allows_90(
         return features.repeated_subject_ratio >= 0.5
     if key in {"cluster_depth", "cluster_suitability"}:
         return features.major_term_overlap_ratio >= 0.55
+    if key == "community_contribution":
+        return _section_count_matching(features, "행동", "종합", "?됰룞", "醫낇빀") >= 2
     return True
 
 
@@ -515,6 +583,7 @@ def _positive_axis(
     score: int,
     rationale: str,
     hints: list[str],
+    criteria_profile: AdmissionsCriteriaProfile,
 ) -> AdmissionAxisResult:
     if score >= 80:
         band = "strong"
@@ -525,71 +594,51 @@ def _positive_axis(
     else:
         band = "weak"
         severity = "high"
+    axis_key = cast(AdmissionAxisKey, key)
     return AdmissionAxisResult(
-        key=key,
+        key=axis_key,
         label=POSITIVE_AXIS_LABELS[key],
         score=score,
         band=band,
         severity=severity,
         rationale=rationale,
         evidence_hints=hints,
+        criteria_refs=criteria_refs_for_axis(criteria_profile, axis_key),
+        input_factors=input_factors_for_axis(criteria_profile, axis_key),
+        confidence_note=confidence_note_for_axis(criteria_profile, axis_key),
     )
 
 
-def _authenticity_risk_axis(*, score: int, hints: list[str]) -> AdmissionAxisResult:
+def _authenticity_risk_axis(
+    *,
+    score: int,
+    hints: list[str],
+    criteria_profile: AdmissionsCriteriaProfile,
+) -> AdmissionAxisResult:
     if score <= 35:
         band = "stable"
         severity: Literal["low", "medium", "high"] = "low"
-        rationale = "근거 대비 과장 위험이 낮고 기록 일관성이 유지됩니다."
+        rationale = "근거 대비 과장 위험이 낮고 기록 일관성이 비교적 안정적입니다."
     elif score <= 60:
         band = "watch"
         severity = "medium"
-        rationale = "일부 구간에서 근거 밀도와 설명 일관성을 추가 확인해야 합니다."
+        rationale = "일부 구간에서 근거의 충분성이나 해석 일관성을 추가 확인해야 합니다."
     else:
         band = "high_risk"
         severity = "high"
         rationale = "근거 대비 주장 과장 가능성이 높아 보수적 서술과 근거 보강이 필요합니다."
     return AdmissionAxisResult(
         key="authenticity_risk",
-        label="진정성·과장 위험",
+        label="진정성 위험",
         score=score,
         band=band,
         severity=severity,
         rationale=rationale,
         evidence_hints=hints,
+        criteria_refs=criteria_refs_for_axis(criteria_profile, "authenticity_risk"),
+        input_factors=input_factors_for_axis(criteria_profile, "authenticity_risk"),
+        confidence_note=confidence_note_for_axis(criteria_profile, "authenticity_risk"),
     )
-
-
-def _major_alignment_rationale(score: int) -> str:
-    if score >= 80:
-        return "전공 연계 키워드와 과목 분포가 비교적 안정적으로 연결됩니다."
-    if score >= 60:
-        return "전공 연계 단서가 있으나 기록 전반에서 반복 노출이 더 필요합니다."
-    return "전공 연결 신호가 약해 핵심 과목/활동 근거를 보강해야 합니다."
-
-
-def _inquiry_rationale(score: int) -> str:
-    if score >= 80:
-        return "탐구 흐름이 단발성이 아니라 후속 활동으로 이어집니다."
-    if score >= 60:
-        return "탐구 연속성 단서가 일부 있으나 문제-시도-개선 흐름을 더 명확히 해야 합니다."
-    return "활동이 분절적으로 보일 수 있어 비교·연속·심화 흐름 보강이 필요합니다."
-
-
-def _evidence_rationale(score: int) -> str:
-    if score >= 80:
-        return "수치/관찰 기록 근거가 충분해 주장을 방어하기 유리합니다."
-    if score >= 60:
-        return "핵심 근거는 있으나 주장 대비 근거 밀도를 단계적으로 높일 필요가 있습니다."
-    return "근거 밀도가 낮아 결론 주장보다 관찰 사실 축적이 우선입니다."
-
-
-def _process_rationale(score: int) -> str:
-    if score >= 80:
-        return "과정 설명과 반성 기록이 구체적으로 드러납니다."
-    if score >= 60:
-        return "과정 서술은 있으나 방법-한계-개선 연결을 더 선명히 해야 합니다."
-    return "무엇을 했는지는 보이나 왜/어떻게 했는지의 과정 설명이 부족합니다."
 
 
 def _derive_risk_level(*, admission_axes: list[AdmissionAxisResult]) -> RiskLevel:
@@ -601,7 +650,7 @@ def _derive_risk_level(*, admission_axes: list[AdmissionAxisResult]) -> RiskLeve
 
     if authenticity_score >= 70 or weak_count >= 2:
         return "danger"
-    if authenticity_score >= 50 or weak_count >= 1 or watch_count >= 2:
+    if authenticity_score >= 50 or weak_count >= 1 or watch_count >= 3:
         return "warning"
     return "safe"
 
@@ -619,7 +668,7 @@ def _build_strengths(
         if axis.key != "authenticity_risk" and axis.band == "strong":
             strengths.append(f"{axis.label}: {axis.rationale}")
     if not strengths:
-        strengths.append("핵심 섹션 기반의 기본 근거는 확보되어 있습니다.")
+        strengths.append("학생부 섹션 기반의 기본 근거는 확보되어 있습니다.")
     return _dedupe_keep_order(strengths)[:8]
 
 
@@ -638,7 +687,7 @@ def _build_gaps(
     if features.total_records < 5:
         gaps.append("기록 총량이 적어 근거 확보가 필요합니다.")
     if not gaps:
-        gaps.append("현재 구조를 유지하되 수치·비교·반성 근거를 추가하면 완성도가 높아집니다.")
+        gaps.append("현재 구조를 유지하되 수치·비교·반성 근거를 더하면 완성도가 올라갑니다.")
     return _dedupe_keep_order(gaps)[:10]
 
 
@@ -650,7 +699,7 @@ def _build_risk_flags(
     flags = list(features.risk_flags)
     authenticity = next((axis for axis in admission_axes if axis.key == "authenticity_risk"), None)
     if authenticity and authenticity.band == "high_risk":
-        flags.append("진정성·과장 위험 축이 높아 보수적 문장 운영이 필요합니다.")
+        flags.append("진정성 위험 축이 높아 보수적 문장 운영이 필요합니다.")
     return _dedupe_keep_order(flags)[:8]
 
 
@@ -671,15 +720,17 @@ def _build_next_action_seeds(
         elif axis.key == "relational_continuity":
             actions.append("학년별 활동을 같은 주제 1개로 묶고 '문제-시도-개선-다음 질문' 흐름을 작성하세요.")
         elif axis.key == "universal_specificity":
-            actions.append("핵심 주장 3개마다 페이지 앵커, 관찰값, 비교 기준을 1개씩 붙여 추상 표현을 줄이세요.")
+            actions.append("핵심 주장 3개마다 페이지 단서, 관찰값, 비교 기준을 1개씩 붙여 추상 표현을 줄이세요.")
         elif axis.key == "cluster_depth":
             actions.append("가장 강한 탐구 1개를 선택해 방법-한계-개선-후속 질문 순서로 4문장 보강안을 만드세요.")
         elif axis.key == "universal_rigor":
-            actions.append("교과 개념 또는 이론어 2개를 실제 활동 결과와 연결해 학업 엄밀성 문장을 보강하세요.")
+            actions.append("교과 개념이나 이론 2개를 실제 활동 결과와 연결해 학업 엄밀성 문장을 보강하세요.")
         elif axis.key == "relational_narrative":
-            actions.append("활동 간 전환 이유를 한 문장씩 추가해 단순 나열이 아닌 성장 서사로 재배열하세요.")
+            actions.append("활동 간 전환 이유를 한 문장씩 추가해 단순 나열이 아닌 성장 서사로 배열하세요.")
+        elif axis.key == "community_contribution":
+            actions.append("협업·책임·소통이 드러나는 창체/행특 근거를 골라 공동체 기여 문장으로 정리하세요.")
     if features.needs_review:
-        actions.append("검토 필요 문서는 원문 대조 후 핵심 문장을 보수적으로 재작성하세요.")
+        actions.append("검토 필요 문서가 있으므로 원문 대조 후 핵심 문장을 보수적으로 시작하세요.")
     if target_major:
         actions.append(f"{target_major} 맥락에 맞는 활동 1개를 선정해 기존 근거로 방어 가능한 심화 보고서 주제를 만드세요.")
     return _dedupe_keep_order(actions)[:8]
@@ -696,6 +747,66 @@ def _build_recommended_topics(
     if not topics:
         topics = ["교과 기반 심화탐구", "진로 연계 프로젝트", "비교·분석형 활동"]
     return _dedupe_keep_order(topics)[:6]
+
+
+def _community_base_score(*, features: StudentRecordFeatures, active_sections: int) -> int:
+    community_records = _section_count_matching(features, "행동", "종합", "?됰룞", "醫낇빀", "behavior", "opinion")
+    creative_records = _section_count_matching(features, "창", "체험", "李", "creative", "activity")
+    risk_penalty = _policy_risk_penalty(features.risk_flags)
+    return _bounded_int(
+        18
+        + min(community_records, 6) * 6
+        + min(creative_records, 6) * 4
+        + active_sections * 3.5
+        + features.narrative_density * 24
+        + features.reliability_score * 14
+        - risk_penalty
+    )
+
+
+def _community_base_signal(features: StudentRecordFeatures) -> bool:
+    return (
+        _section_count_matching(features, "행동", "종합", "?됰룞", "醫낇빀", "behavior", "opinion") > 0
+        or _section_count_matching(features, "창", "체험", "李", "creative", "activity") >= 2
+    )
+
+
+def _community_hints(*, features: StudentRecordFeatures, active_sections: int) -> list[str]:
+    return [
+        f"행동/종합의견 단서 수: {_section_count_matching(features, '행동', '종합', '?됰룞', '醫낇빀', 'behavior', 'opinion')}",
+        f"창체 단서 수: {_section_count_matching(features, '창', '체험', '李', 'creative', 'activity')}",
+        f"활성 섹션 수: {active_sections}",
+    ]
+
+
+def _section_count_matching(features: StudentRecordFeatures, *hints: str) -> int:
+    total = 0
+    lowered_hints = [hint.lower() for hint in hints if hint]
+    for key, count in features.section_record_counts.items():
+        key_text = str(key).lower()
+        if any(hint in key_text for hint in lowered_hints):
+            total += max(0, int(count or 0))
+    return total
+
+
+def _policy_risk_penalty(flags: list[str]) -> int:
+    text = " ".join(flags).lower()
+    penalty = 0
+    for marker in ("학교폭력", "폭력", "school violence", "fabrication", "허위", "과장"):
+        if marker in text:
+            penalty += 12
+    return penalty
+
+
+def _criteria_context_block(criteria_profile: AdmissionsCriteriaProfile) -> str:
+    lines = ["[2026 학생부종합전형 평가 기준 요약]"]
+    for criterion in criteria_profile.criteria:
+        refs = ", ".join(source_id for source_id in criterion.source_ids if source_id in criteria_profile.source_ids)
+        if not refs:
+            continue
+        lines.append(f"- {criterion.label}: {criterion.summary} (sources: {refs})")
+    lines.append("공식 기준은 평가 맥락으로만 사용하고, 학생 행동의 증거는 업로드된 학생부에서만 인정한다.")
+    return "\n".join(lines)
 
 
 def _bounded_int(value: float) -> int:

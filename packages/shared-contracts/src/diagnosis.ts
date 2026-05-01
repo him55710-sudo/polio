@@ -8,6 +8,7 @@ export const DIAGNOSIS_GAP_AXIS_VALUES = [
   'relational_continuity',
   'cluster_depth',
   'cluster_suitability',
+  'community_contribution',
 ] as const;
 export const DIAGNOSIS_AXIS_SEVERITY_VALUES = ['strong', 'watch', 'weak'] as const;
 export const DIAGNOSIS_DIRECTION_COMPLEXITY_VALUES = ['lighter', 'balanced', 'deeper'] as const;
@@ -20,6 +21,7 @@ export const DIAGNOSIS_ADMISSION_AXIS_VALUES = [
   'relational_continuity',
   'cluster_depth',
   'cluster_suitability',
+  'community_contribution',
   'authenticity_risk',
 ] as const;
 
@@ -131,6 +133,9 @@ export interface AdmissionAxisResult {
   severity: DiagnosisAxisPrioritySeverity;
   rationale: string;
   evidence_hints: string[];
+  criteria_refs?: string[];
+  input_factors?: string[];
+  confidence_note?: string | null;
 }
 
 export interface TopicCandidate {

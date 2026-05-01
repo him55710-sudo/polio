@@ -41,6 +41,7 @@ import { DiagnosisProfile } from '../components/diagnosis/DiagnosisProfile';
 import { DiagnosisGoals } from '../components/diagnosis/DiagnosisGoals';
 import { DiagnosisUpload } from '../components/diagnosis/DiagnosisUpload';
 import { DiagnosisResultDisplay } from '../components/diagnosis/DiagnosisResultDisplay';
+import { DiagnosisReportPanel } from '../components/DiagnosisReportPanel';
 
 type DiagnosisStep = 'PROFILE' | 'GOALS' | 'UPLOAD' | 'ANALYSING' | 'RESULT' | 'FAILED';
 type TimingPhaseKey = 'upload' | 'parse' | 'diagnosis';
@@ -327,6 +328,10 @@ export function Diagnosis() {
           target_university: primaryGoal.university,
           target_major: primaryGoal.major,
           projectId: run.project_id,
+          diagnosisRunId: run.id,
+          reportStatus: run.report_status ?? run.report_async_job_status ?? null,
+          reportArtifactId: run.report_artifact_id ?? null,
+          reportErrorMessage: run.report_error_message ?? null,
           savedAt: new Date().toISOString(),
           diagnosis: payload,
         }),
@@ -1001,6 +1006,15 @@ export function Diagnosis() {
               diagnosisRun={diagnosisRun} 
               projectId={projectId} 
             />
+            {diagnosisRun?.id ? (
+              <DiagnosisReportPanel
+                diagnosisRunId={diagnosisRun.id}
+                reportStatus={diagnosisRun.report_status}
+                reportAsyncJobStatus={diagnosisRun.report_async_job_status}
+                reportArtifactId={diagnosisRun.report_artifact_id}
+                reportErrorMessage={diagnosisRun.report_error_message}
+              />
+            ) : null}
             <div className="flex justify-center gap-2">
               <SecondaryButton
                 onClick={() => {

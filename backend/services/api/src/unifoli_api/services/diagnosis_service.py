@@ -494,6 +494,33 @@ def _infer_gap_axes(
         + (6 if overlap_hits > 0 and (concept_sentence_hits + inquiry_sentence_hits + evidence_sentence_hits) >= 3 else 0)
         - short_text_penalty
     )
+    community_terms = [
+        "협업",
+        "책임",
+        "배려",
+        "소통",
+        "리더",
+        "봉사",
+        "공동체",
+        "성실",
+        "역할",
+        "출결",
+        "behavior",
+        "community",
+        "responsibility",
+    ]
+    policy_risk_terms = ["학교폭력", "폭력", "부정행위", "허위", "과장", "fabrication"]
+    community_hits, community_sentence_hits, community_repeat_bonus = _keyword_signal_stats(lowered, sentences, community_terms)
+    policy_risk_hits = sum(1 for term in policy_risk_terms if term in lowered)
+    community_score = (
+        40
+        + (community_hits * 7)
+        + min(community_sentence_hits * 4, 14)
+        + min(community_repeat_bonus * 2, 4)
+        + (5 if word_count >= 180 else 0)
+        - (policy_risk_hits * 15)
+        - short_text_penalty
+    )
 
     return [
         _score_axis(
@@ -555,6 +582,16 @@ def _infer_gap_axes(
                 else "희망 전공과의 연결 고리가 다소 작위적이거나 약합니다. 전공 역량을 더 자연스럽게 드러내야 합니다."
             ),
             evidence_hint="목표 대학/전공 키워드(SNU, 특정 학과명 등)와 활동의 정합성을 확인하세요.",
+        ),
+        _score_axis(
+            key="community_contribution",
+            score=community_score,
+            rationale=(
+                "협업, 책임감, 배려, 역할 수행 등 공동체 역량을 보여주는 단서가 확인됩니다."
+                if community_score >= 75
+                else "공동체 안에서 맡은 역할, 협업 과정, 책임감이 더 구체적으로 드러날 필요가 있습니다."
+            ),
+            evidence_hint="행동특성 및 종합의견, 창체, 출결 기록에서 협업·책임·배려 단서를 확인하세요.",
         ),
     ]
 
@@ -766,6 +803,11 @@ def _format_recommendations_for_axis(axis_key: GapAxisKey, complexity: Direction
             FormatRecommendation(format="pdf", label="PDF 리포트", rationale="전공 적합성 논거를 조금 더 상세히 설명해야 할 때 유리합니다."),
             FormatRecommendation(format="pptx", label="발표용 덱", rationale="전공에 대한 관심도를 시각적 단서로 효과적으로 노출할 수 있습니다."),
         ],
+        "community_contribution": [
+            FormatRecommendation(format="hwpx", label="HWPX 제출용", rationale="학교생활 속 역할, 협업, 책임 수행을 차분하게 정리하는 데 적합합니다.", recommended=True),
+            FormatRecommendation(format="pdf", label="PDF 리포트", rationale="공동체 기여의 맥락과 근거를 행동 중심으로 상세히 설명할 때 유리합니다."),
+            FormatRecommendation(format="pptx", label="발표용 덱", rationale="협업 과정과 역할 변화를 시간순으로 보여줄 때 활용할 수 있습니다."),
+        ],
     }
 
     selected = [item.model_copy() for item in recommendations[axis_key]]
@@ -854,6 +896,10 @@ def _topic_candidates_for_axis(
             ("major_link_frame", f"현재 활동과 {major_label}의 접점 구체화", "전문적이고 억지스럽지 않은 방식으로 전공과의 연결 고리를 명징하게 제시"),
             ("major_question_shift", f"기존 근거를 활용한 {major_label} 중심 질문 전환", "확보된 증거는 유지하되 탐구 질문을 전공 방향으로 틀어서 정합성 강화"),
         ],
+        "community_contribution": [
+            ("role_evidence_map", "공동체 역할 수행 근거 정리", "협업, 책임, 배려가 드러난 실제 장면과 교사 관찰 근거를 연결"),
+            ("team_process_reflection", f"{project_title or '활동'} 협업 과정 성찰", "결과보다 역할 분담, 갈등 조정, 책임 수행 과정을 구체화"),
+        ],
     }
     return [
         TopicCandidate(
@@ -879,6 +925,7 @@ def _direction_from_axis(*, axis: GapAxis, major_label: str, project_title: str)
         "relational_continuity": ("후속 탐구 연결", "단절된 활동들을 하나의 흐름으로 묶고, 후속 질문을 통해 탐구의 연속성을 보여줍니다."),
         "cluster_depth": ("전공 심화 탐구", "목표 전공과 관련된 좁고 깊은 질문을 설정하고 전문적인 방법론을 적용해 깊이를 만듭니다."),
         "cluster_suitability": ("전공 정합성 최적화", "기존 활동들을 목표 전공의 인재상이나 핵심 역량과 더 자연스럽게 연결되도록 재정렬합니다."),
+        "community_contribution": ("공동체 역할 근거화", "협업, 책임, 배려, 성실성을 실제 학교생활 장면과 관찰 근거 중심으로 정리합니다."),
     }
     label, summary = copy[axis.key]
     format_recommendations = _format_recommendations_for_axis(axis.key, complexity)

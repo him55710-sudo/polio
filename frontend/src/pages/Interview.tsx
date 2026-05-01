@@ -1,29 +1,37 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Mic, 
-  Send, 
-  ChevronRight, 
-  Award, 
-  Target, 
-  UserCheck, 
-  BookOpen, 
-  AlertCircle, 
-  Loader2, 
+import React, { useCallback, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Award,
+  BookOpen,
   CheckCircle2,
-  ArrowLeft
+  ChevronRight,
+  ClipboardList,
+  FileText,
+  Loader2,
+  Mic,
+  PlayCircle,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Target,
+  UserCheck,
 } from 'lucide-react';
-import { 
-  SectionCard, 
-  SurfaceCard, 
-  StatusBadge, 
-  PrimaryButton, 
+import toast from 'react-hot-toast';
+
+import {
+  EmptyState,
+  PrimaryButton,
   SecondaryButton,
-  TextArea
+  SectionCard,
+  StatusBadge,
+  SurfaceCard,
+  TextArea,
 } from '../components/primitives';
 import { api } from '../lib/api';
-import toast from 'react-hot-toast';
+import { DIAGNOSIS_STORAGE_KEY, type StoredDiagnosis } from '../lib/diagnosis';
 
 interface InterviewQuestion {
   id: string;
@@ -38,54 +46,108 @@ interface InterviewEvaluation {
   coaching_advice: string;
 }
 
+const AXIS_LABELS = ['구체성', '진정성', '생기부 근거', '전공 연결'];
+const AXIS_ICONS = [Target, UserCheck, BookOpen, Award];
+
+function readStoredDiagnosis(): StoredDiagnosis | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DIAGNOSIS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredDiagnosis;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveApiMessage(error: any): string {
+  if (error?.response?.status === 404) {
+    return '먼저 AI 진단을 완료한 뒤 면접 질문을 생성할 수 있습니다.';
+  }
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail.trim();
+  return '면접 질문을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+}
+
 export const Interview: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  
+  const storedDiagnosis = useMemo(readStoredDiagnosis, []);
+  const activeProjectId = projectId ?? storedDiagnosis?.projectId ?? null;
+
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [hasRequestedQuestions, setHasRequestedQuestions] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [answering, setAnswering] = useState(false);
   const [answer, setAnswer] = useState('');
   const [evaluation, setEvaluation] = useState<InterviewEvaluation | null>(null);
   const [finished, setFinished] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const fetchQuestions = useCallback(async () => {
-    if (!projectId) return;
+  const currentQuestion = questions[currentIndex] ?? null;
+  const targetLabel = [
+    storedDiagnosis?.targetUniversity ?? storedDiagnosis?.target_university,
+    storedDiagnosis?.targetMajor ?? storedDiagnosis?.target_major ?? storedDiagnosis?.major,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const generateQuestions = useCallback(async () => {
+    if (!activeProjectId) {
+      navigate('/app/diagnosis');
+      return;
+    }
+
+    setHasRequestedQuestions(true);
+    setLoading(true);
+    setErrorMessage(null);
+    setEvaluation(null);
+    setAnswer('');
+    setFinished(false);
+    setCurrentIndex(0);
+
     try {
-      setLoading(true);
-      const data = await api.post<InterviewQuestion[]>('/api/v1/interview/generate-questions', { project_id: projectId });
+      const data = await api.post<InterviewQuestion[]>('/api/v1/interview/generate-questions', {
+        project_id: activeProjectId,
+      });
+      if (!data.length) {
+        setQuestions([]);
+        setErrorMessage('생성된 질문이 없습니다. AI 진단을 다시 확인해 주세요.');
+        toast.error('생성된 질문이 없습니다.');
+        return;
+      }
       setQuestions(data);
-    } catch (err) {
-      toast.error('면접 질문을 생성하는 데 실패했습니다.');
-      console.error(err);
+      toast.success('면접 질문이 준비되었습니다.');
+    } catch (error: any) {
+      const message = resolveApiMessage(error);
+      setQuestions([]);
+      setErrorMessage(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
-
-  useEffect(() => {
-    if (projectId) {
-      fetchQuestions();
-    }
-  }, [projectId, fetchQuestions]);
+  }, [activeProjectId, navigate]);
 
   const submitAnswer = async () => {
+    if (!currentQuestion) return;
     if (!answer.trim()) {
-      toast.error('답변을 입력해주세요.');
+      toast.error('답변을 입력해 주세요.');
       return;
     }
-    
+
     try {
       setAnswering(true);
       const data = await api.post<InterviewEvaluation>('/api/v1/interview/evaluate-answer', {
-        question: questions[currentIndex].question,
-        answer: answer
+        question: currentQuestion.question,
+        answer,
+        context: storedDiagnosis?.diagnosis?.headline ?? '',
       });
       setEvaluation(data);
-    } catch (err) {
+    } catch (error) {
       toast.error('답변 분석에 실패했습니다.');
-      console.error(err);
+      console.error(error);
     } finally {
       setAnswering(false);
     }
@@ -96,83 +158,186 @@ export const Interview: React.FC = () => {
       setCurrentIndex(prev => prev + 1);
       setAnswer('');
       setEvaluation(null);
-    } else {
-      setFinished(true);
+      return;
     }
+    setFinished(true);
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-10 w-10 animate-spin text-[#004aad]" />
-          <p className="text-sm font-bold text-slate-500">생기부 기반 면접 질문을 추출하고 있습니다...</p>
-        </div>
-      </div>
-    );
-  }
+  const restartPractice = () => {
+    setQuestions([]);
+    setCurrentIndex(0);
+    setHasRequestedQuestions(false);
+    setAnswer('');
+    setEvaluation(null);
+    setFinished(false);
+    setErrorMessage(null);
+  };
 
   if (finished) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-12">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
+        <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
           <div className="mb-6 flex justify-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
               <CheckCircle2 size={40} />
             </div>
           </div>
-          <h1 className="text-3xl font-black text-slate-900">모의 면접 완료!</h1>
-          <p className="mt-4 text-lg font-medium text-slate-600">
-            총 {questions.length}개의 질문에 대한 답변 연습을 마쳤습니다.
-            <br />꾸준한 연습이 합격의 지름길입니다.
+          <h1 className="text-3xl font-black text-slate-900">모의 면접 완료</h1>
+          <p className="mt-4 text-base font-semibold leading-7 text-slate-600">
+            총 {questions.length}개의 질문에 답변했습니다. 부족했던 답변은 탐구 근거와 전공 연결을 보강하면 더 좋아집니다.
           </p>
-          <div className="mt-10 flex justify-center gap-3">
-            <SecondaryButton onClick={() => navigate(`/app/workshop/${projectId}`)}>워크숍으로 돌아가기</SecondaryButton>
-            <PrimaryButton onClick={() => window.location.reload()}>한 번 더 연습하기</PrimaryButton>
+          <div className="mt-10 flex flex-wrap justify-center gap-3">
+            {activeProjectId ? (
+              <SecondaryButton onClick={() => navigate(`/app/workshop/${activeProjectId}`)}>문서 작성으로 이동</SecondaryButton>
+            ) : null}
+            <PrimaryButton onClick={restartPractice}>
+              새 질문으로 연습하기 <RefreshCw size={16} />
+            </PrimaryButton>
           </div>
         </motion.div>
       </div>
     );
   }
 
-  const currentQuestion = questions[currentIndex];
+  const renderPreparation = () => (
+    <div className="space-y-6">
+      {!activeProjectId ? (
+        <EmptyState
+          icon={<FileText size={24} />}
+          title="AI 진단 결과가 필요합니다."
+          description="면접 질문은 생기부 PDF 진단 결과를 기준으로 생성됩니다."
+          actionLabel="AI 진단 시작하기"
+          onAction={() => navigate('/app/diagnosis')}
+          className="bg-white"
+        />
+      ) : (
+        <>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <SurfaceCard className="p-6">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Sparkles size={22} />
+              </div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">질문 생성</p>
+              <h2 className="mt-2 text-lg font-black text-slate-950">생기부 기반 예상 질문</h2>
+              <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+                AI 진단에서 잡힌 강점, 보완점, 전공 연결 지점을 질문으로 바꿉니다.
+              </p>
+            </SurfaceCard>
+
+            <SurfaceCard className="p-6">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <ClipboardList size={22} />
+              </div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">답변 구조</p>
+              <h2 className="mt-2 text-lg font-black text-slate-950">근거 중심 답변 연습</h2>
+              <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+                활동 맥락, 배운 점, 다음 탐구로 이어지는 흐름을 점검합니다.
+              </p>
+            </SurfaceCard>
+
+            <SurfaceCard className="p-6">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                <Award size={22} />
+              </div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">피드백</p>
+              <h2 className="mt-2 text-lg font-black text-slate-950">구체성·진정성 평가</h2>
+              <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+                답변 제출 후 면접관 관점의 피드백과 보완 포인트를 확인합니다.
+              </p>
+            </SurfaceCard>
+          </div>
+
+          <SurfaceCard className="border-blue-100 bg-blue-50/60 p-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-blue-600">Ready</p>
+                <h2 className="mt-2 text-xl font-black text-slate-950">
+                  {targetLabel || '최근 AI 진단'} 기준으로 면접 질문을 준비합니다.
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                  버튼을 누르면 최신 진단 결과에서 예상 질문을 생성합니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <SecondaryButton onClick={() => navigate('/app/diagnosis/history')}>진단서 보기</SecondaryButton>
+                <PrimaryButton onClick={generateQuestions} disabled={loading} size="lg">
+                  {loading ? <Loader2 size={18} className="animate-spin" /> : <PlayCircle size={18} />}
+                  질문 생성하기
+                </PrimaryButton>
+              </div>
+            </div>
+          </SurfaceCard>
+        </>
+      )}
+
+      {loading ? (
+        <SurfaceCard className="flex items-center gap-3 border-slate-200 p-5">
+          <Loader2 size={18} className="animate-spin text-blue-600" />
+          <p className="text-sm font-bold text-slate-600">생기부 진단 내용을 바탕으로 질문을 준비하고 있습니다.</p>
+        </SurfaceCard>
+      ) : null}
+
+      {errorMessage ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-bold text-amber-900">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      {hasRequestedQuestions && !loading && !questions.length && activeProjectId ? (
+        <div className="flex justify-center">
+          <PrimaryButton onClick={generateQuestions}>
+            다시 생성하기 <RefreshCw size={16} />
+          </PrimaryButton>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
-      <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button 
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
+      <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div className="flex items-start gap-4">
+          <button
+            type="button"
             onClick={() => navigate(-1)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-slate-600"
+            aria-label="이전 화면"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-slate-600"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-2xl font-black text-slate-900">AI 실전 모의 면접</h1>
-            <p className="text-sm font-bold text-slate-400">Step {currentIndex + 1} of {questions.length}</p>
+            <p className="text-sm font-black uppercase tracking-widest text-blue-600">Interview</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">면접 준비</h1>
+            <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
+              생기부 진단 결과에서 예상 질문을 만들고 답변을 바로 점검합니다.
+            </p>
           </div>
         </div>
-        <StatusBadge status="active">Beta</StatusBadge>
+        <StatusBadge status={questions.length ? 'active' : activeProjectId ? 'neutral' : 'warning'}>
+          {questions.length ? `${currentIndex + 1}/${questions.length}` : activeProjectId ? '생성 대기' : '진단 필요'}
+        </StatusBadge>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-12">
-        <div className="lg:col-span-12">
+      {!questions.length || !currentQuestion ? (
+        renderPreparation()
+      ) : (
+        <div className="grid gap-8">
           <SectionCard
             eyebrow={`Question ${currentIndex + 1}`}
-            title="Interview Simulator"
-            description="인공지능 면접관의 질문에 답변해 보세요."
-            className="border-none bg-white shadow-2xl ring-1 ring-slate-200/50"
+            title="AI 모의 면접"
+            description="면접관 질문에 답변하고 구체성, 진정성, 생기부 근거, 전공 연결을 점검합니다."
+            className="border-none bg-white shadow-xl ring-1 ring-slate-200/60"
           >
-            <div className="mb-8 rounded-[2rem] bg-slate-900 p-8 text-white shadow-xl lg:p-10">
-              <div className="mb-6 flex items-center gap-2 text-[#004aad]">
+            <div className="mb-8 rounded-[2rem] bg-slate-950 p-8 text-white shadow-xl lg:p-10">
+              <div className="mb-6 flex items-center gap-2 text-blue-300">
                 <Mic size={20} className="animate-pulse" />
-                <span className="text-xs font-black uppercase tracking-widest text-[#004aad]">AI Interviewer</span>
+                <span className="text-xs font-black uppercase tracking-widest text-blue-300">AI Interviewer</span>
               </div>
               <h2 className="text-xl font-black leading-relaxed sm:text-2xl">
-                "{currentQuestion?.question}"
+                {currentQuestion.question}
               </h2>
-              <p className="mt-6 text-sm font-bold text-slate-400 italic">
-                Tip: {currentQuestion?.rationale}
+              <p className="mt-6 text-sm font-bold leading-6 text-slate-400">
+                질문 의도: {currentQuestion.rationale}
               </p>
             </div>
 
@@ -185,29 +350,23 @@ export const Interview: React.FC = () => {
                   exit={{ opacity: 0, y: -10 }}
                   className="space-y-4"
                 >
-                  <div className="relative">
-                    <TextArea
-                      value={answer}
-                      onChange={(e) => setAnswer(e.target.value)}
-                      placeholder="답변을 입력해 주세요. (가급적 구체적으로 작성할수록 정확한 피드백이 가능합니다)"
-                      disabled={answering}
-                      className="min-h-[200px] bg-slate-50/50 p-6 text-lg font-medium leading-relaxed ring-slate-200 focus:bg-white"
-                    />
-                  </div>
+                  <TextArea
+                    value={answer}
+                    onChange={(event) => setAnswer(event.target.value)}
+                    placeholder="답변을 입력해 주세요. 활동 근거와 느낀 점을 함께 적으면 더 정밀하게 피드백합니다."
+                    disabled={answering}
+                    className="min-h-[200px] bg-slate-50/50 p-6 text-base font-medium leading-relaxed ring-slate-200 focus:bg-white sm:text-lg"
+                  />
                   <div className="flex justify-end">
-                    <PrimaryButton 
-                      onClick={submitAnswer} 
-                      disabled={!answer.trim() || answering}
-                      className="px-8 py-4"
-                    >
+                    <PrimaryButton onClick={submitAnswer} disabled={!answer.trim() || answering} className="px-8">
                       {answering ? (
                         <>
-                          <Loader2 size={18} className="mr-2 animate-spin" />
-                          답변 분석 중...
+                          <Loader2 size={18} className="animate-spin" />
+                          답변 분석 중
                         </>
                       ) : (
                         <>
-                          답변 제출하기 <Send size={18} className="ml-2" />
+                          답변 제출하기 <Send size={18} />
                         </>
                       )}
                     </PrimaryButton>
@@ -221,52 +380,57 @@ export const Interview: React.FC = () => {
                   className="space-y-8"
                 >
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {Object.entries(evaluation.axes_scores).map(([axis, score]) => (
-                      <SurfaceCard key={axis} className="border-none bg-white p-5 shadow-sm ring-1 ring-slate-200/50">
-                        <div className="mb-2 flex items-center gap-2">
-                          {axis === '구체성' && <Target size={14} className="text-blue-500" />}
-                          {axis === '진정성' && <UserCheck size={14} className="text-emerald-500" />}
-                          {axis === '학생부 근거 활용' && <BookOpen size={14} className="text-amber-500" />}
-                          {axis === '전공 연결성' && <Award size={14} className="text-rose-500" />}
-                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{axis}</span>
-                        </div>
-                        <p className="text-2xl font-black text-slate-900">{score}<span className="text-xs text-slate-300 ml-1">pts</span></p>
-                      </SurfaceCard>
-                    ))}
+                    {Object.entries(evaluation.axes_scores).map(([axis, score], index) => {
+                      const Icon = AXIS_ICONS[index] ?? Target;
+                      return (
+                        <SurfaceCard key={axis} className="border-none bg-white p-5 shadow-sm ring-1 ring-slate-200/60">
+                          <div className="mb-2 flex items-center gap-2">
+                            <Icon size={14} className="text-blue-500" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              {AXIS_LABELS[index] ?? axis}
+                            </span>
+                          </div>
+                          <p className="text-2xl font-black text-slate-900">
+                            {score}<span className="ml-1 text-xs text-slate-300">pts</span>
+                          </p>
+                        </SurfaceCard>
+                      );
+                    })}
                   </div>
 
-                  <SurfaceCard className="border-none bg-[#004aad]/5 p-8 ring-1 ring-[#004aad]/10">
+                  <SurfaceCard className="border-none bg-blue-50/70 p-8 ring-1 ring-blue-100">
                     <div className="mb-6 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#004aad] text-white shadow-lg shadow-[#004aad]/20">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200">
                         <Award size={20} />
                       </div>
                       <div>
                         <h4 className="text-lg font-black text-slate-900">면접관 피드백</h4>
-                        <p className="text-xs font-black uppercase tracking-widest text-[#004aad]/60">Expert Evaluation</p>
+                        <p className="text-xs font-black uppercase tracking-widest text-blue-500/70">Expert Evaluation</p>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-6">
                       <div>
                         <p className="mb-2 text-xs font-black uppercase tracking-widest text-slate-400">종합 평가</p>
                         <p className="text-lg font-bold leading-relaxed text-slate-700">{evaluation.feedback}</p>
                       </div>
-                      
-                      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-[#004aad]/10">
-                        <p className="mb-3 flex items-center gap-2 text-sm font-black text-[#004aad]">
+
+                      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-blue-100">
+                        <p className="mb-3 flex items-center gap-2 text-sm font-black text-blue-700">
                           <AlertCircle size={16} />
-                          합격을 위한 고득점 포인트
+                          보완 포인트
                         </p>
-                        <p className="text-base font-bold leading-relaxed text-slate-600 italic">
-                          "{evaluation.coaching_advice}"
+                        <p className="text-base font-bold leading-relaxed text-slate-600">
+                          {evaluation.coaching_advice}
                         </p>
                       </div>
                     </div>
                   </SurfaceCard>
 
                   <div className="flex justify-center">
-                    <PrimaryButton onClick={nextQuestion} className="px-10 py-4 shadow-xl shadow-[#004aad]/20">
-                      다음 질문으로 넘어가기 <ChevronRight size={18} className="ml-2" />
+                    <PrimaryButton onClick={nextQuestion} className="px-10">
+                      {currentIndex < questions.length - 1 ? '다음 질문으로 이동' : '연습 마무리'}
+                      <ChevronRight size={18} />
                     </PrimaryButton>
                   </div>
                 </motion.div>
@@ -274,7 +438,7 @@ export const Interview: React.FC = () => {
             </AnimatePresence>
           </SectionCard>
         </div>
-      </div>
+      )}
     </div>
   );
 };

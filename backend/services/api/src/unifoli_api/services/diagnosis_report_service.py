@@ -2508,6 +2508,7 @@ def _build_score_groups(
     r_cont = axis_scores.get("relational_continuity", 50)
     c_depth = axis_scores.get("cluster_depth", 50)
     c_suit = axis_scores.get("cluster_suitability", 50)
+    c_comm = axis_scores.get("community_contribution", 50)
     authenticity_risk = axis_scores.get("authenticity_risk", 50)
     authenticity_safety = _bounded_score(100.0 - authenticity_risk)
 
@@ -2519,12 +2520,24 @@ def _build_score_groups(
     process_signal_strength = _bounded_score(len(process_signals) * 22.0)
     continuity_signal_strength = _bounded_score(len(continuity_signals) * 18.0)
     alignment_signal_strength = _bounded_score(len(alignment_signals) * 18.0)
+    community_signal_strength = _bounded_score(
+        sum(
+            1
+            for item in evidence_bank
+            if any(
+                keyword in f"{item.get('quote') or ''} {item.get('section') or item.get('section_name') or ''}"
+                for keyword in ("협업", "책임", "배려", "소통", "공동체", "봉사", "성실", "출결")
+            )
+        )
+        * 18.0
+    )
 
     inquiry_depth = _bounded_score((c_depth * 0.78) + (u_rigor * 0.22))
     evidence_density = _bounded_score((u_spec * 0.4) + (evidence_density_signal * 0.6))
     process_reflection_quality = _bounded_score((r_narr * 0.55) + (process_signal_strength * 0.45))
     continuity_across_grades = _bounded_score((r_cont * 0.7) + (continuity_signal_strength * 0.3))
     major_fit_alignment = _bounded_score((c_suit * 0.75) + (alignment_signal_strength * 0.25))
+    community_contribution_score = _bounded_score((c_comm * 0.78) + (community_signal_strength * 0.22))
     originality_without_overclaim = _bounded_score(
         (c_depth * 0.45)
         + (evidence_uniqueness_score * 0.35)
@@ -2657,6 +2670,22 @@ def _build_score_groups(
             missing_required_count=len(missing_required_sections),
             contradiction_passed=contradiction_passed,
             support_signal_count=len(alignment_signals),
+        ),
+        _build_student_score_block(
+            key="community_contribution",
+            label="공동체 기여",
+            interpretation="협업, 책임, 배려, 성실성 등 학교생활 속 긍정적 역할이 근거로 확인되는지 평가합니다.",
+            next_best_action="행동특성·창체·출결에서 맡은 역할과 협업 장면을 근거 앵커로 묶으세요.",
+            base_score=community_contribution_score,
+            evidence_key="community_contribution",
+            evidence_bank=evidence_bank,
+            required_anchor_count=2,
+            required_page_diversity=2,
+            page_diversity=len(unique_anchor_pages),
+            coverage_score=float(coverage_check.get("coverage_score", 0.0) or 0.0),
+            missing_required_count=len(missing_required_sections),
+            contradiction_passed=contradiction_passed,
+            support_signal_count=max(1, int(round(community_signal_strength / 18.0))),
         ),
         _build_student_score_block(
             key="originality_without_overclaim",
@@ -2893,6 +2922,7 @@ def _select_anchor_ids_for_score(*, key: str, evidence_bank: list[dict[str, Any]
         "relational_continuity": ("심화", "확장", "연속", "연계", "지속", "흐름"),
         "cluster_depth": ("심층", "전문", "고급", "이론", "실험", "연구"),
         "cluster_suitability": ("적합", "전공", "진로", "관심", "지망", "목표"),
+        "community_contribution": ("협업", "책임", "배려", "소통", "공동체", "봉사", "성실", "출결"),
     }
     keywords = keyword_map.get(key, ())
     selected: list[str] = []

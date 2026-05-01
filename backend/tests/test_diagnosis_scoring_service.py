@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from unifoli_api.services.admissions_criteria_service import validate_admissions_criteria_corpus
 from unifoli_api.services.diagnosis_scoring_service import (
     AxisSemanticGrade,
     SemanticDiagnosisExtraction,
@@ -89,28 +90,33 @@ def _high_semantic() -> SemanticDiagnosisExtraction:
         relational_continuity=grade,
         cluster_depth=grade,
         cluster_suitability=grade,
+        community_contribution=grade,
         summary_insight="강하게 평가됨",
     )
 
 
-def test_scoring_service_is_deterministic_and_uses_seven_axes() -> None:
+def test_admissions_criteria_corpus_is_source_backed() -> None:
+    assert validate_admissions_criteria_corpus() == []
+
+
+def test_scoring_service_is_deterministic_and_uses_eight_axes() -> None:
     features = _sample_features()
 
     first = build_diagnosis_scoring_sheet(
         features=features,
         project_title="determinism-check",
         target_major="컴퓨터공학",
-        target_university="테스트대학교",
+        target_university="연세대학교",
     )
     second = build_diagnosis_scoring_sheet(
         features=features,
         project_title="determinism-check",
         target_major="컴퓨터공학",
-        target_university="테스트대학교",
+        target_university="연세대학교",
     )
 
     assert first.model_dump() == second.model_dump()
-    assert len(first.admission_axes) == 7
+    assert len(first.admission_axes) == 8
     assert {axis.key for axis in first.admission_axes} == {
         "universal_rigor",
         "universal_specificity",
@@ -118,9 +124,13 @@ def test_scoring_service_is_deterministic_and_uses_seven_axes() -> None:
         "relational_continuity",
         "cluster_depth",
         "cluster_suitability",
+        "community_contribution",
         "authenticity_risk",
     }
     assert all(0 <= axis.score <= 100 for axis in first.admission_axes)
+    assert all(axis.criteria_refs for axis in first.admission_axes)
+    assert all(axis.input_factors for axis in first.admission_axes)
+    assert all(axis.confidence_note for axis in first.admission_axes)
     assert first.document_quality.parse_reliability_score >= 0
 
 
@@ -129,7 +139,7 @@ def test_calibration_is_warmer_but_keeps_thin_records_below_strong_band() -> Non
         features=_sample_features(),
         project_title="calibration-check",
         target_major="컴퓨터공학",
-        target_university="테스트대학교",
+        target_university="연세대학교",
     )
     solid_scores = {axis.key: axis.score for axis in solid.admission_axes}
 
@@ -140,9 +150,41 @@ def test_calibration_is_warmer_but_keeps_thin_records_below_strong_band() -> Non
         features=_thin_features(),
         project_title="thin-record-check",
         target_major="컴퓨터공학",
-        target_university="테스트대학교",
+        target_university="연세대학교",
         semantic=_high_semantic(),
     )
     thin_positive_scores = [axis.score for axis in thin.admission_axes if axis.key != "authenticity_risk"]
 
     assert max(thin_positive_scores) < 80
+
+
+def test_community_axis_uses_behavior_records_and_policy_risk() -> None:
+    solid = build_diagnosis_scoring_sheet(
+        features=_sample_features(),
+        project_title="community-check",
+        target_major="사회학",
+        target_university="서울시립대학교",
+    )
+    solid_scores = {axis.key: axis.score for axis in solid.admission_axes}
+
+    assert solid_scores["community_contribution"] >= 70
+    community_axis = next(axis for axis in solid.admission_axes if axis.key == "community_contribution")
+    assert any("common_elements_2022" in ref or "kcue_2026_basic" in ref for ref in community_axis.criteria_refs)
+
+    risky = _sample_features().model_copy(
+        update={
+            "risk_flags": ["학교폭력"],
+            "needs_review": True,
+            "needs_review_documents": 1,
+        }
+    )
+    risky_sheet = build_diagnosis_scoring_sheet(
+        features=risky,
+        project_title="community-risk-check",
+        target_major="사회학",
+        target_university="서울시립대학교",
+    )
+    risky_scores = {axis.key: axis.score for axis in risky_sheet.admission_axes}
+
+    assert risky_scores["authenticity_risk"] > solid_scores["authenticity_risk"]
+    assert risky_scores["community_contribution"] < solid_scores["community_contribution"]

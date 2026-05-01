@@ -316,6 +316,7 @@ def _private_build_score_ready_summary_fields(
     continuity_score = axis_index.get("relational_continuity", {}).get("score")
     depth_score = axis_index.get("cluster_depth", {}).get("score")
     suitability_score = axis_index.get("cluster_suitability", {}).get("score")
+    community_score = axis_index.get("community_contribution", {}).get("score")
 
     category_scores: dict[str, int] = {
         "교과/세특": _private_merge_scores(
@@ -333,7 +334,7 @@ def _private_build_score_ready_summary_fields(
         ),
         "행동특성/종합의견": _private_merge_scores(
             _private_section_count_score(section_index["행동특성 및 종합의견"]),
-            suitability_score if isinstance(suitability_score, int) else None,
+            community_score if isinstance(community_score, int) else suitability_score if isinstance(suitability_score, int) else None,
             default=56,
         ),
         "독서": _private_merge_scores(
@@ -366,8 +367,9 @@ def _private_build_score_ready_summary_fields(
     explanations = {
         "교과/세특": _normalize_text(axis_index.get("universal_rigor", {}).get("rationale")) or "교과 근거 밀도 중심 평가",
         "창체": _normalize_text(axis_index.get("relational_narrative", {}).get("rationale")) or "창체 활동의 서사 연결 평가",
-        "행동특성/종합의견": _normalize_text(axis_index.get("cluster_suitability", {}).get("rationale"))
-        or "행동특성·종합의견 기록의 진로 연결 평가",
+        "행동특성/종합의견": _normalize_text(axis_index.get("community_contribution", {}).get("rationale"))
+        or _normalize_text(axis_index.get("cluster_suitability", {}).get("rationale"))
+        or "행동특성·종합의견 기록의 공동체 기여 평가",
         "독서": _normalize_text(axis_index.get("universal_specificity", {}).get("rationale")) or "독서 활동의 근거 구체성 평가",
         "출결": "출결 기록 존재 여부와 기초 학업 신뢰도 중심 평가",
         "항목 간 연계성": _normalize_text(axis_index.get("relational_continuity", {}).get("rationale"))
