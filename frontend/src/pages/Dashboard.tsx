@@ -147,7 +147,7 @@ const QuestCard = ({ quest, onStart, isStarting }: { quest: BlueprintQuest; onSt
       
       <div className="mt-6 flex items-center justify-between gap-4 border-t border-slate-100 pt-5">
         <div className="flex flex-col">
-          <span className="text-[10px] font-black uppercase tracking-wider text-[#b0b8c1]">Subject</span>
+          <span className="text-[10px] font-black uppercase tracking-wider text-[#b0b8c1]">과목</span>
           <span className="text-sm font-black text-[#333d4b]">{quest.subject}</span>
         </div>
         <button
@@ -460,7 +460,7 @@ export default function Dashboard() {
         className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]"
       >
         <PageHeader
-          eyebrow="Dashboard"
+          eyebrow="대시보드"
           title={nextAction.title}
           description={nextAction.description}
           className="border-slate-200 bg-white p-6 sm:p-8"
@@ -509,14 +509,14 @@ export default function Dashboard() {
         >
           <div className="space-y-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Target</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">목표</p>
               <p className="mt-1 text-lg font-black tracking-tight text-slate-950">
                 {primaryGoal ? `${primaryGoal.university} · ${primaryGoal.major}` : '목표 대학/학과 미설정'}
               </p>
             </div>
             <div className="group relative rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all hover:border-slate-300">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Diagnosis</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">진단</p>
                 {hasDiagnosis && (
                   <button 
                     onClick={handleDeleteDiagnosis}
@@ -532,7 +532,7 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Next</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">다음 단계</p>
               <p className="mt-1 text-sm font-bold text-slate-800">{nextAction.primaryLabel}</p>
             </div>
           </div>

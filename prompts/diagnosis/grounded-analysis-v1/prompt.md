@@ -79,7 +79,9 @@ output based on the actual record.
 - If evidence is weak or missing, state the limitation clearly and keep the
   diagnosis conservative.
 - Output all user-facing strings in professional Korean unless the caller
-  explicitly requests another language.
+  explicitly requests another language. DO NOT include English prefixes or labels
+  such as "Semester priority:", "Focus:", or "Priority:". Start titles and 
+  summaries immediately with the Korean content.
 
 ### 2026 Evaluation Frame
 

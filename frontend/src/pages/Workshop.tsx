@@ -462,28 +462,88 @@ const ACCUMULATION_STEPS: AccumulationStep[] = [
   },
 ];
 
+function getAccumulationStepById(stepId: string | null | undefined): AccumulationStep | null {
+  if (!stepId) return null;
+  return ACCUMULATION_STEPS.find((step) => step.id === stepId) || null;
+}
+
+function getNextAccumulationStep(step: AccumulationStep | null): AccumulationStep | null {
+  if (!step) return null;
+  const index = ACCUMULATION_STEPS.findIndex((item) => item.id === step.id);
+  if (index < 0) return null;
+  return ACCUMULATION_STEPS[index + 1] || null;
+}
+
+function isAccumulationStepComplete(step: AccumulationStep, structuredDraft: WorkshopStructuredDraftState): boolean {
+  const content = structuredDraft.blocks.find((block) => block.block_id === step.blockId)?.content_markdown || '';
+  return step.subheading
+    ? content.includes(step.subheading) || content.trim().length >= 240
+    : content.trim().length >= 80;
+}
+
+function inferCurrentAccumulationStepId(structuredDraft: WorkshopStructuredDraftState): string {
+  return ACCUMULATION_STEPS.find((step) => !isAccumulationStepComplete(step, structuredDraft))?.id || ACCUMULATION_STEPS[0].id;
+}
+
+function resolveAppliedAccumulationStep(
+  patch: WorkshopDraftPatchProposal,
+  activeStepId: string | null,
+): AccumulationStep | null {
+  const activeStep = getAccumulationStepById(activeStepId);
+  if (activeStep?.blockId === patch.block_id) return activeStep;
+
+  return (
+    ACCUMULATION_STEPS.find((step) => {
+      if (step.blockId !== patch.block_id) return false;
+      return step.subheading ? patch.content_markdown.includes(step.subheading) : true;
+    }) || null
+  );
+}
+
+function buildAccumulationNextChoiceGroup(currentStep: AccumulationStep, nextStep: AccumulationStep): GuidedChoiceGroup {
+  return {
+    id: 'accumulation-next-step',
+    title: '다음 작성 단계',
+    style: 'buttons',
+    options: [
+      {
+        id: `next-${nextStep.id}`,
+        label: `다음 단계: ${nextStep.label}`,
+        description: `${nextStep.description}에 대해 먼저 대화하고, 확정 가능한 문장만 제안합니다.`,
+        value: `next:${nextStep.id}`,
+      },
+      {
+        id: `revise-${currentStep.id}`,
+        label: `${currentStep.label} 보강`,
+        description: '방금 반영한 단계만 더 다듬습니다.',
+        value: `revise:${currentStep.id}`,
+      },
+    ],
+  };
+}
+
 const QUALITY_META_MAP: Record<QualityLevel, { label: string; status: 'success' | 'active' | 'warning' }> = {
-  low: { label: '빠른 ?�답', status: 'success' },
+  low: { label: '빠른 응답', status: 'success' },
   mid: { label: '균형 모드', status: 'active' },
-  high: { label: '?�화 모드', status: 'warning' },
+  high: { label: '심화 모드', status: 'warning' },
 };
 
 const GUIDED_CHAT_GREETING = '안녕하세요. 어떤 주제로 보고서를 작성해볼까요?';
 const DIAGNOSIS_RISK_LABEL_MAP: Record<string, string> = {
   safe: '근거 충분',
-  warning: '보완 ?�요',
-  danger: '집중 보완 ?�요',
+  warning: '보완 필요',
+  danger: '집중 보완 필요',
 };
 
 function formatDiagnosisRiskLabel(value: string | undefined): string {
   const key = String(value || '').trim().toLowerCase();
-  return DIAGNOSIS_RISK_LABEL_MAP[key] || '보완 ?�요';
+  return DIAGNOSIS_RISK_LABEL_MAP[key] || '보완 필요';
 }
 
 function formatDraftAttributionLabel(attribution: WorkshopDraftAttribution): string {
-  if (attribution === 'student-authored') return '?�생 ?�성';
-  if (attribution === 'ai-inserted-after-approval') return '?�인 ??AI 반영';
-  return 'AI ?�안';
+  if (attribution === 'student-authored') return '학생 작성';
+  if (attribution === 'ai-inserted-after-approval') return '승인 후 AI 반영';
+  return 'AI 제안';
 }
 
 function asPlainRecord(value: unknown): Record<string, unknown> | null {
@@ -897,16 +957,16 @@ function normalizeGuidedSuggestions(response: GuidedTopicSuggestionResponse): Gu
 function formatGuidedSuggestionMessage(response: GuidedTopicSuggestionResponse) {
   const suggestions = normalizeGuidedSuggestions(response);
   const lines = [
-    `좋아?? '${response.subject}'�?바탕?�로 ?�생 기록 ?�름??맞는 주제 3가지�?준비했?�요.`,
+    `좋아요. '${response.subject}'을 바탕으로 학생 기록 흐름에 맞는 주제 3가지를 준비했어요.`,
     '',
     ...suggestions.flatMap((item, index) => {
       const chunk = [
         `${index + 1}. **${item.title}**`,
-        `- 추천 ?�유: ${item.why_fit_student}`,
-        `- 기록 ?�결: ${item.link_to_record_flow}`,
+        `- 추천 이유: ${item.why_fit_student}`,
+        `- 기록 연결: ${item.link_to_record_flow}`,
       ];
       if (item.link_to_target_major_or_university) {
-        chunk.push(`- 진로 ?�계: ${item.link_to_target_major_or_university}`);
+        chunk.push(`- 진로 연계: ${item.link_to_target_major_or_university}`);
       }
       if (item.caution_note) {
         chunk.push(`- 주의: ${item.caution_note}`);
@@ -917,17 +977,17 @@ function formatGuidedSuggestionMessage(response: GuidedTopicSuggestionResponse) 
   if (response.evidence_gap_note) {
     lines.push('', `참고: ${response.evidence_gap_note}`);
   }
-  lines.push('', '??중에??가??마음??가??주제�?골라주세??');
+  lines.push('', '이 중에서 가장 마음에 드는 주제를 골라주세요.');
   return lines.join('\n');
 }
 
 function formatGuidedSelectionMessage(response: GuidedTopicSelectionResponse) {
   const lines = [
-    `?�택??주제??**${response.selected_title}**?�니??`,
+    `선택한 주제는 **${response.selected_title}**입니다.`,
     '',
     response.guidance_message,
     '',
-    '?�제 진행?�고 ?��? 보고??분량??고르�?바로 개요�??�아?�릴게요.',
+    '이제 진행할 보고서 분량을 고르면 바로 개요를 잡아드릴게요.',
   ];
   return lines.join('\n');
 }
@@ -936,12 +996,12 @@ function formatGuidedPageRangeMessage(response: GuidedPageRangeSelectionResponse
   const lines = [
     response.assistant_message,
     '',
-    `?�택??분량: **${response.selected_page_range_label}**`,
+    `선택한 분량: **${response.selected_page_range_label}**`,
   ];
   if (response.selected_page_range_note) {
     lines.push(`- 참고: ${response.selected_page_range_note}`);
   }
-  lines.push('', '?�음?�로 구성 ?��??�을 골라주세??');
+  lines.push('', '다음으로 구성 유형을 골라주세요.');
   return lines.join('\n');
 }
 
@@ -949,9 +1009,9 @@ function formatGuidedStructureMessage(response: GuidedStructureSelectionResponse
   return [
     response.assistant_message,
     '',
-    `?�택??구성: **${response.selected_structure_label}**`,
+    `선택한 구성: **${response.selected_structure_label}**`,
     '',
-    '가?�드가 거의 ?�났?�니?? ?�음?�로 무엇???�고 ?��?지 ?�려주세??',
+    '가이드 설정이 거의 끝났습니다. 다음으로 무엇을 쓰고 싶은지 알려주세요.',
   ].join('\n');
 }
 
@@ -970,7 +1030,7 @@ function formatAssistantMessageWithEvidenceNote(
 function buildTopicChoiceGroup(suggestions: GuidedTopicSuggestion[]): GuidedChoiceGroup {
   return {
     id: 'topic-selection',
-    title: '??중에??가??마음???�는 주제�?골라주세??',
+    title: '이 중에서 가장 마음에 드는 주제를 골라주세요.',
     style: 'cards',
     options: suggestions.map((topic) => ({
       id: topic.id,
@@ -986,7 +1046,7 @@ function buildPageRangeChoiceGroup(
 ): GuidedChoiceGroup {
   return {
     id: 'page-range-selection',
-    title: '보고??분량???�택??주세??',
+    title: '보고서 분량을 선택해 주세요.',
     style: 'cards',
     options: pageRanges.map((range) => ({
       id: `page-range-${range.label}`,
@@ -1000,7 +1060,7 @@ function buildPageRangeChoiceGroup(
 function buildStructureChoiceGroup(options: GuidedStructureOption[]): GuidedChoiceGroup {
   return {
     id: 'structure-selection',
-    title: '구성 ?��??�을 골라주세??',
+    title: '구성 유형을 골라주세요.',
     style: 'cards',
     options,
   };
@@ -1009,7 +1069,7 @@ function buildStructureChoiceGroup(options: GuidedStructureOption[]): GuidedChoi
 function buildNextActionChoiceGroup(options: GuidedChoiceOption[]): GuidedChoiceGroup {
   return {
     id: 'next-action-selection',
-    title: '?�음?�로 무엇???�까??',
+    title: '다음으로 무엇을 할까요?',
     style: 'chips',
     options,
   };
@@ -1048,23 +1108,23 @@ function buildFoliFallback(message: string) {
   if (readableFallback) return readableFallback;
 
   const clean = (message || '').toLowerCase().trim();
-  const greetings = ['?�녕', 'hi', 'hello', 'hey', 'good morning', 'good evening'];
+  const greetings = ['안녕', 'hi', 'hello', 'hey', 'good morning', 'good evening'];
 
   if (greetings.some(token => clean.includes(token))) {
     return [
-      '?�녕?�세?? ?�니?�리 ?�크???�우미입?�다.',
+      '안녕하세요. UniFoli 워크숍 도우미입니다.',
       '',
-      '지금�? AI ?�결???�시 불안?�해?? 초안 구조 ?�리?� ?�음 질문 ?�내�?중심?�로 ?�전?�게 ?�어갈게??',
+      '지금은 AI 연결이 잠시 불안정해서 초안 구조 정리와 다음 질문 안내를 중심으로 안전하게 이어갈게요.',
     ].join('\n');
   }
 
   return [
-    '?�재 AI ?�답???�시 지?�되??기본 ?�내 모드�??�환?�어??',
+    '현재 AI 응답이 잠시 지연되어 기본 안내 모드로 전환되었어요.',
     '',
-    '?�래 ?�서?��?보내 주시�?초안 ?�성 ?�름??계속 ?�어�????�어??',
-    '1. ?�번 글?�서 ?�루?�는 주제�???문장?�로 ?�어 주세??',
-    '2. �?주제�??�정???�유�?간단???�려 주세??',
-    '3. 마�?막으�?보고?�에 �??�함?�고 ?��? ?�워??3가지�?말�???주세??',
+    '아래 순서대로 보내 주시면 초안 작성 흐름을 계속 이어갈 수 있어요.',
+    '1. 이번 글에서 다루려는 주제를 한 문장으로 적어 주세요.',
+    '2. 그 주제를 정한 이유를 간단히 알려 주세요.',
+    '3. 마지막으로 보고서에 꼭 포함하고 싶은 키워드 3가지를 말해 주세요.',
   ].join('\n');
 }
 
@@ -1622,16 +1682,25 @@ function WritingPlannerPanel({
 interface DraftAccumulationPanelProps {
   steps: AccumulationStep[];
   structuredDraft: WorkshopStructuredDraftState;
+  activeStepId: string | null;
+  completedStepId: string | null;
   onStepRequest: (step: AccumulationStep) => void;
+  onNextStep: (step: AccumulationStep) => void;
   disabled: boolean;
 }
 
-function DraftAccumulationPanel({ steps, structuredDraft, onStepRequest, disabled }: DraftAccumulationPanelProps) {
-  const blockContent = useMemo(() => {
-    const map = new Map<WorkshopDraftBlockId, string>();
-    structuredDraft.blocks.forEach((block) => map.set(block.block_id, block.content_markdown || ''));
-    return map;
-  }, [structuredDraft]);
+function DraftAccumulationPanel({
+  steps,
+  structuredDraft,
+  activeStepId,
+  completedStepId,
+  onStepRequest,
+  onNextStep,
+  disabled,
+}: DraftAccumulationPanelProps) {
+  const activeStep = getAccumulationStepById(activeStepId) || steps[0] || null;
+  const completedStep = getAccumulationStepById(completedStepId);
+  const nextStep = completedStep ? getNextAccumulationStep(completedStep) : null;
 
   return (
     <SurfaceCard className="border-slate-200 bg-white/95 p-4 shadow-sm">
@@ -1645,12 +1714,39 @@ function DraftAccumulationPanel({ steps, structuredDraft, onStepRequest, disable
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black text-slate-500">API 부담 완화용 섹션 생성</span>
       </div>
+      <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">현재 작성 단계</p>
+          <p className="mt-1 text-sm font-black text-slate-900">
+            {completedStep && nextStep
+              ? `${completedStep.label} 반영 완료`
+              : activeStep
+                ? `${activeStep.label} 작성 중`
+                : '단계 준비 중'}
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            {completedStep && nextStep
+              ? '내용을 확인했다면 다음 단계로 넘어가 본론 대화를 이어갈 수 있습니다.'
+              : activeStep?.description || '서론부터 순서대로 한 칸씩 쌓습니다.'}
+          </p>
+        </div>
+        {completedStep && nextStep ? (
+          <PrimaryButton
+            type="button"
+            size="sm"
+            onClick={() => onNextStep(nextStep)}
+            disabled={disabled}
+            className="min-h-10 shrink-0 rounded-2xl px-4 text-xs font-black"
+          >
+            <ChevronDown size={15} className="mr-1.5 -rotate-90" />
+            다음 단계: {nextStep.label}
+          </PrimaryButton>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {steps.map((step) => {
-          const content = blockContent.get(step.blockId) || '';
-          const isDone = step.subheading
-            ? content.includes(step.subheading) || content.length >= 240
-            : content.trim().length >= 80;
+          const isDone = isAccumulationStepComplete(step, structuredDraft);
+          const isActive = step.id === activeStepId;
           return (
             <button
               key={step.id}
@@ -1659,18 +1755,20 @@ function DraftAccumulationPanel({ steps, structuredDraft, onStepRequest, disable
               disabled={disabled}
               className={cn(
                 'min-h-[92px] rounded-2xl border p-3 text-left transition-all disabled:opacity-50',
-                isDone
+                isActive
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-900 shadow-sm'
+                  : isDone
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50',
               )}
             >
               <span className="flex items-center justify-between gap-2">
                 <span className="text-sm font-black">{step.label}</span>
-                {isDone ? <CheckCircle2 size={16} /> : <PenSquare size={15} className="text-slate-400" />}
+                {isDone ? <CheckCircle2 size={16} /> : <PenSquare size={15} className={isActive ? 'text-indigo-500' : 'text-slate-400'} />}
               </span>
               <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">{step.description}</span>
               <span className="mt-2 inline-flex rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-black text-slate-500">
-                {isDone ? '보강' : '작성'}
+                {isActive ? '진행 중' : isDone ? '보강' : '작성'}
               </span>
             </button>
           );
@@ -1709,7 +1807,7 @@ const ChatBubble = memo(function ChatBubble({
       groups = [
         {
           id: 'topic-selection',
-          title: '??중에??가??마음???�는 주제�?골라주세??',
+          title: '이 중에서 가장 마음에 드는 주제를 골라주세요.',
           style: 'cards',
           options: topicSuggestions.map((topic) => ({
             id: topic.id,
@@ -1750,7 +1848,7 @@ const ChatBubble = memo(function ChatBubble({
         {isStreaming ? (
           <div className="flex items-center gap-2 text-sm font-medium py-1">
             <Loader2 size={14} className="animate-spin" />
-            <span>분석?�고 ?�어??..</span>
+            <span>분석하고 있어요...</span>
           </div>
         ) : message.content ? (
           <MemoizedMarkdown content={message.content} role={message.role} />
@@ -1770,14 +1868,14 @@ const ChatBubble = memo(function ChatBubble({
           <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 shadow-inner">
             <p className="text-xs font-bold text-slate-600 mb-3 flex items-center gap-2">
               <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-[10px] text-white shadow-sm">AI</span>
-              보고??구성 ?�안???�착?�어??
+              보고서 구성 제안이 도착했어요.
             </p>
             <PrimaryButton
               size="sm"
               className="w-full text-xs py-2 h-auto rounded-lg"
               onClick={() => onApplyDraftPatch(message.draftPatch!)}
             >
-              ?�안 ?�용??문서??반영?�기
+              제안 내용을 문서에 반영하기
             </PrimaryButton>
           </div>
         ) : null}
@@ -1923,6 +2021,8 @@ export function Workshop() {
   const [writingPreference, setWritingPreference] = useState('');
   const [aiAutoSelectWriting, setAiAutoSelectWriting] = useState(true);
   const [selectedWritingCandidateId, setSelectedWritingCandidateId] = useState<string | null>(null);
+  const [activeAccumulationStepId, setActiveAccumulationStepId] = useState<string>(ACCUMULATION_STEPS[0].id);
+  const [completedAccumulationStepId, setCompletedAccumulationStepId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<TiptapEditorHandle | null>(null);
   const reportDocumentState = useMemo(() => structuredDraftToReportDocumentState(structuredDraft), [structuredDraft]);
@@ -1982,7 +2082,7 @@ export function Workshop() {
       asCleanText(storedDiagnosisSnapshot?.targetMajor) ||
       asCleanText(storedDiagnosisSnapshot?.target_major) ||
       asCleanText(storedDiagnosisSnapshot?.major) ||
-      (initialMajor === '誘몄젙' ? '목표 전공' : initialMajor) ||
+      (initialMajor === '미정' ? '목표 전공' : initialMajor) ||
       '목표 전공',
     [initialMajor, storedDiagnosisSnapshot, workshopLocationState?.major],
   );
@@ -2101,6 +2201,8 @@ export function Workshop() {
         setStructuredDraft(fromArtifact);
         setWorkshopMode(fromArtifact.mode);
         setDocumentContent(structuredDraftToMarkdown(fromArtifact));
+        setActiveAccumulationStepId(inferCurrentAccumulationStepId(fromArtifact));
+        setCompletedAccumulationStepId(null);
         setLatestDraftUpdatedAt(state.latest_artifact.updated_at ?? null);
         setIsDraftOutOfSync(false);
       }
@@ -2113,6 +2215,8 @@ export function Workshop() {
         setWorkshopMode(restoredStructured.mode);
         setDocumentContent(resolveArchiveDownloadContent(archivedResume) || structuredDraftToMarkdown(restoredStructured));
         setMessages(restoreMessagesFromArchive(archivedResume));
+        setActiveAccumulationStepId(inferCurrentAccumulationStepId(restoredStructured));
+        setCompletedAccumulationStepId(null);
         setLatestDraftUpdatedAt(archivedResume.updatedAt || archivedResume.createdAt);
         setLastLocalSnapshotAt(archivedResume.updatedAt || archivedResume.createdAt);
         setActiveArchiveId(archivedResume.id);
@@ -2187,7 +2291,7 @@ export function Workshop() {
           const cachedSuggestions = Array.isArray(stateSummary.suggestions)
             ? normalizeGuidedSuggestions({
                 greeting,
-                subject: cachedSubject || '?�구',
+                subject: cachedSubject || '탐구',
                 suggestions: stateSummary.suggestions as GuidedTopicSuggestion[],
                 evidence_gap_note: guidedStart.evidence_gap_note,
               })
@@ -2314,7 +2418,7 @@ export function Workshop() {
     if (!documentContent) {
       const seed =
         questStart?.document_seed_markdown ||
-        `# [?�구 초안] ${questStart?.title || '??주제'}\n\n## 배경 �?문제?�식\n\n## ?�심 ?�구 ?�용 1\n\n## ?�심 ?�구 ?�용 2\n\n## ?�심 ?�구 ?�용 3\n\n## 결론 �??�음 ?�계`;
+        `# [탐구 초안] ${questStart?.title || '새 주제'}\n\n## 배경 및 문제의식\n\n## 핵심 탐구 내용 1\n\n## 핵심 탐구 내용 2\n\n## 핵심 탐구 내용 3\n\n## 결론 및 다음 단계`;
       const derived = markdownToStructuredDraft(seed, 'planning');
       setStructuredDraft(derived);
       setWorkshopMode(derived.mode);
@@ -2333,6 +2437,8 @@ export function Workshop() {
         setStructuredDraft(restoredStructured);
         setWorkshopMode(restoredStructured.mode);
         setMessages(restoreMessagesFromArchive(archived));
+        setActiveAccumulationStepId(inferCurrentAccumulationStepId(restoredStructured));
+        setCompletedAccumulationStepId(null);
         setLatestDraftUpdatedAt(archived.updatedAt || archived.createdAt);
         setLastLocalSnapshotAt(archived.updatedAt || archived.createdAt);
         setActiveArchiveId(archived.id);
@@ -2411,7 +2517,7 @@ export function Workshop() {
             }
             setLatestDraftUpdatedAt(remoteUpdatedAt);
             setIsDraftOutOfSync(true);
-            toast('?�른 ??��??초안??변경되??최신 ?�용??병합?????�시 ?�?�했?�니??');
+            toast('다른 곳에서 초안이 변경되어 최신 내용을 병합한 뒤 다시 저장했습니다.');
             await attemptSave(mergedContent, remoteUpdatedAt, false);
             return;
           }
@@ -2511,6 +2617,8 @@ export function Workshop() {
     setGuidedStructureOptions([]);
     setGuidedNextActionOptions([]);
     setInput('');
+    setActiveAccumulationStepId(ACCUMULATION_STEPS[0].id);
+    setCompletedAccumulationStepId(null);
   }, []);
 
   const handleNewConversation = useCallback(async () => {
@@ -2572,6 +2680,8 @@ export function Workshop() {
         setWorkshopMode(restoredStructured.mode);
         setDocumentContent(resolveArchiveDownloadContent(item) || structuredDraftToMarkdown(restoredStructured));
         setMessages(restoreMessagesFromArchive(item));
+        setActiveAccumulationStepId(inferCurrentAccumulationStepId(restoredStructured));
+        setCompletedAccumulationStepId(null);
         setActiveArchiveId(item.id);
         setLatestDraftUpdatedAt(item.updatedAt || item.createdAt);
         setLastLocalSnapshotAt(item.updatedAt || item.createdAt);
@@ -2663,10 +2773,10 @@ export function Workshop() {
               ? response.choice_groups
               : [buildPageRangeChoiceGroup(pageRanges)],
         });
-        toast.success('주제 ?�택??반영?�었?�요. ?�제 분량???�해볼게??');
+        toast.success('주제 선택을 반영했어요. 이제 분량을 정해볼게요.');
       } catch (error) {
         console.error('Guided topic selection failed:', error);
-        toast.error('주제 ?�택??반영?��? 못했?�니?? ?�시 ?�도??주세??');
+        toast.error('주제 선택을 반영하지 못했습니다. 다시 시도해 주세요.');
       } finally {
         setIsSelectingGuidedTopicId(null);
         setIsGuidedActionLoading(false);
@@ -2712,7 +2822,7 @@ export function Workshop() {
         });
       } catch (error) {
         console.error('Guided page-range selection failed:', error);
-        toast.error('분량 ?�택??반영?��? 못했?�니?? ?�시 ?�도??주세??');
+        toast.error('분량 선택을 반영하지 못했습니다. 다시 시도해 주세요.');
       } finally {
         setIsGuidedActionLoading(false);
       }
@@ -2757,7 +2867,7 @@ export function Workshop() {
         });
       } catch (error) {
         console.error('Guided structure selection failed:', error);
-        toast.error('구성 ?�택??반영?��? 못했?�니?? ?�시 ?�도??주세??');
+        toast.error('구성 선택을 반영하지 못했습니다. 다시 시도해 주세요.');
       } finally {
         setIsGuidedActionLoading(false);
       }
@@ -2775,7 +2885,7 @@ export function Workshop() {
         {
           id: pendingId,
           role: 'foli',
-          content: '?�생 기록??바탕?�로 주제 3가지�??�리?�고 ?�어?? ?�시�?기다?�주?�요.',
+          content: '학생 기록을 바탕으로 주제 3가지를 정리하고 있어요. 잠시만 기다려 주세요.',
         },
       ]);
       try {
@@ -2864,10 +2974,10 @@ export function Workshop() {
       if (applied) {
         setPendingDraftPatch(null);
         if (approved) {
-          toast.success('?�인???�션 ?�안???�측 구조 초안??반영?�었?�니??');
+          toast.success('승인한 섹션 제안을 문서 초안에 반영했습니다.');
         }
       } else if (blockedReason === 'student_content_protected') {
-        toast('?�생??직접 ?�성???�션?� ?�동 ??��?�기�?막고 ?�어?? ?�용???�인?????�동?�로 반영??주세??');
+        toast('학생이 직접 작성한 섹션은 자동 덮어쓰기를 막고 있어요. 내용을 확인한 뒤 수동으로 반영해 주세요.');
       }
       return applied;
     },
@@ -2898,13 +3008,13 @@ export function Workshop() {
       };
       const validation = validateReportPatch(reportPatch, structuredDraftToReportDocumentState(structuredDraft));
       if (!validation.valid) {
-        toast.error(validation.errors[0] || '문서 반영 ?�안??검?�해???�니??');
+        toast.error(validation.errors[0] || '문서 반영 제안을 다시 확인해 주세요.');
         return false;
       }
 
       const result = applyReportPatchToStructuredDraft(structuredDraft, reportPatch, { approved: true });
       if (!result.applied) {
-        toast.error('?�생 ?�성 ?�용 보호 ?�책 ?�문??patch�?바로 반영?��? 못했?�니??');
+        toast.error('학생 작성 내용 보호 정책 때문에 제안을 바로 반영하지 못했습니다.');
         return false;
       }
 
@@ -2915,10 +3025,34 @@ export function Workshop() {
       setWorkshopMode(result.next.mode);
       setDocumentContent(structuredDraftToMarkdown(result.next));
       setPendingDraftPatch(null);
-      toast.success('?�인??문서 patch�?반영?�습?�다.');
+      toast.success('확인한 내용을 문서에 반영했습니다.');
       return true;
     },
     [structuredDraft],
+  );
+
+  const announceAccumulationStepApplied = useCallback(
+    (patch: WorkshopDraftPatchProposal) => {
+      const appliedStep = resolveAppliedAccumulationStep(patch, activeAccumulationStepId);
+      if (!appliedStep) return;
+
+      const nextStep = getNextAccumulationStep(appliedStep);
+      setActiveAccumulationStepId(appliedStep.id);
+      setCompletedAccumulationStepId(appliedStep.id);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `step-applied-${appliedStep.id}-${Date.now()}`,
+          role: 'foli',
+          content: nextStep
+            ? `${appliedStep.label}을 문서에 반영했어요. 확인이 끝났다면 아래 버튼으로 ${nextStep.label} 대화로 넘어갈 수 있습니다.`
+            : `${appliedStep.label}까지 반영했어요. 이제 전체 문서 흐름을 읽고 문장 연결이나 근거 표현을 다듬으면 됩니다.`,
+          phase: 'freeform_coauthoring',
+          choiceGroups: nextStep ? [buildAccumulationNextChoiceGroup(appliedStep, nextStep)] : [],
+        },
+      ]);
+    },
+    [activeAccumulationStepId],
   );
 
   const updateDraftHeading = useCallback((blockId: string, nextHeading: string) => {
@@ -2960,7 +3094,7 @@ export function Workshop() {
         {
           id: pendingId,
           role: 'foli',
-          content: '관???�문�??�료�?찾고 ?�어?? 검??결과??바로 문서???��? ?�고 ?�보 카드�?보여?�릴게요.',
+          content: '관련 논문과 자료를 찾고 있어요. 검토 결과를 바로 문서에 넣을 수 있는 후보 카드로 보여드릴게요.',
         },
       ]);
       setMessages((prev) =>
@@ -2981,8 +3115,8 @@ export function Workshop() {
               ? {
                   ...message,
                   content: result.candidates.length
-                    ? `?�료 ?�보 ${result.candidates.length}개�? 찾았?�요. ?�용???�보�?고르�?먼�? 문서 반영 ?�안 카드�?바꿔??보여?�릴게요.`
-                    : '검?�된 ?�료 ?�보가 ?�어?? 주제???�워?��? 조금 ??구체?�으�?말해 주세??',
+                    ? `자료 후보 ${result.candidates.length}개를 찾았어요. 사용할 후보를 고르면 문서 반영 제안 카드로 바꿔 보여드릴게요.`
+                    : '검증된 자료 후보가 적어요. 주제나 키워드를 조금 더 구체적으로 말해 주세요.',
                   researchCandidates: result.candidates,
                   researchSources: result.sources,
                 }
@@ -2997,7 +3131,7 @@ export function Workshop() {
           ),
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : '?�료 검??�??�류가 발생?�습?�다.';
+        const message = error instanceof Error ? error.message : '자료 검색 중 오류가 발생했습니다.';
         console.error('Research candidate search failed:', error);
         toast.error(message);
         setMessages((prev) =>
@@ -3005,7 +3139,7 @@ export function Workshop() {
             item.id === pendingId
               ? {
                   ...item,
-                  content: `?�료 검?�에 ?�패?�어??\n\n${message}\n\n?�시 ???�시 ?�도?�거??검?�어�???구체?�으�?바꿔 주세??`,
+                  content: `자료 검색에 실패했어요.\n\n${message}\n\n잠시 후 다시 시도하거나 검색어를 더 구체적으로 바꿔 주세요.`,
                 }
               : item,
           ),
@@ -3034,7 +3168,13 @@ export function Workshop() {
     if (!overriddenText) setInput('');
 
     if (pendingDraftPatch && isPatchAcceptanceMessage(text)) {
-      await applyPatchThroughReportPipeline(pendingDraftPatch);
+      const patchToApply = pendingDraftPatch;
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayText || text }]);
+      const applied = await applyPatchThroughReportPipeline(patchToApply);
+      if (applied) {
+        announceAccumulationStepApplied(patchToApply);
+      }
+      return;
     }
 
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: displayText || text }]);
@@ -3053,8 +3193,8 @@ export function Workshop() {
           setGuidedPhase('specific_topic_check');
           pushGuidedAssistantMessage({
             content: broadSubject
-              ? `좋아?? ${normalizedSubject}�?진행?�볼게요.\n?�별???�각????주제가 ?�을까요? ?�직 ?�다�??�생 기록 기반?�로 3�?추천?�드릴게??`
-              : `좋아?? ${normalizedSubject} 방향?�로 진행?�볼게요.\n?��? ?�각?�둔 ?�구 질문???�다�??�려주세?? ?�으�??�생 기록??바탕?�로 3�?추천?�드릴게??`,
+              ? `좋아요. ${normalizedSubject}로 진행해볼게요.\n특별히 생각해 둔 주제가 있을까요? 아직 없다면 학생 기록 기반으로 3가지를 추천해드릴게요.`
+              : `좋아요. ${normalizedSubject} 방향으로 진행해볼게요.\n이미 생각해 둔 탐구 질문이 있다면 알려주세요. 없으면 학생 기록을 바탕으로 3가지를 추천해드릴게요.`,
             phase: 'specific_topic_check',
             topicSubject: normalizedSubject,
             choiceGroups: [buildSpecificTopicCheckGroup()],
@@ -3069,7 +3209,7 @@ export function Workshop() {
           }
           if (isSpecificTopicAffirmative(text)) {
             pushGuidedAssistantMessage({
-              content: '좋아?? ?�각?�둔 주제�???문장?�로 ?�어주시�? �?방향까�? 반영?�서 주제 3가지�??�안?�게??',
+              content: '좋아요. 생각해 둔 주제를 한 문장으로 적어주시면 그 방향까지 반영해서 주제 3가지를 제안할게요.',
               phase: 'specific_topic_check',
               topicSubject: guidedSubject || undefined,
               choiceGroups: [buildSpecificTopicCheckGroup()],
@@ -3086,7 +3226,7 @@ export function Workshop() {
             await handleGuidedTopicSelection(selectedFromText.id, guidedSubject || undefined);
           } else {
             pushGuidedAssistantMessage({
-              content: '주제 카드�??�러 ?�택?�면 바로 분량/구성 ?�계�??�어갈게??',
+              content: '주제 카드를 눌러 선택하면 바로 분량과 구성 단계로 이어갈게요.',
               phase: 'topic_selection',
               topicSubject: guidedSubject || undefined,
               topicSuggestions: guidedSuggestions,
@@ -3102,7 +3242,7 @@ export function Workshop() {
             await handleGuidedPageRangeSelection(selectedPageLabel);
           } else {
             pushGuidedAssistantMessage({
-              content: '분량 카드�??�러 ?�택??주세?? ?�택 ??바로 구성 ?��??�을 물어볼게??',
+              content: '분량 카드를 눌러 선택해 주세요. 선택 후 바로 구성 유형을 물어볼게요.',
               phase: 'page_range_selection',
               pageRangeOptions: guidedPageRanges,
               choiceGroups: [buildPageRangeChoiceGroup(guidedPageRanges)],
@@ -3117,7 +3257,7 @@ export function Workshop() {
             await handleGuidedStructureSelection(selectedStructureId);
           } else {
             pushGuidedAssistantMessage({
-              content: '구성 ?��???카드�??�러 ?�택??주세??',
+              content: '구성 유형 카드를 눌러 선택해 주세요.',
               phase: 'structure_selection',
               structureOptions: guidedStructureOptions,
               choiceGroups: [buildStructureChoiceGroup(guidedStructureOptions)],
@@ -3127,7 +3267,7 @@ export function Workshop() {
         }
       } catch (error) {
         console.error('Guided setup flow failed:', error);
-        toast.error('가?�드 ?�정 �??�류가 발생?�습?�다. ?�시 ?�도??주세??');
+        toast.error('가이드 설정 중 오류가 발생했습니다. 다시 시도해 주세요.');
       } finally {
         setIsTyping(false);
       }
@@ -3225,9 +3365,9 @@ export function Workshop() {
         });
         const handledLimitedModeToast = showReadableLimitedModeToast(streamLimitedReason);
         if (!handledLimitedModeToast && streamLimitedReason === 'llm_unavailable') {
-          toast.error('AI 모델 ?�결??불안?�하???�한 모드 ?�내�??�환?�었?�요.');
+          toast.error('AI 모델 연결이 불안정해 제한 모드 안내로 전환되었어요.');
         } else if (!handledLimitedModeToast && streamLimitedReason === 'llm_not_configured') {
-          toast.error('AI 모델 ?��? ?�버???�정?��? ?�아 ?�한 모드�??�환?�었?�니??');
+          toast.error('AI 모델 또는 서버 설정이 없어 제한 모드로 전환되었습니다.');
         }
       }
 
@@ -3271,7 +3411,7 @@ export function Workshop() {
           fallbackContent = readableHint;
         }
         if (!readableHint && hint) {
-          fallbackContent = `${fallbackContent}\n\n참고 ?�내: ${hint}`;
+          fallbackContent = `${fallbackContent}\n\n참고 안내: ${hint}`;
         }
       } else {
         console.error('AI reply stream failed with unexpected error:', error);
@@ -3301,6 +3441,8 @@ export function Workshop() {
     setGuidedPhase('freeform_coauthoring');
     setIsGuidedTopicSelected(true);
     setWorkshopMode('section_drafting');
+    setActiveAccumulationStepId('intro');
+    setCompletedAccumulationStepId(null);
     const prompt = buildWritingPlanPrompt({
       area: candidate.areaId === writingAreaId ? writingAreaOption : resolveRecordAreaOption(candidate.areaId),
       detail: writingDetail,
@@ -3336,6 +3478,8 @@ export function Workshop() {
       setGuidedPhase('freeform_coauthoring');
       setIsGuidedTopicSelected(true);
       setWorkshopMode('section_drafting');
+      setActiveAccumulationStepId(step.id);
+      setCompletedAccumulationStepId(null);
       const prompt = buildAccumulationPrompt({
         step,
         candidate,
@@ -3370,6 +3514,20 @@ export function Workshop() {
       const rawValue = String(option.value || option.label || option.id || '').trim();
       if (!rawValue) return;
 
+      if (groupId === 'accumulation-next-step') {
+        const [action, stepId] = rawValue.includes(':') ? rawValue.split(':', 2) : ['next', rawValue];
+        const targetStep = getAccumulationStepById(stepId);
+        if (!targetStep) {
+          toast.error('다음 작성 단계를 찾지 못했습니다.');
+          return;
+        }
+        await handleAccumulationStepRequest(targetStep);
+        if (action === 'next') {
+          toast.success(`${targetStep.label} 단계로 넘어갑니다.`);
+        }
+        return;
+      }
+
       if (groupId === 'next-action-selection') {
         setGuidedPhase('freeform_coauthoring');
         setIsGuidedTopicSelected(true);
@@ -3391,7 +3549,7 @@ export function Workshop() {
         setGuidedSubject(rawValue);
         setGuidedPhase('specific_topic_check');
         pushGuidedAssistantMessage({
-          content: `좋아?? ${rawValue}�?진행?�볼게요.\n?�별???�각????주제가 ?�을까요? ?�직 ?�다�??�생 기록 기반?�로 3�?추천?�드릴게??`,
+          content: `좋아요. ${rawValue}로 진행해볼게요.\n특별히 생각해 둔 주제가 있을까요? 아직 없다면 학생 기록 기반으로 3가지를 추천해드릴게요.`,
           phase: 'specific_topic_check',
           topicSubject: rawValue,
           choiceGroups: [buildSpecificTopicCheckGroup()],
@@ -3405,12 +3563,12 @@ export function Workshop() {
             await requestGuidedSuggestions(guidedSubject || rawValue);
           } catch (error) {
             console.error('Guided suggestion failed from choice:', error);
-            toast.error('주제 추천??불러?��? 못했?�니?? ?�시 ?�도??주세??');
+            toast.error('주제 추천을 불러오지 못했습니다. 다시 시도해 주세요.');
           }
           return;
         }
         pushGuidedAssistantMessage({
-          content: '좋아?? ?�각?�둔 주제�???문장?�로 ?�어주시�?�?방향까�? 반영?�서 3�?주제�??�안?�게??',
+          content: '좋아요. 생각해 둔 주제를 한 문장으로 적어주시면 그 방향까지 반영해서 3가지 주제를 제안할게요.',
           phase: 'specific_topic_check',
           topicSubject: guidedSubject || undefined,
           choiceGroups: [buildSpecificTopicCheckGroup()],
@@ -3441,6 +3599,7 @@ export function Workshop() {
       guidedSubject,
       guidedSuggestions,
       handleSend,
+      handleAccumulationStepRequest,
       handleGuidedPageRangeSelection,
       handleGuidedStructureSelection,
       handleGuidedTopicSelection,
@@ -3453,7 +3612,19 @@ export function Workshop() {
     async (patch: ReviewablePatch, message?: Message) => {
       if ('block_id' in patch) {
         setPendingDraftPatch(patch);
-        await applyPatchThroughReportPipeline(patch);
+        const applied = await applyPatchThroughReportPipeline(patch);
+        if (applied) {
+          if (message?.id) {
+            setMessages((prev) =>
+              prev.map((item) =>
+                item.id === message.id
+                  ? { ...item, draftPatch: undefined, reportPatch: undefined, patchValidation: null }
+                  : item,
+              ),
+            );
+          }
+          announceAccumulationStepApplied(patch);
+        }
         return;
       }
       const lifecycle = await documentPatch.applyPatch({ ...patch, status: 'accepted' });
@@ -3467,7 +3638,7 @@ export function Workshop() {
         );
       }
     },
-    [applyPatchThroughReportPipeline, documentPatch],
+    [announceAccumulationStepApplied, applyPatchThroughReportPipeline, documentPatch],
   );
 
   const handleRejectPatchFromMessage = useCallback((patch: ReviewablePatch, message?: Message) => {
@@ -3486,7 +3657,7 @@ export function Workshop() {
     } else {
       documentPatch.rejectPatch(patch);
     }
-    toast('문서 반영 ?�안??거절?�습?�다.');
+    toast('문서 반영 제안을 거절했습니다.');
   }, [documentPatch]);
 
   const handleRejectPatchByMessageId = useCallback((messageId: string) => {
@@ -3498,17 +3669,17 @@ export function Workshop() {
       ),
     );
     setPendingDraftPatch(null);
-    toast('문서 반영 ?�안??거절?�습?�다.');
+    toast('문서 반영 제안을 거절했습니다.');
   }, []);
 
   const handleRequestPatchRewrite = useCallback(
     (patch: ReviewablePatch, tone: 'simpler' | 'professional' | 'custom') => {
       const instruction =
         tone === 'simpler'
-          ? '방금 문서 반영 ?�안?????�게 ?�시 ?�줘. 문서?�는 ?�직 반영?��? 말고 ??patch�??�안?�줘.'
+          ? '방금 문서 반영 제안을 더 쉽게 다시 써줘. 문서에는 아직 반영하지 말고 새 패치만 제안해줘.'
           : tone === 'professional'
-            ? '방금 문서 반영 ?�안?????�문?�인 보고??문체�??�시 ?�줘. 문서?�는 ?�직 반영?��? 말고 ??patch�??�안?�줘.'
-            : '방금 문서 반영 ?�안???��? ?�정?�서 ?�인?????�도�????��? ?�위??patch�??�시 ?�안?�줘.';
+            ? '방금 문서 반영 제안을 더 전문적인 보고서 문체로 다시 써줘. 문서에는 아직 반영하지 말고 새 패치만 제안해줘.'
+            : '방금 문서 반영 제안을 내가 수정해서 확인할 수 있도록 같은 범위의 새 패치를 다시 제안해줘.';
       if ('block_id' in patch) {
         setPendingDraftPatch(patch);
       } else {
@@ -3523,7 +3694,7 @@ export function Workshop() {
     (candidateId: string, message: Message) => {
       const candidate = message.researchCandidates?.find((item) => item.id === candidateId);
       if (!candidate) {
-        toast.error('?�택???�료 ?�보�?찾을 ???�습?�다.');
+        toast.error('선택한 자료 후보를 찾을 수 없습니다.');
         return;
       }
       const patch = researchCandidates.convertCandidateToPatch(candidate);
@@ -3539,7 +3710,7 @@ export function Workshop() {
             : item,
         ),
       );
-      toast.success('?�료 ?�보�?문서 반영 ?�안?�로 바꿨?�요. 검?????�인?�면 문서???�어갑니??');
+      toast.success('자료 후보를 문서 반영 제안으로 바꿨어요. 검토 후 확인하면 문서에 들어갑니다.');
     },
     [documentPatch, researchCandidates],
   );
@@ -3753,10 +3924,10 @@ export function Workshop() {
         { approval_status: status }
       );
       setWorkshopState(response.data);
-      toast.success('?�태�??�데?�트?�습?�다.');
+      toast.success('상태를 업데이트했습니다.');
     } catch (error) {
       console.error('Failed to update visual status:', error);
-      toast.error('?�태 ?�데?�트 ?�패');
+      toast.error('상태 업데이트에 실패했습니다.');
     }
   };
 
@@ -3770,7 +3941,7 @@ export function Workshop() {
       toast.success('새로운 시각 자료를 생성했습니다.');
     } catch (error) {
       console.error('Failed to replace visual:', error);
-      toast.error('?�각 ?�료 ?�성 ?�패');
+      toast.error('시각 자료 생성에 실패했습니다.');
     }
   };
 
@@ -4022,7 +4193,10 @@ export function Workshop() {
                               <DraftAccumulationPanel
                                 steps={ACCUMULATION_STEPS}
                                 structuredDraft={structuredDraft}
+                                activeStepId={activeAccumulationStepId}
+                                completedStepId={completedAccumulationStepId}
                                 onStepRequest={(step) => void handleAccumulationStepRequest(step)}
+                                onNextStep={(step) => void handleAccumulationStepRequest(step)}
                                 disabled={isTyping || isGuidedActionLoading || !!isSelectingGuidedTopicId || !workshopState?.session.id}
                               />
                             </div>

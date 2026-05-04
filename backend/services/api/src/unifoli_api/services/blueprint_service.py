@@ -30,19 +30,32 @@ class BlueprintSignals:
 
 
 _SUBJECT_RULES = (
-    ("Math", ("data", "graph", "stat", "ratio", "probability", "calculation")),
-    ("Science", ("experiment", "measure", "sensor", "biology", "chemistry", "physics", "lab")),
-    ("Social Studies", ("policy", "economy", "society", "history", "market", "law", "community")),
-    ("English", ("english", "global", "translation", "international")),
-    ("Informatics", ("code", "coding", "python", "ai", "algorithm", "model", "software")),
-    ("Korean", ("essay", "writing", "reading", "presentation", "speech", "reflection", "report")),
+    ("수학", ("data", "graph", "stat", "ratio", "probability", "calculation")),
+    ("과학", ("experiment", "measure", "sensor", "biology", "chemistry", "physics", "lab")),
+    ("사회", ("policy", "economy", "society", "history", "market", "law", "community")),
+    ("영어", ("english", "global", "translation", "international")),
+    ("정보", ("code", "coding", "python", "ai", "algorithm", "model", "software")),
+    ("국어", ("essay", "writing", "reading", "presentation", "speech", "reflection", "report")),
 )
 
 
 def _clean_phrase(text: str, *, max_words: int = 9) -> str:
-    normalized = re.sub(r"\s+", " ", text).strip(" .,-")
+    # Strip common English prefixes that LLMs sometimes hallucinate even when told to use Korean
+    noise_patterns = [
+        r"^Semester priority\s*:\s*",
+        r"^Recommended focus\s*:\s*",
+        r"^Priority\s*:\s*",
+        r"^Focus\s*:\s*",
+        r"^Task\s*:\s*",
+        r"^Quest\s*:\s*",
+    ]
+    normalized = text.strip()
+    for pattern in noise_patterns:
+        normalized = re.sub(pattern, "", normalized, flags=re.IGNORECASE)
+
+    normalized = re.sub(r"\s+", " ", normalized).strip(" .,-")
     if not normalized:
-        return "the next evidence gap"
+        return "다음 기록 보완 과제"
 
     words = normalized.split(" ")
     clipped = " ".join(words[:max_words]).strip()
@@ -54,22 +67,22 @@ def _infer_subject(text: str, target_major: str | None) -> str:
     for subject, keywords in _SUBJECT_RULES:
         if any(keyword in lowered for keyword in keywords):
             return subject
-    return target_major or "Major Exploration"
+    return target_major or "진로 탐색"
 
 
 def _infer_output_type(text: str) -> str:
     lowered = text.lower()
     if any(keyword in lowered for keyword in ("measure", "compare", "data", "graph", "analysis", "trend")):
-        return "Data comparison report"
+        return "데이터 비교 분석 보고서"
     if any(keyword in lowered for keyword in ("experiment", "lab", "test", "sensor")):
-        return "Experiment log"
+        return "실험/실습 로그"
     if any(keyword in lowered for keyword in ("survey", "interview", "community", "stakeholder")):
-        return "Interview or survey brief"
+        return "인터뷰/설문 조사 요약"
     if any(keyword in lowered for keyword in ("reflection", "feedback", "limit", "improve")):
-        return "Reflection memo"
+        return "성찰 및 피드백 메모"
     if any(keyword in lowered for keyword in ("reading", "paper", "article", "source")):
-        return "Source synthesis note"
-    return "Inquiry brief"
+        return "문헌 탐구 및 자료 분석 노트"
+    return "탐구 보고서"
 
 
 def _difficulty_for(index: int, risk_level: str, priority: bool) -> str:
@@ -82,31 +95,31 @@ def _difficulty_for(index: int, risk_level: str, priority: bool) -> str:
 
 def _build_title(subject: str, focus: str, priority: bool) -> str:
     focus_phrase = _clean_phrase(focus, max_words=8)
-    prefix = "Semester priority" if priority else f"{subject} quest"
+    prefix = "학기 핵심 과제" if priority else f"{subject} 탐구 퀘스트"
     return f"{prefix}: {focus_phrase}"
 
 
 def _build_summary(focus: str, output_type: str) -> str:
     return (
-        f"Turn this diagnosed gap into one finishable {output_type.lower()} "
-        f"that produces evidence from {_clean_phrase(focus, max_words=12)}."
+        f"진단된 공백을 메우기 위해 {_clean_phrase(focus, max_words=12)}에 관한 "
+        f"실질적인 증거를 생성하는 {output_type}를 작성해 보세요."
     )
 
 
 def _build_why_this_matters(focus: str, target_major: str | None, strongest_signal: str | None) -> str:
-    major_label = target_major or "the target major"
-    strongest = strongest_signal or "the strongest part of the current record"
+    major_label = target_major or "목표 전공"
+    strongest = strongest_signal or "현재 기록된 최고의 강점"
     return (
-        f"This closes a visible gap around {_clean_phrase(focus, max_words=12)} and connects it to {major_label}. "
-        f"It also builds on {strongest.lower()} instead of starting from a disconnected topic."
+        f"{_clean_phrase(focus, max_words=12)}와 관련된 가시적인 공백을 보완하고 이를 {major_label}과 연결합니다. "
+        f"또한 {strongest}을 바탕으로 하여 흐름이 끊기지 않는 심화 탐구를 이어갈 수 있습니다."
     )
 
 
 def _build_expected_record_impact(output_type: str, subject: str, target_major: str | None) -> str:
     major_label = target_major or subject
     return (
-        f"Adds a clearer {output_type.lower()} trace in {subject}, making the record easier to defend as "
-        f"major-aligned evidence for {major_label}."
+        f"{subject} 교과에서 명확한 {output_type} 흔적을 남겨, "
+        f"생기부가 {major_label} 전공 적합성을 잘 보여주는 증거가 될 수 있도록 합니다."
     )
 
 
@@ -167,25 +180,25 @@ def _build_document_seed_markdown(quest: Quest, project: Project | None) -> str:
         [
             f"# {quest.title}",
             "",
-            "## Why This Quest",
+            "## 이 퀘스트를 수행해야 하는 이유",
             quest.why_this_matters,
             "",
-            "## Expected Record Impact",
+            "## 기대되는 생기부 변화",
             quest.expected_record_impact,
             "",
-            "## Evidence Plan",
-            f"- Subject anchor: {quest.subject}",
-            f"- Target major link: {major_label}",
-            f"- Output format: {quest.recommended_output_type}",
-            "- Evidence to collect:",
-            "  - Observation or source 1",
-            "  - Observation or source 2",
-            "  - Comparison or reflection point",
+            "## 증거 생성 계획",
+            f"- 교과 연계: {quest.subject}",
+            f"- 희망 전공 연결: {major_label}",
+            f"- 산출물 형식: {quest.recommended_output_type}",
+            "- 수집할 증거 목록:",
+            "  - 관찰 기록 또는 참고 자료 1",
+            "  - 관찰 기록 또는 참고 자료 2",
+            "  - 비교 분석 또는 성찰 포인트",
             "",
-            "## Draft Notes",
-            "- What is the specific question?",
-            "- What evidence can I collect this semester?",
-            "- What did I learn, and what are the limits?",
+            "## 초안 작성 노트",
+            "- 구체적인 탐구 질문은 무엇인가요?",
+            "- 이번 학기에 수집할 수 있는 증거는 무엇인가요?",
+            "- 무엇을 배웠고, 어떤 한계가 있었나요?",
         ]
     ).strip()
 
@@ -204,10 +217,10 @@ def build_blueprint_signals(
     if not normalized_gaps and recommended_focus.strip():
         normalized_gaps.append(recommended_focus.strip())
     if not normalized_strengths:
-        normalized_strengths.append("the strongest existing evidence already present in the record")
+        normalized_strengths.append("학생부에 기록된 기존 탐구 성과와 강점")
 
-    focus_text = recommended_focus.strip() or (normalized_gaps[0] if normalized_gaps else "Turn the diagnosis into one grounded evidence sprint.")
-    headline_text = headline.strip() or "The next action should turn the diagnosis into one grounded improvement sprint."
+    focus_text = recommended_focus.strip() or (normalized_gaps[0] if normalized_gaps else "진단 내용을 바탕으로 실질적인 역량 보완 탐구를 시작하세요.")
+    headline_text = headline.strip() or "다음 단계는 진단 내용을 바탕으로 실질적인 기록 보완 탐구를 시작하는 것입니다."
 
     return BlueprintSignals(
         headline=headline_text,
@@ -327,10 +340,10 @@ def build_current_blueprint_read(blueprint: Blueprint) -> CurrentBlueprintRead:
 
     if priority_quests:
         semester_priority_message = (
-            f"Start with '{priority_quests[0].title}' to turn the diagnosis into recordable evidence this semester."
+            f"진단 내용을 이번 학기에 기록 가능한 증거로 만들기 위해 '{priority_quests[0].title}'부터 시작해 보세요."
         )
     else:
-        semester_priority_message = "No actionable quests are available yet."
+        semester_priority_message = "아직 실행 가능한 퀘스트가 없습니다."
 
     expected_record_effects: list[str] = []
     for quest in priority_quests:
@@ -364,8 +377,8 @@ def start_quest(db: Session, quest: Quest) -> QuestStartResponse:
     starter_choices = _build_starter_choices(quest, project)
     major_label = project.target_major if project and project.target_major else quest.subject
     workshop_intro = (
-        f"Starting quest: {quest.title}. Focus on one grounded {quest.recommended_output_type.lower()} "
-        f"that strengthens {major_label} this semester."
+        f"퀘스트 시작: {quest.title}. 이번 학기에 {major_label} 역량을 강화할 수 있는 "
+        f"실질적인 {quest.recommended_output_type}에 집중해 보세요."
     )
 
     return QuestStartResponse(
