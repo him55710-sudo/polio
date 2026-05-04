@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+from typing import Any, List
 from pydantic import BaseModel
 from unifoli_api.services.interview_service import InterviewService, InterviewQuestion, InterviewEvaluation
 from unifoli_api.api.deps import get_db, get_current_user
@@ -18,6 +18,8 @@ router = APIRouter()
 
 class InterviewGenerateRequest(BaseModel):
     project_id: str
+    diagnosis_run_id: str | None = None
+    diagnosis_payload: dict[str, Any] | None = None
 
 class InterviewEvaluateRequest(BaseModel):
     question: str
@@ -34,6 +36,39 @@ def _project_target_context(project: Project) -> str:
     return " / ".join(parts)
 
 
+def _parse_diagnosis_payload(payload: Any, *, source: str) -> DiagnosisResult:
+    try:
+        if isinstance(payload, str):
+            return DiagnosisResult.model_validate_json(payload)
+        return DiagnosisResult.model_validate(payload)
+    except Exception as exc:
+        logger.exception("Failed to parse diagnosis payload for interview questions: %s", source)
+        raise HTTPException(status_code=500, detail="Diagnosis result could not be loaded.") from exc
+
+
+def _get_completed_diagnosis_by_run_id(
+    db: Session,
+    *,
+    diagnosis_run_id: str,
+    project_id: str,
+    user_id: str,
+) -> DiagnosisResult | None:
+    run = db.scalar(
+        select(DiagnosisRun)
+        .join(Project, DiagnosisRun.project_id == Project.id)
+        .where(
+            DiagnosisRun.id == diagnosis_run_id,
+            DiagnosisRun.project_id == project_id,
+            Project.owner_user_id == user_id,
+            DiagnosisRun.result_payload.is_not(None),
+        )
+        .limit(1)
+    )
+    if run is None or not run.result_payload:
+        return None
+    return _parse_diagnosis_payload(run.result_payload, source=run.id)
+
+
 def _get_latest_completed_diagnosis(db: Session, *, project_id: str, user_id: str) -> DiagnosisResult | None:
     run = db.scalar(
         select(DiagnosisRun)
@@ -48,12 +83,7 @@ def _get_latest_completed_diagnosis(db: Session, *, project_id: str, user_id: st
     )
     if run is None or not run.result_payload:
         return None
-
-    try:
-        return DiagnosisResult.model_validate_json(run.result_payload)
-    except Exception as exc:
-        logger.exception("Failed to parse diagnosis payload for interview questions: %s", run.id)
-        raise HTTPException(status_code=500, detail="Diagnosis result could not be loaded.") from exc
+    return _parse_diagnosis_payload(run.result_payload, source=run.id)
 
 
 @router.post("/generate-questions", response_model=List[InterviewQuestion])
@@ -68,11 +98,22 @@ async def generate_interview_questions(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    diagnosis = _get_latest_completed_diagnosis(
-        db,
-        project_id=request.project_id,
-        user_id=current_user.id,
-    )
+    diagnosis: DiagnosisResult | None = None
+    if request.diagnosis_run_id:
+        diagnosis = _get_completed_diagnosis_by_run_id(
+            db,
+            diagnosis_run_id=request.diagnosis_run_id,
+            project_id=request.project_id,
+            user_id=current_user.id,
+        )
+    if diagnosis is None:
+        diagnosis = _get_latest_completed_diagnosis(
+            db,
+            project_id=request.project_id,
+            user_id=current_user.id,
+        )
+    if diagnosis is None and request.diagnosis_payload:
+        diagnosis = _parse_diagnosis_payload(request.diagnosis_payload, source="client-cache")
     if not diagnosis:
         raise HTTPException(status_code=404, detail="No diagnosis found for this project. Please complete diagnosis first.")
     

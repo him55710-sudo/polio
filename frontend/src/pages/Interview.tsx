@@ -86,6 +86,14 @@ function readStoredDiagnosis(): CachedDiagnosis | null {
   }
 }
 
+function getCachedDiagnosisForProject(
+  storedDiagnosis: CachedDiagnosis | null,
+  projectId: string | null | undefined,
+): CachedDiagnosis | null {
+  if (!projectId || !storedDiagnosis?.projectId) return null;
+  return storedDiagnosis.projectId === projectId ? storedDiagnosis : null;
+}
+
 function resolveApiMessage(error: any): string {
   if (error?.response?.status === 404) {
     return '먼저 AI 진단을 완료한 뒤 면접 질문을 생성할 수 있습니다.';
@@ -105,8 +113,7 @@ export const Interview: React.FC = () => {
     [projectId, storeProjectId, storedDiagnosis?.projectId],
   );
   const activeProjectId = candidateProjectIds[0] ?? null;
-  const activeStoredDiagnosis =
-    storedDiagnosis?.projectId && storedDiagnosis.projectId === activeProjectId ? storedDiagnosis : null;
+  const activeStoredDiagnosis = getCachedDiagnosisForProject(storedDiagnosis, activeProjectId);
 
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -146,8 +153,11 @@ export const Interview: React.FC = () => {
 
       for (const candidateProjectId of candidateProjectIds) {
         try {
+          const cachedDiagnosis = getCachedDiagnosisForProject(storedDiagnosis, candidateProjectId);
           data = await api.post<InterviewQuestion[]>('/api/v1/interview/generate-questions', {
             project_id: candidateProjectId,
+            diagnosis_run_id: cachedDiagnosis?.diagnosisRunId ?? undefined,
+            diagnosis_payload: cachedDiagnosis?.diagnosis ?? undefined,
           });
           break;
         } catch (candidateError: any) {
@@ -176,7 +186,7 @@ export const Interview: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeProjectId, candidateProjectIds, navigate]);
+  }, [activeProjectId, candidateProjectIds, navigate, storedDiagnosis]);
 
   const submitAnswer = async () => {
     if (!currentQuestion) return;

@@ -654,24 +654,39 @@ def _record_structure_flowables(report_payload: dict[str, Any], doc: SimpleDocTe
 
 def _subject_table_flowables(report_payload: dict[str, Any], doc: SimpleDocTemplate, style_tokens: dict[str, Any], font_name: str, font_bold: str, color_tokens: dict[str, Any]) -> list[Any]:
     subjects = [item for item in report_payload.get("subject_specialty_analyses", []) if isinstance(item, dict)]
-    rows = [["과목명", "핵심 기록 요약", "강점", "약점", "등급", "개선 방향", "전공 연결"]]
-    for item in subjects[:8]:
+    if not subjects:
+        return [
+            _structured_card(
+                "과목별 세특 상세 진단",
+                "렌더링할 과목별 세특 분석 데이터가 아직 없습니다.",
+                doc.width,
+                style_tokens,
+                color_tokens,
+                tone="panel",
+            )
+        ]
+
+    flowables: list[Any] = []
+    for index, item in enumerate(subjects[:8]):
         grade = str(item.get("level") or item.get("grade") or "B").upper()[:1]
         grade_color = _sabc_color(grade, color_tokens)
-        
-        # We use a colored circle or bold text for the grade
-        grade_markup = f'<font color="{grade_color}"><b>{grade}</b></font>'
-        
-        rows.append([
-            str(item.get("subject") or "-"),
-            _truncate_plain(str(item.get("core_record_summary") or "-"), 58),
-            _truncate_plain(" / ".join(str(v) for v in item.get("strengths", [])[:1]), 42),
-            _truncate_plain(" / ".join(str(v) for v in item.get("weaknesses", [])[:1]), 42),
-            Paragraph(grade_markup, style_tokens["meta_strong"]),
-            _truncate_plain(str(item.get("recommended_follow_up") or "-"), 52),
-            _truncate_plain(str(item.get("major_connection") or "-"), 54),
-        ])
-    return [_structured_table(rows, doc.width, [0.10, 0.20, 0.13, 0.13, 0.07, 0.18, 0.19], style_tokens, font_name, font_bold, color_tokens)]
+        grade_markup = f'<font color="{grade_color}"><b>{grade} 등급</b></font>'
+        subject = _truncate_plain(str(item.get("subject") or "과목 미상"), 42)
+        strengths = " / ".join(str(v) for v in item.get("strengths", [])[:2]) or "-"
+        weaknesses = " / ".join(str(v) for v in item.get("weaknesses", [])[:2]) or "-"
+        rows = [
+            [f"{index + 1}. {subject}", Paragraph(grade_markup, style_tokens["meta_strong"])],
+            ["핵심 기록 요약", _truncate_plain(str(item.get("core_record_summary") or "-"), 220)],
+            ["강점", _truncate_plain(str(strengths), 150)],
+            ["보완점", _truncate_plain(str(weaknesses), 150)],
+            ["개선 방향", _truncate_plain(str(item.get("recommended_follow_up") or "-"), 180)],
+            ["전공 연결", _truncate_plain(str(item.get("major_connection") or "-"), 180)],
+        ]
+        flowables.append(
+            _structured_table(rows, doc.width, [0.24, 0.76], style_tokens, font_name, font_bold, color_tokens)
+        )
+        flowables.append(Spacer(1, 7))
+    return flowables
 
 
 def _subject_card_flowables(report_payload: dict[str, Any], doc: SimpleDocTemplate, style_tokens: dict[str, Any], color_tokens: dict[str, Any], slice_value: Any) -> list[Any]:
@@ -1052,8 +1067,9 @@ def _two_column_cards(left_title: str, left_items: list[str], right_title: str, 
 def _structured_table(rows: list[list[Any]], width: float, fractions: list[float], style_tokens: dict[str, Any], font_name: str, font_bold: str, color_tokens: dict[str, Any]) -> Table:
     prepared: list[list[Any]] = []
     for row in rows:
-        prepared.append([Paragraph(_escape(str(cell)), style_tokens["meta_strong"] if len(prepared) == 0 else style_tokens["meta"]) for cell in row])
-    table = Table(prepared, colWidths=[width * fraction for fraction in fractions], repeatRows=1, hAlign="LEFT")
+        style = style_tokens["meta_strong"] if len(prepared) == 0 else style_tokens["meta"]
+        prepared.append([_table_cell_flowable(cell, style) for cell in row])
+    table = Table(prepared, colWidths=[width * fraction for fraction in fractions], repeatRows=1, hAlign="LEFT", splitByRow=1)
     table.setStyle(
         TableStyle(
             [
@@ -1072,6 +1088,12 @@ def _structured_table(rows: list[list[Any]], width: float, fractions: list[float
         )
     )
     return table
+
+
+def _table_cell_flowable(cell: Any, style: ParagraphStyle) -> Any:
+    if isinstance(cell, Flowable) or isinstance(cell, list):
+        return cell
+    return Paragraph(_escape(str(cell)), style)
 
 
 def _chip_row(labels: list[str], width: float, style_tokens: dict[str, Any], color_tokens: dict[str, Any]) -> Table:
