@@ -14,6 +14,7 @@ import {
   MessageSquare,
   PanelRightClose,
   PenSquare,
+  Plus,
   Presentation,
   Save,
   Send,
@@ -44,7 +45,15 @@ import {
 } from '../lib/chatStream';
 import { cn } from '../lib/cn';
 import { DIAGNOSIS_STORAGE_KEY, type DiagnosisResultPayload, type DiagnosisRunResponse, type StoredDiagnosis } from '../lib/diagnosis';
-import { getArchiveItem, saveArchiveItem, type ArchiveItem } from '../lib/archiveStore';
+import {
+  deriveArchiveTitle,
+  getArchiveItem,
+  isGenericArchiveTitle,
+  listArchiveItems,
+  resolveArchiveDownloadContent,
+  saveArchiveItem,
+  type ArchiveItem,
+} from '../lib/archiveStore';
 import { readQuestStart } from '../lib/questStart';
 import type { AuthTokenSource } from '../lib/requestAuth';
 import { AdvancedPreview } from '../components/AdvancedPreview';
@@ -1303,6 +1312,10 @@ function downloadMarkdownFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function sanitizeArchiveFilename(title: string): string {
+  return (title || '생기부_기반_탐구_보고서').replace(/[^\w\-\uAC00-\uD7A3]+/g, '_').replace(/^_+|_+$/g, '') || '생기부_기반_탐구_보고서';
+}
+
 function serializeWorkshopMessages(messages: Message[]): ArchiveItem['chatMessages'] {
   return messages
     .filter((message) => message.content.trim())
@@ -1331,6 +1344,69 @@ function restoreMessagesFromArchive(item: ArchiveItem): Message[] {
       content: '저장된 작업을 불러왔어요. 이어서 수정하거나 보고서 생성을 계속할 수 있습니다.',
     },
   ];
+}
+
+interface ConversationHistoryPanelProps {
+  items: ArchiveItem[];
+  activeId: string | null;
+  disabled?: boolean;
+  onNewChat: () => void;
+  onResume: (item: ArchiveItem) => void;
+}
+
+function ConversationHistoryPanel({ items, activeId, disabled, onNewChat, onResume }: ConversationHistoryPanelProps) {
+  return (
+    <aside className="flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white/90 shadow-sm backdrop-blur">
+      <div className="border-b border-slate-100 p-4">
+        <button
+          type="button"
+          onClick={onNewChat}
+          disabled={disabled}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white shadow-sm transition-all hover:bg-black disabled:opacity-50"
+        >
+          <Plus size={16} />
+          새 채팅
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="mb-2 flex items-center gap-2 px-2 text-xs font-black uppercase tracking-wide text-slate-400">
+          <MessageSquare size={14} />
+          이전 대화
+        </div>
+        <div className="space-y-2">
+          {items.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm font-semibold text-slate-500">
+              저장된 워크숍 대화가 아직 없습니다.
+            </div>
+          ) : (
+            items.map((item) => {
+              const isActive = item.id === activeId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onResume(item)}
+                  disabled={disabled}
+                  className={cn(
+                    'w-full rounded-2xl border p-3 text-left transition-all disabled:opacity-50',
+                    isActive
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm'
+                      : 'border-slate-100 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50',
+                  )}
+                >
+                  <div className="line-clamp-2 text-sm font-black leading-snug">{item.title}</div>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-400">
+                    <span className="truncate">{item.subject || '탐구'}</span>
+                    <span className="shrink-0">{new Date(item.updatedAt || item.createdAt).toLocaleDateString('ko-KR')}</span>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </aside>
+  );
 }
 
 interface WritingPlannerPanelProps {
@@ -1814,6 +1890,8 @@ export function Workshop() {
   const [latestDraftUpdatedAt, setLatestDraftUpdatedAt] = useState<string | null>(null);
   const [isDraftOutOfSync, setIsDraftOutOfSync] = useState(false);
   const [lastLocalSnapshotAt, setLastLocalSnapshotAt] = useState<string | null>(null);
+  const [activeArchiveId, setActiveArchiveId] = useState<string | null>(archiveResumeId);
+  const [archivePanelRefreshKey, setArchivePanelRefreshKey] = useState(0);
   const [workshopMode, setWorkshopMode] = useState<WorkshopMode>('planning');
   const [showDraftControls, setShowDraftControls] = useState(false);
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
@@ -1867,11 +1945,21 @@ export function Workshop() {
   const isProjectBacked = Boolean(projectId && projectId !== 'demo');
   const shouldRedirectToStoredProject = !archiveResumeId && !isProjectBacked && Boolean(storedWorkshopProjectId);
   const guidedProjectId = isProjectBacked ? projectId ?? null : null;
-  const fileName = useMemo(() => `${(questStart?.title || 'draft').replace(/\s+/g, '_')}.hwpx`, [questStart]);
   const reportDownloadContent = useMemo(
     () => (renderArtifact?.report_markdown || documentContent || '').trim(),
     [documentContent, renderArtifact?.report_markdown],
   );
+  const inferredWorkshopTitle = useMemo(
+    () =>
+      deriveArchiveTitle({
+        contentMarkdown: reportDownloadContent || structuredDraftToMarkdown(structuredDraft),
+        structuredDraft,
+        fallbackTitle: questStart?.title || guidedSubject || initialMajor,
+        subject: initialMajor || guidedSubject || '탐구',
+      }),
+    [guidedSubject, initialMajor, questStart?.title, reportDownloadContent, structuredDraft],
+  );
+  const fileName = useMemo(() => `${sanitizeArchiveFilename(inferredWorkshopTitle)}.hwpx`, [inferredWorkshopTitle]);
   const storedDiagnosisSnapshot = useMemo(() => readStoredDiagnosisSnapshot(), []);
   const activeDiagnosisPayload = useMemo(
     () =>
@@ -1918,6 +2006,13 @@ export function Workshop() {
         : writingCandidates.find((candidate) => candidate.id === selectedWritingCandidateId) || writingCandidates[0] || null,
     [aiAutoSelectWriting, selectedWritingCandidateId, writingCandidates],
   );
+  const archivedConversations = useMemo(
+    () =>
+      listArchiveItems()
+        .filter((item) => item.kind === 'workshop' || Boolean(item.workshopId) || Boolean(item.chatMessages?.length))
+        .slice(0, 30),
+    [archivePanelRefreshKey, lastLocalSnapshotAt],
+  );
   const researchCandidates = useResearchCandidates({
     projectId: guidedProjectId,
     selectedTopic: guidedSubject || questStart?.title || null,
@@ -1951,6 +2046,7 @@ export function Workshop() {
     setDiagnosisReport(null);
     setShowDiagnosis(false);
     try {
+      const archivedResume = archiveResumeId ? getArchiveItem(archiveResumeId) : null;
       const sessions = await api.get<WorkshopSessionResponse[]>(`/api/v1/workshops?project_id=${projectId}`);
       const active = sessions.find(session => session.status !== 'completed');
       const preferredQuality = localStorage.getItem('uni_foli_quality_level');
@@ -1958,12 +2054,15 @@ export function Workshop() {
         preferredQuality === 'low' || preferredQuality === 'mid' || preferredQuality === 'high'
           ? preferredQuality
           : 'mid';
-      const state = active
-        ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`)
-        : await api.post<WorkshopStateResponse>('/api/v1/workshops', { project_id: projectId, quality_level: createQuality });
+      const state = archivedResume?.workshopId
+        ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${archivedResume.workshopId}`)
+        : active
+          ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`)
+          : await api.post<WorkshopStateResponse>('/api/v1/workshops', { project_id: projectId, quality_level: createQuality });
 
       setWorkshopState(state);
       setQualityLevel(state.session.quality_level);
+      setActiveArchiveId(archiveResumeId || `workshop-${state.session.id}`);
 
       let latestDiagnosisRun: DiagnosisRunResponse | null = null;
       if (isProjectBacked && preferredDiagnosisRunId) {
@@ -2004,6 +2103,22 @@ export function Workshop() {
         setDocumentContent(structuredDraftToMarkdown(fromArtifact));
         setLatestDraftUpdatedAt(state.latest_artifact.updated_at ?? null);
         setIsDraftOutOfSync(false);
+      }
+
+      if (archivedResume) {
+        const restoredStructured =
+          normalizeStructuredDraft(archivedResume.structuredDraft, 'revision') ||
+          markdownToStructuredDraft(resolveArchiveDownloadContent(archivedResume) || '', 'revision');
+        setStructuredDraft(restoredStructured);
+        setWorkshopMode(restoredStructured.mode);
+        setDocumentContent(resolveArchiveDownloadContent(archivedResume) || structuredDraftToMarkdown(restoredStructured));
+        setMessages(restoreMessagesFromArchive(archivedResume));
+        setLatestDraftUpdatedAt(archivedResume.updatedAt || archivedResume.createdAt);
+        setLastLocalSnapshotAt(archivedResume.updatedAt || archivedResume.createdAt);
+        setActiveArchiveId(archivedResume.id);
+        setGuidedPhase('freeform_coauthoring');
+        setIsGuidedTopicSelected(true);
+        return;
       }
 
       const turns = state.session.turns || [];
@@ -2172,7 +2287,7 @@ export function Workshop() {
     } finally {
       setIsSessionLoading(false);
     }
-  }, [isProjectBacked, openedFromDiagnosis, preferredDiagnosisRunId, projectId, requestedChatbotMode]);
+  }, [archiveResumeId, isProjectBacked, openedFromDiagnosis, preferredDiagnosisRunId, projectId, requestedChatbotMode]);
 
   useEffect(() => {
     if (!shouldRedirectToStoredProject || !storedWorkshopProjectId) return;
@@ -2181,6 +2296,12 @@ export function Workshop() {
       state: workshopLocationState ?? undefined,
     });
   }, [location.search, navigate, shouldRedirectToStoredProject, storedWorkshopProjectId, workshopLocationState]);
+
+  useEffect(() => {
+    if (archiveResumeId) {
+      setActiveArchiveId(archiveResumeId);
+    }
+  }, [archiveResumeId]);
 
   useEffect(() => {
     if (shouldRedirectToStoredProject) {
@@ -2207,13 +2328,15 @@ export function Workshop() {
       if (archived) {
         const restoredStructured =
           normalizeStructuredDraft(archived.structuredDraft, 'revision') ||
-          markdownToStructuredDraft(archived.contentMarkdown || '', 'revision');
-        setDocumentContent(archived.contentMarkdown || structuredDraftToMarkdown(restoredStructured));
+          markdownToStructuredDraft(resolveArchiveDownloadContent(archived) || '', 'revision');
+        setDocumentContent(resolveArchiveDownloadContent(archived) || structuredDraftToMarkdown(restoredStructured));
         setStructuredDraft(restoredStructured);
         setWorkshopMode(restoredStructured.mode);
         setMessages(restoreMessagesFromArchive(archived));
         setLatestDraftUpdatedAt(archived.updatedAt || archived.createdAt);
         setLastLocalSnapshotAt(archived.updatedAt || archived.createdAt);
+        setActiveArchiveId(archived.id);
+        setArchivePanelRefreshKey((prev) => prev + 1);
         setIsEditorOpen(true);
         setMobileView('draft');
       } else {
@@ -2319,9 +2442,15 @@ export function Workshop() {
       const sessionId = workshopState?.session.id ?? null;
       const snapshotId = sessionId
         ? `workshop-${sessionId}`
-        : archiveResumeId || `workshop-local-${projectId || 'draft'}`;
+        : activeArchiveId || archiveResumeId || `workshop-local-${projectId || 'draft'}`;
       const previous = getArchiveItem(snapshotId);
-      const titleBase = fileName.replace('.hwpx', '') || '워크숍 보고서';
+      const inferredTitle = deriveArchiveTitle({
+        contentMarkdown: content,
+        structuredDraft,
+        fallbackTitle: inferredWorkshopTitle,
+        subject: initialMajor || guidedSubject || '탐구',
+      });
+      const titleBase = previous && !isGenericArchiveTitle(previous.title) ? previous.title : inferredTitle;
 
       saveArchiveItem({
         id: snapshotId,
@@ -2336,14 +2465,17 @@ export function Workshop() {
         structuredDraft,
         chatMessages: serializeWorkshopMessages(messages),
       });
+      setActiveArchiveId(snapshotId);
       setLastLocalSnapshotAt(now);
+      setArchivePanelRefreshKey((prev) => prev + 1);
       return { id: snapshotId, reason };
     },
     [
+      activeArchiveId,
       archiveResumeId,
       documentContent,
-      fileName,
       guidedSubject,
+      inferredWorkshopTitle,
       initialMajor,
       isProjectBacked,
       messages,
@@ -2361,6 +2493,101 @@ export function Workshop() {
     }, 5000);
     return () => window.clearTimeout(timeout);
   }, [documentContent, messages, persistWorkshopSnapshot]);
+
+  const resetConversationDraft = useCallback((mode: WorkshopMode = 'planning') => {
+    const emptyDraft = createEmptyStructuredDraft(mode);
+    setStructuredDraft(emptyDraft);
+    setWorkshopMode(emptyDraft.mode);
+    setDocumentContent(structuredDraftToMarkdown(emptyDraft));
+    setRenderArtifact(null);
+    setLatestDraftUpdatedAt(null);
+    setIsDraftOutOfSync(false);
+    setPendingDraftPatch(null);
+    setGuidedPhase('freeform_coauthoring');
+    setIsGuidedTopicSelected(true);
+    setGuidedSubject(null);
+    setGuidedSuggestions([]);
+    setGuidedPageRanges([]);
+    setGuidedStructureOptions([]);
+    setGuidedNextActionOptions([]);
+    setInput('');
+  }, []);
+
+  const handleNewConversation = useCallback(async () => {
+    persistWorkshopSnapshot('manual');
+    const localArchiveId = `workshop-local-${crypto.randomUUID()}`;
+    resetConversationDraft('planning');
+    setActiveArchiveId(localArchiveId);
+    setMessages([
+      {
+        id: `new-chat-${Date.now()}`,
+        role: 'foli',
+        content: '새 문서작성 대화를 시작했어요. 어떤 과목 세특, 동아리, 창체, 교과활동을 다룰지부터 정해볼게요.',
+      },
+    ]);
+    setArchivePanelRefreshKey((prev) => prev + 1);
+
+    if (!isProjectBacked || !projectId) return;
+
+    setIsSessionLoading(true);
+    try {
+      const state = await api.post<WorkshopStateResponse>('/api/v1/workshops', {
+        project_id: projectId,
+        quality_level: qualityLevel,
+      });
+      setWorkshopState(state);
+      setQualityLevel(state.session.quality_level);
+      setActiveArchiveId(`workshop-${state.session.id}`);
+      toast.success('새 채팅을 시작했습니다.');
+    } catch (error) {
+      console.error('Create new workshop chat failed:', error);
+      toast.error('새 서버 세션을 만들지 못해 로컬 대화로 시작합니다.');
+    } finally {
+      setIsSessionLoading(false);
+    }
+  }, [isProjectBacked, persistWorkshopSnapshot, projectId, qualityLevel, resetConversationDraft]);
+
+  const handleResumeArchivedConversation = useCallback(
+    async (item: ArchiveItem) => {
+      persistWorkshopSnapshot('manual');
+
+      if (item.projectId && projectId && item.projectId !== projectId) {
+        navigate(`/app/workshop/${encodeURIComponent(item.projectId)}?archiveId=${encodeURIComponent(item.id)}`);
+        return;
+      }
+
+      setIsSessionLoading(true);
+      try {
+        if (item.workshopId && isProjectBacked) {
+          const state = await api.get<WorkshopStateResponse>(`/api/v1/workshops/${item.workshopId}`);
+          setWorkshopState(state);
+          setQualityLevel(state.session.quality_level);
+          setRenderArtifact(state.latest_artifact || null);
+        }
+
+        const restoredStructured =
+          normalizeStructuredDraft(item.structuredDraft, 'revision') ||
+          markdownToStructuredDraft(resolveArchiveDownloadContent(item) || '', 'revision');
+        setStructuredDraft(restoredStructured);
+        setWorkshopMode(restoredStructured.mode);
+        setDocumentContent(resolveArchiveDownloadContent(item) || structuredDraftToMarkdown(restoredStructured));
+        setMessages(restoreMessagesFromArchive(item));
+        setActiveArchiveId(item.id);
+        setLatestDraftUpdatedAt(item.updatedAt || item.createdAt);
+        setLastLocalSnapshotAt(item.updatedAt || item.createdAt);
+        setGuidedPhase('freeform_coauthoring');
+        setIsGuidedTopicSelected(true);
+        setArchivePanelRefreshKey((prev) => prev + 1);
+        toast.success('이전 대화를 불러왔습니다.');
+      } catch (error) {
+        console.error('Resume archived conversation failed:', error);
+        toast.error('이전 대화를 불러오지 못했습니다.');
+      } finally {
+        setIsSessionLoading(false);
+      }
+    },
+    [isProjectBacked, navigate, persistWorkshopSnapshot, projectId],
+  );
 
   useEffect(() => {
     const nextMarkdown = structuredDraftToMarkdown(structuredDraft);
@@ -3654,6 +3881,15 @@ export function Workshop() {
         </div>
 
         <div className="relative mt-2 flex min-h-0 flex-1 justify-center overflow-hidden">
+          <div className="hidden w-72 shrink-0 pr-3 xl:flex">
+            <ConversationHistoryPanel
+              items={archivedConversations}
+              activeId={activeArchiveId}
+              disabled={isSessionLoading || isTyping}
+              onNewChat={() => void handleNewConversation()}
+              onResume={(item) => void handleResumeArchivedConversation(item)}
+            />
+          </div>
           <div className={cn("flex flex-col min-h-0 flex-1 transition-all duration-500 items-center w-full", isEditorOpen ? "lg:mr-[400px] xl:mr-[500px]" : "")}>
             <div className="w-full max-w-4xl flex-1 flex flex-col relative h-full">
               <div className="absolute top-2 right-4 z-20 hidden lg:flex items-center gap-2">

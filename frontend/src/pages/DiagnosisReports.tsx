@@ -9,6 +9,7 @@ import {
   MessageSquareQuote,
   Trash2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 import { DiagnosisReportPanel } from '../components/DiagnosisReportPanel';
 import { EmptyState, PrimaryButton, SecondaryButton, StatusBadge, SurfaceCard } from '../components/primitives';

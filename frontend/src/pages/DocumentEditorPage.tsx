@@ -19,6 +19,13 @@ import {
 import toast from 'react-hot-toast';
 import type { JSONContent } from '@tiptap/react';
 import { api, getResolvedApiBaseUrl } from '../lib/api';
+import {
+  deriveArchiveTitle,
+  getArchiveItem,
+  resolveArchiveDownloadContent,
+  saveArchiveItem,
+  type ArchiveItem,
+} from '../lib/archiveStore';
 import { fetchWithAuth } from '../lib/requestAuth';
 import type { DiagnosisResultPayload, DiagnosisRunResponse } from '../types/api';
 import { TiptapEditor, type TiptapEditorHandle } from '../components/editor/TiptapEditor';
@@ -36,6 +43,9 @@ interface Draft {
 
 interface EditorLocationState {
   seedMarkdown?: string;
+  archiveId?: string;
+  archiveTitle?: string;
+  archiveSubject?: string;
 }
 
 interface EditorInsights {
@@ -310,7 +320,11 @@ export function DocumentEditorPage() {
   const saveTimerRef = useRef<number | null>(null);
   const assistantAbortRef = useRef<AbortController | null>(null);
 
-  const seedMarkdown = ((location.state as EditorLocationState | null)?.seedMarkdown || '').trim();
+  const editorLocationState = (location.state as EditorLocationState | null) || {};
+  const archiveId = editorLocationState.archiveId || null;
+  const archiveTitle = editorLocationState.archiveTitle || null;
+  const archiveSubject = editorLocationState.archiveSubject || null;
+  const seedMarkdown = (editorLocationState.seedMarkdown || '').trim();
   const isLocalMode = !projectId || projectId === 'demo' || projectId === 'undefined';
 
   const fetchLatestDiagnosis = useCallback(async (): Promise<DiagnosisRunResponse | null> => {
@@ -331,11 +345,20 @@ export function DocumentEditorPage() {
       setIsLoading(true);
 
       if (isLocalMode) {
+        const archivedItem = archiveId ? getArchiveItem(archiveId) : null;
+        const archivedMarkdown = archivedItem ? resolveArchiveDownloadContent(archivedItem) : '';
+        const localMarkdown = archivedMarkdown || seedMarkdown || buildLocalTemplate();
+        const localTitle = deriveArchiveTitle({
+          contentMarkdown: localMarkdown,
+          structuredDraft: archivedItem?.structuredDraft,
+          fallbackTitle: archiveTitle || archivedItem?.title || LOCAL_DRAFT_TITLE,
+          subject: archiveSubject || archivedItem?.subject,
+        });
         setDraft({
-          id: 'local',
+          id: archiveId || 'local',
           project_id: projectId ?? 'demo',
-          title: LOCAL_DRAFT_TITLE,
-          content_markdown: seedMarkdown || buildLocalTemplate(),
+          title: localTitle,
+          content_markdown: localMarkdown,
           content_json: null,
           status: 'in_progress',
         });
@@ -391,13 +414,13 @@ export function DocumentEditorPage() {
     }
 
     void load();
-  }, [fetchLatestDiagnosis, isLocalMode, projectId, seedMarkdown]);
+  }, [archiveId, archiveSubject, archiveTitle, fetchLatestDiagnosis, isLocalMode, projectId, seedMarkdown]);
 
   const flushSave = useCallback(async () => {
     const content = pendingContentRef.current ?? editorRef.current?.getJSON();
     const markdown = editorRef.current?.getMarkdown() || draft?.content_markdown || '';
 
-    if (!content || !projectId || !draft || draft.id === 'local') {
+    if (!content || !projectId || !draft || isLocalMode) {
       return;
     }
     if (isSaving) {
@@ -420,14 +443,58 @@ export function DocumentEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [draft, isSaving, projectId]);
+  }, [draft, isLocalMode, isSaving, projectId]);
+
+  const saveLocalArchiveSnapshot = useCallback(
+    (markdownOverride?: string) => {
+      if (!isLocalMode || !draft) return null;
+
+      const markdown = (markdownOverride ?? editorRef.current?.getMarkdown() ?? draft.content_markdown ?? '').trim();
+      const json = editorRef.current?.getJSON();
+      const now = new Date().toISOString();
+      const id = archiveId || draft.id || `editor-local-${now}`;
+      const previous = getArchiveItem(id);
+      const title = deriveArchiveTitle({
+        contentMarkdown: markdown,
+        fallbackTitle: archiveTitle || draft.title,
+        subject: archiveSubject || previous?.subject,
+      });
+      const item: ArchiveItem = {
+        id,
+        projectId: null,
+        kind: 'report',
+        title,
+        subject: archiveSubject || previous?.subject || '탐구',
+        createdAt: previous?.createdAt || now,
+        updatedAt: now,
+        contentMarkdown: markdown,
+        structuredDraft: previous?.structuredDraft,
+        chatMessages: previous?.chatMessages,
+      };
+      saveArchiveItem(item);
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              id,
+              title,
+              content_markdown: markdown,
+              content_json: json ? JSON.stringify(json) : current.content_json,
+            }
+          : current,
+      );
+      setLastSaved(new Date());
+      return item;
+    },
+    [archiveId, archiveSubject, archiveTitle, draft, isLocalMode],
+  );
 
   const handleEditorUpdate = useCallback(
     (json: JSONContent) => {
       pendingContentRef.current = json;
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
 
-      if (draft?.id === 'local') {
+      if (isLocalMode) {
         setLastSaved(new Date());
         return;
       }
@@ -436,7 +503,7 @@ export function DocumentEditorPage() {
         void flushSave();
       }, 2000);
     },
-    [draft?.id, flushSave],
+    [flushSave, isLocalMode],
   );
 
   const handleManualSave = useCallback(async () => {
@@ -445,15 +512,15 @@ export function DocumentEditorPage() {
     const json = editorRef.current?.getJSON();
     if (json) pendingContentRef.current = json;
 
-    if (draft?.id === 'local') {
-      setLastSaved(new Date());
-      toast.success('임시 편집 상태를 현재 브라우저 세션에 반영했습니다.');
+    if (isLocalMode) {
+      const saved = saveLocalArchiveSnapshot();
+      toast.success(saved ? '보관함 문서를 저장했습니다.' : '임시 편집 상태를 현재 브라우저 세션에 반영했습니다.');
       return;
     }
 
     await flushSave();
     toast.success('문서를 저장했습니다.');
-  }, [draft?.id, flushSave]);
+  }, [flushSave, isLocalMode, saveLocalArchiveSnapshot]);
 
   const handleRegenerateFromDiagnosis = useCallback(async () => {
     if (!projectId || isLocalMode) return;
@@ -578,15 +645,15 @@ export function DocumentEditorPage() {
     const json = editorRef.current?.getJSON();
     if (json) pendingContentRef.current = json;
 
-    if (draft?.id === 'local') {
-      setLastSaved(new Date());
+    if (isLocalMode) {
+      saveLocalArchiveSnapshot(nextMarkdown);
       toast.success('AI 제안을 문서에 추가했습니다.');
       return;
     }
 
     await flushSave();
     toast.success('AI 제안을 문서에 추가하고 저장했습니다.');
-  }, [assistantResponse, draft?.content_markdown, draft?.id, flushSave]);
+  }, [assistantResponse, draft?.content_markdown, flushSave, isLocalMode, saveLocalArchiveSnapshot]);
 
   useEffect(
     () => () => {

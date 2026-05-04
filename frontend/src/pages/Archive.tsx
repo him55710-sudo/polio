@@ -1,9 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { 
+  Check,
   Download, 
   Edit3, 
   Filter, 
   FileText, 
+  MessageSquareText,
+  PencilLine,
   Search, 
   Trash2, 
   CheckSquare, 
@@ -20,6 +23,7 @@ import {
   deleteArchiveItem,
   downloadArchiveAsText,
   listArchiveItems,
+  updateArchiveItemTitle,
   type ArchiveItem as StoredArchiveItem,
 } from '../lib/archiveStore';
 import { cn } from '../lib/cn';
@@ -34,6 +38,11 @@ interface ArchiveCardItem {
   color: string;
   contentMarkdown: string;
   projectId: string | null;
+  workshopId?: string | null;
+  kind?: StoredArchiveItem['kind'];
+  summary?: string;
+  structuredDraft?: unknown;
+  chatMessages?: StoredArchiveItem['chatMessages'];
   isSeed?: boolean;
 }
 
@@ -120,6 +129,11 @@ function mapStoredItemToCard(item: StoredArchiveItem): ArchiveCardItem {
     color: colorPalette[index],
     contentMarkdown: item.contentMarkdown,
     projectId: item.projectId,
+    workshopId: item.workshopId,
+    kind: item.kind,
+    summary: item.summary,
+    structuredDraft: item.structuredDraft,
+    chatMessages: item.chatMessages,
   };
 }
 
@@ -140,6 +154,23 @@ function saveDeletedSeedIds(ids: string[]) {
   localStorage.setItem(SEED_DELETED_KEY, JSON.stringify(next));
 }
 
+function toStoredArchiveItem(item: ArchiveCardItem): StoredArchiveItem {
+  return {
+    id: item.id,
+    projectId: item.projectId,
+    workshopId: item.workshopId,
+    kind: item.kind || (item.workshopId ? 'workshop' : 'report'),
+    title: item.title,
+    subject: item.subject,
+    summary: item.summary,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    contentMarkdown: item.contentMarkdown,
+    structuredDraft: item.structuredDraft,
+    chatMessages: item.chatMessages,
+  };
+}
+
 export function Archive() {
   const navigate = useNavigate();
   const { user, isGuestSession } = useAuth();
@@ -148,6 +179,8 @@ export function Archive() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState('');
 
   const items = useMemo(() => {
     const deletedSeedIds = getDeletedSeedIds();
@@ -198,6 +231,60 @@ export function Archive() {
       return;
     }
     navigate(`/app/workshop?archiveId=${encodeURIComponent(item.id)}`);
+  };
+
+  const handleSafeDownload = (item: ArchiveCardItem, format: 'hwpx' | 'pdf') => {
+    try {
+      downloadArchiveAsText(toStoredArchiveItem(item), format);
+      toast.success(`${format.toUpperCase()} 파일을 내려받았습니다.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '다운로드할 문서 내용을 찾지 못했습니다.');
+    }
+  };
+
+  const handleOpenProfessionalEditor = (item: ArchiveCardItem) => {
+    navigate(`/app/editor/${encodeURIComponent(item.projectId || 'demo')}`, {
+      state: {
+        archiveId: item.isSeed ? undefined : item.id,
+        archiveTitle: item.title,
+        archiveSubject: item.subject,
+        seedMarkdown: item.contentMarkdown,
+      },
+    });
+  };
+
+  const handleContinueChat = (item: ArchiveCardItem) => {
+    if (item.projectId) {
+      navigate(`/app/workshop/${encodeURIComponent(item.projectId)}?archiveId=${encodeURIComponent(item.id)}`);
+      return;
+    }
+    navigate(`/app/workshop?archiveId=${encodeURIComponent(item.id)}`);
+  };
+
+  const startTitleEdit = (item: ArchiveCardItem) => {
+    if (item.isSeed) {
+      toast('예시 문서는 제목을 바꿀 수 없습니다. 저장한 문서에서 제목을 수정해 주세요.');
+      return;
+    }
+    setEditingTitleId(item.id);
+    setEditingTitleValue(item.title);
+  };
+
+  const commitTitleEdit = (item: ArchiveCardItem) => {
+    const nextTitle = editingTitleValue.trim();
+    if (!nextTitle) {
+      toast.error('제목을 입력해 주세요.');
+      return;
+    }
+    const updated = updateArchiveItemTitle(item.id, nextTitle);
+    if (!updated) {
+      toast.error('제목을 저장하지 못했습니다.');
+      return;
+    }
+    setEditingTitleId(null);
+    setEditingTitleValue('');
+    setRefreshKey((prev) => prev + 1);
+    toast.success('제목을 변경했습니다.');
   };
 
   const toggleSelect = (id: string) => {
@@ -391,26 +478,96 @@ export function Archive() {
                   </span>
                 </div>
                 
-                <h3 className="mb-8 line-clamp-2 text-xl font-black leading-tight text-slate-900 group-hover:text-indigo-600 transition-colors">
-                  {item.title}
-                </h3>
+                <div className="mb-8 min-h-[64px]">
+                  {editingTitleId === item.id ? (
+                    <div className="flex items-start gap-2">
+                      <input
+                        value={editingTitleValue}
+                        onChange={(event) => setEditingTitleValue(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') commitTitleEdit(item);
+                          if (event.key === 'Escape') {
+                            setEditingTitleId(null);
+                            setEditingTitleValue('');
+                          }
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                        autoFocus
+                        className="min-w-0 flex-1 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none ring-indigo-100 focus:ring-4"
+                      />
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          commitTitleEdit(item);
+                        }}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm transition-all hover:bg-indigo-700"
+                        title="제목 저장"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditingTitleId(null);
+                          setEditingTitleValue('');
+                        }}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50"
+                        title="취소"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <h3 className="line-clamp-2 flex-1 text-xl font-black leading-tight text-slate-900 transition-colors group-hover:text-indigo-600">
+                        {item.title}
+                      </h3>
+                      {!isSelectMode && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startTitleEdit(item);
+                          }}
+                          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-white text-slate-400 opacity-0 shadow-sm transition-all hover:border-indigo-200 hover:text-indigo-600 group-hover:opacity-100"
+                          title="제목 변경"
+                        >
+                          <PencilLine size={15} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-                <div className="mt-auto grid grid-cols-3 gap-3">
+                <div className="mt-auto grid grid-cols-2 gap-3">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleContinue(item);
+                      handleContinueChat(item);
+                    }}
+                    disabled={isSelectMode}
+                    className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-slate-100 bg-slate-50 py-3 text-xs font-black text-slate-700 transition-all hover:bg-slate-100 active:scale-95 disabled:opacity-30"
+                  >
+                    <MessageSquareText size={18} />
+                    <span>대화</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenProfessionalEditor(item);
                     }}
                     disabled={isSelectMode}
                     className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-slate-100 bg-slate-50 py-3 text-xs font-black text-slate-700 transition-all hover:bg-slate-100 active:scale-95 disabled:opacity-30"
                   >
                     <Edit3 size={18} />
-                    <span>편집</span>
+                    <span>전문편집</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDownload(item, 'hwpx');
+                      handleSafeDownload(item, 'hwpx');
                     }}
                     disabled={isSelectMode}
                     className="flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-indigo-600 py-3 text-xs font-black text-white shadow-lg shadow-indigo-100 transition-all hover:bg-indigo-700 hover:shadow-indigo-200 active:scale-95 disabled:opacity-30"
@@ -421,7 +578,7 @@ export function Archive() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDownload(item, 'pdf');
+                      handleSafeDownload(item, 'pdf');
                     }}
                     disabled={isSelectMode}
                     className="flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-slate-900 py-3 text-xs font-black text-white shadow-lg shadow-slate-200 transition-all hover:bg-black active:scale-95 disabled:opacity-30"
@@ -438,4 +595,3 @@ export function Archive() {
     </div>
   );
 }
-
