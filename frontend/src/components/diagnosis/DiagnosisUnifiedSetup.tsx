@@ -29,12 +29,35 @@ interface DiagnosisUnifiedSetupProps {
   flowError: string | null;
 }
 
+interface GoalDraft {
+  university: string;
+  major: string;
+}
+
+function stripRankPrefix(value: string) {
+  return value.trim().replace(/^\d+\s*[^:：]{0,8}[:：]\s*/, '').trim();
+}
+
+function parseInterestGoal(value: string): GoalDraft {
+  const text = String(value || '').trim();
+  const match = text.match(/^(.+)\s\((.+)\)$/);
+  if (!match) return { university: text, major: '' };
+  return {
+    university: (match[1] || '').trim(),
+    major: (match[2] || '').trim(),
+  };
+}
+
+function formatInterestGoal(goal: GoalDraft) {
+  return goal.major ? `${goal.university} (${goal.major})` : goal.university;
+}
+
 export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
   onUploadStart,
   isUploading,
   flowError,
 }) => {
-  const { profile, setProfile, submitProfile, submitGoals } = useOnboardingStore();
+  const { profile, goals, goalList, setGoalList, setProfile, submitProfile, submitGoals } = useOnboardingStore();
   
   const [major1, setMajor1] = useState('');
   const [major2, setMajor2] = useState('');
@@ -44,10 +67,18 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
   const [selectedUnivs, setSelectedUnivs] = useState<string[]>([]);
   
   // Hydrate from store if exists
-  const { goals } = useOnboardingStore.getState();
   useEffect(() => {
+    if (goalList.length > 0) {
+      setSelectedUnivs(Array.from(new Set(goalList.map((goal) => goal.university).filter(Boolean))));
+      const parts = goalList.map((goal) => goal.major).filter(Boolean);
+      if (parts[0]) setMajor1(parts[0]);
+      if (parts[1]) setMajor2(parts[1]);
+      if (parts[2]) setMajor3(parts[2]);
+      return;
+    }
+
     if (goals.target_major) {
-      const parts = goals.target_major.split(',').map(s => s.trim().replace(/^\d순위:\s*/, ''));
+      const parts = goals.target_major.split(',').map(stripRankPrefix);
       if (parts[0]) setMajor1(parts[0]);
       if (parts[1]) setMajor2(parts[1]);
       if (parts[2]) setMajor3(parts[2]);
@@ -57,14 +88,14 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
     if (goals.target_university) univs.push(goals.target_university);
     if (goals.interest_universities) {
       goals.interest_universities.forEach(u => {
-        const clean = u.replace(/\s*\(.*?\)$/, '');
-        if (clean) univs.push(clean);
+        const parsed = parseInterestGoal(u);
+        if (parsed.university) univs.push(parsed.university);
       });
     }
     if (univs.length > 0) {
       setSelectedUnivs(Array.from(new Set(univs)));
     }
-  }, [goals]);
+  }, [goalList, goals]);
 
   const handleAddUniv = (univ: string) => {
     if (selectedUnivs.includes(univ)) {
@@ -88,6 +119,16 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
     setSelectedUnivs(prev => prev.filter(u => u !== univ));
   };
 
+  const buildSelectedGoals = (): GoalDraft[] => {
+    const rankedMajors = [major1, major2, major3].map((major) => major.trim());
+    return selectedUnivs.map((university, index) => ({
+      university,
+      major: rankedMajors[index] || rankedMajors[0] || '',
+    }));
+  };
+
+  const selectedGoals = buildSelectedGoals();
+
   const handleDrop = async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
@@ -110,10 +151,22 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
     if (!profileOk) return;
 
     // Prepare Goals
-    const majors = [major1, major2, major3].filter(Boolean);
-    const target_major = majors.map((m, i) => `${i+1}순위: ${m}`).join(', ');
-    const target_university = selectedUnivs[0];
-    const interest_universities = selectedUnivs.slice(1);
+    const rankedGoals = buildSelectedGoals();
+    const [primaryGoal, ...otherGoals] = rankedGoals;
+    if (!primaryGoal) {
+      toast.error('목표 대학을 최소 1개 이상 선택해 주세요.');
+      return;
+    }
+
+    setGoalList(rankedGoals.map((goal, index) => ({
+      id: index === 0 ? 'main' : `interest-${index - 1}`,
+      university: goal.university,
+      major: goal.major,
+    })));
+
+    const target_university = primaryGoal.university;
+    const target_major = primaryGoal.major;
+    const interest_universities = otherGoals.map(formatInterestGoal);
 
     const goalsOk = await submitGoals({
       target_university,
@@ -231,26 +284,33 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="space-y-2">
                   <AnimatePresence>
-                    {selectedUnivs.map((univ, idx) => (
+                    {selectedGoals.map((goal, idx) => (
                       <motion.div
-                        key={univ}
+                        key={goal.university}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
                         className={cn(
-                          "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm border",
-                          isSpecialUniversity(univ) 
+                          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold shadow-sm border",
+                          isSpecialUniversity(goal.university)
                             ? "border-purple-100 bg-purple-50 text-purple-700"
                             : idx === 0 
                               ? "border-indigo-200 bg-indigo-50 text-indigo-700" 
                               : "border-slate-200 bg-white text-slate-700"
                         )}
                       >
-                        <UniversityLogo universityName={univ} className="h-4 w-4 rounded-sm bg-white object-contain" />
-                        <span>{univ}</span>
-                        <button onClick={() => handleRemoveUniv(univ)} className="ml-1 text-slate-400 hover:text-red-500">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-[11px] font-black shadow-sm">
+                          {idx + 1}
+                        </span>
+                        <UniversityLogo universityName={goal.university} className="h-7 w-7 shrink-0 rounded-lg bg-white object-contain p-1" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-black">{goal.university}</p>
+                          <p className="truncate text-[11px] font-bold opacity-70">{goal.major || '학과 미정'}</p>
+                        </div>
+                        {idx === 0 ? <CheckCircle2 size={14} className="shrink-0" /> : null}
+                        <button onClick={() => handleRemoveUniv(goal.university)} className="ml-1 shrink-0 text-slate-400 hover:text-red-500">
                           <Trash2 size={12} />
                         </button>
                       </motion.div>

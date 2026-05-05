@@ -79,6 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const backendSessionAuthenticated = useAuthStore(state => state.isAuthenticated);
 
   const refreshAdminAccess = React.useCallback(async () => {
+    if (localStorage.getItem(GUEST_SESSION_KEY) === '1') {
+      setIsAdmin(false);
+      setAdminLoading(false);
+      return;
+    }
+
     setAdminLoading(true);
     try {
       const adminProfile = await api.admin.getMe();
@@ -217,13 +223,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      // Set local state immediately to trigger UI transitions
+      setGuestSessionActive(true);
+      localStorage.setItem(GUEST_SESSION_KEY, '1');
+
       if (auth && isFirebaseConfigured) {
         await signInAnonymously(auth);
-        // onAuthStateChanged will handle profile fetching
+        // onAuthStateChanged will handle profile fetching and potentially override local state
       } else {
         // Local-only guest mode fallback
-        setGuestSessionActive(true);
-        localStorage.setItem(GUEST_SESSION_KEY, '1');
         await useAuthStore.getState().fetchProfile();
         useOnboardingStore.getState().syncWithUser(useAuthStore.getState().user);
         await refreshAdminAccess();

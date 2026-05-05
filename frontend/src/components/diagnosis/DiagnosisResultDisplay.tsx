@@ -23,11 +23,18 @@ import { DiagnosisRelationalGraph } from './DiagnosisRelationalGraph';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { DiagnosisRunResponse } from '../../types/api';
 import { DiagnosisReportPanel } from '../DiagnosisReportPanel';
+import { UniversityLogo } from '../UniversityLogo';
+
+interface DiagnosisTargetGoal {
+  university: string;
+  major?: string | null;
+}
 
 interface DiagnosisResultDisplayProps {
   diagnosisResult: any;
   diagnosisRun?: DiagnosisRunResponse | null;
   projectId?: string;
+  targetGoals?: DiagnosisTargetGoal[];
 }
 
 const NEEDS_SUPPORT_PATTERN = /\bneeds?\s+support\b/gi;
@@ -76,10 +83,17 @@ function completionStateLabel(value: unknown): string | null {
   return '상태 확인 중';
 }
 
-export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ diagnosisResult, diagnosisRun, projectId }) => {
+export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ diagnosisResult, diagnosisRun, projectId, targetGoals = [] }) => {
   const navigate = useNavigate();
   const { profile } = useOnboardingStore();
   const summaryJson = asRecord(diagnosisResult?.diagnosis_summary_json);
+  const visibleTargetGoals = targetGoals
+    .map((goal) => ({
+      university: String(goal.university || '').trim(),
+      major: String(goal.major || '').trim(),
+    }))
+    .filter((goal) => goal.university)
+    .slice(0, 6);
   
   const totalScore = summaryJson ? asNumber(summaryJson.total_score) : null;
   const categoryScoresRaw = summaryJson ? asRecord(summaryJson.category_scores) : null;
@@ -182,7 +196,42 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
         )}
       </section>
 
-      {/* 2. Executive Summary (요약과 하이라이트) */}
+      {/* 2. Target Goals */}
+      {visibleTargetGoals.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900">
+              <Target className="text-blue-600" size={22} />
+              목표 대학 및 학과
+            </h2>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+              {visibleTargetGoals.length}개 목표
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {visibleTargetGoals.map((goal, index) => (
+              <div
+                key={`${goal.university}-${goal.major}-${index}`}
+                className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-sm font-black text-blue-700 shadow-sm">
+                  {index + 1}
+                </span>
+                <UniversityLogo
+                  universityName={goal.university}
+                  className="h-10 w-10 shrink-0 rounded-xl bg-white object-contain p-1.5 shadow-sm"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
+                  <p className="truncate text-xs font-bold text-slate-500">{goal.major || '학과 미정'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 3. Executive Summary (요약과 하이라이트) */}
       <section className="bg-slate-50 border border-slate-200 p-8 md:p-10 rounded-2xl shadow-sm">
         <h2 className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-3">
           <BarChart3 className="text-blue-600" size={28} />

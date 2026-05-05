@@ -194,6 +194,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
 
       const payload: OnboardingGoalsUpdateRequest = goals;
+      set({ goals: { ...get().goals, ...payload } });
 
       if (isGuestSessionActive()) {
         const updatedUser = updateGuestTargets(payload, useAuthStore.getState().user);

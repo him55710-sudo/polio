@@ -540,9 +540,9 @@ export default function Dashboard() {
       </motion.div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        {quickActions.map((action) => (
+        {quickActions.map((action, index) => (
           <button
-            key={action.label}
+            key={`${action.label}-${index}`}
             onClick={action.onClick}
             className={`flex items-center justify-between rounded-3xl border px-6 py-4 text-left transition-all ${
               action.tone === 'primary'
@@ -683,12 +683,13 @@ export default function Dashboard() {
               {/* Secondary Goals or Placeholders to fill space */}
               <div className="flex flex-col gap-2.5 lg:w-[220px] shrink-0">
                 {allGoals.length > 1 ? (
-                  allGoals.slice(1, 3).map((goal, index) => (
+                  allGoals.slice(1, 6).map((goal, index) => (
                      <div key={index} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/30 p-3">
                       <UniversityLogo universityName={goal.university} className="h-10 w-10 rounded-xl bg-white p-1 shadow-sm" />
                       <div className="min-w-0">
-                        <p className="text-[10px] font-black text-[#b0b8c1] uppercase">차순위 {index + 1}</p>
+                        <p className="text-[10px] font-black text-[#b0b8c1] uppercase">차순위 목표 {index + 2}</p>
                         <p className="truncate text-sm font-black text-[#333d4b]">{goal.university}</p>
+                        <p className="truncate text-xs font-bold text-slate-500">{goal.major || '학과 미정'}</p>
                       </div>
                     </div>
                   ))

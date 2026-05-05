@@ -16,7 +16,7 @@ const firebaseConfig: FirebaseOptions = {
 
 export const firestoreDatabaseId = viteEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 // Guest mode is now restricted and should not mimic real authenticated state for protected routes.
-export const isGuestModeAllowed = viteEnv.VITE_ALLOW_GUEST_MODE === 'true';
+export const isGuestModeAllowed = String(viteEnv.VITE_ALLOW_GUEST_MODE).toLowerCase() === 'true';
 
 const requiredFirebaseKeys = [
   'VITE_FIREBASE_API_KEY',

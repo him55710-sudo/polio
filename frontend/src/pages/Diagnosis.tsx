@@ -1020,6 +1020,7 @@ export function Diagnosis() {
               diagnosisResult={diagnosisResult} 
               diagnosisRun={diagnosisRun} 
               projectId={projectId} 
+              targetGoals={diagnosisGoals}
             />
             {diagnosisRun?.id ? (
               <DiagnosisReportPanel
