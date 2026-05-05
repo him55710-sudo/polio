@@ -136,6 +136,11 @@ import {
   resolveChatbotModeFromRouteContext,
   type ChatbotMode,
 } from '../lib/chatbotMode';
+import {
+  clearStoredWorkshopProjectReference,
+  normalizeWorkshopProjectId,
+  readStoredWorkshopProjectId,
+} from '../lib/workshopRouting';
 
 import { MemoizedMarkdown, type MessageRole } from '../features/workshop/components/MemoizedMarkdown';
 
@@ -622,6 +627,20 @@ function readStoredDiagnosisSnapshot(): StoredDiagnosisLike | null {
   } catch {
     return null;
   }
+}
+
+function getApiResponseStatus(error: unknown): number | null {
+  const response = (error as { response?: { status?: unknown } } | null)?.response;
+  return typeof response?.status === 'number' ? response.status : null;
+}
+
+function isNotFoundResponse(error: unknown): boolean {
+  return getApiResponseStatus(error) === 404;
+}
+
+function isStaleProjectResponse(error: unknown): boolean {
+  const status = getApiResponseStatus(error);
+  return status === 403 || status === 404;
 }
 
 function resolveRecordAreaOption(areaId: RecordAreaId): RecordAreaOption {
@@ -1966,26 +1985,13 @@ interface WorkshopLocationState {
   diagnosisRunId?: string | null;
 }
 
-function readStoredWorkshopProjectId(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(DIAGNOSIS_STORAGE_KEY);
-    if (!raw) return null;
-    const stored = JSON.parse(raw) as Partial<StoredDiagnosis>;
-    const projectId = typeof stored.projectId === 'string' ? stored.projectId.trim() : '';
-    return projectId || null;
-  } catch {
-    return null;
-  }
-}
-
 export function Workshop() {
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId: string }>();
   const location = useLocation();
   const workshopLocationState = (location.state as WorkshopLocationState | null) ?? null;
   const archiveResumeId = useMemo(() => new URLSearchParams(location.search).get('archiveId'), [location.search]);
-  const storedWorkshopProjectId = useMemo(() => readStoredWorkshopProjectId(), []);
+  const [storedWorkshopProjectId, setStoredWorkshopProjectId] = useState(() => readStoredWorkshopProjectId());
   const requestedChatbotMode = useMemo(
     () =>
       resolveChatbotModeFromRouteContext({
@@ -2062,10 +2068,19 @@ export function Workshop() {
   const initialMajor = useMemo(() => workshopLocationState?.major || '미정', [workshopLocationState]);
   const preferredDiagnosisRunId = workshopLocationState?.diagnosisRunId ?? null;
   const openedFromDiagnosis = workshopLocationState?.fromDiagnosis === true;
-  const isProjectBacked = Boolean(projectId && projectId !== 'demo');
-  const shouldRedirectToStoredProject = !archiveResumeId && !isProjectBacked && Boolean(storedWorkshopProjectId);
-  const shouldBootstrapStandaloneProject = !archiveResumeId && !isProjectBacked && !storedWorkshopProjectId && !projectId;
-  const guidedProjectId = isProjectBacked ? projectId ?? null : null;
+  const normalizedProjectId = normalizeWorkshopProjectId(projectId);
+  const isDemoProject = projectId === 'demo';
+  const hasInvalidProjectParam = Boolean(projectId && !normalizedProjectId && !isDemoProject);
+  const isProjectBacked = Boolean(normalizedProjectId);
+  const shouldRedirectToStoredProject =
+    !archiveResumeId && !isProjectBacked && !isDemoProject && !hasInvalidProjectParam && Boolean(storedWorkshopProjectId);
+  const shouldBootstrapStandaloneProject =
+    !archiveResumeId &&
+    !isProjectBacked &&
+    !isDemoProject &&
+    !storedWorkshopProjectId &&
+    (!projectId || hasInvalidProjectParam);
+  const guidedProjectId = isProjectBacked ? normalizedProjectId : null;
   const reportDownloadContent = useMemo(
     () => (renderArtifact?.report_markdown || documentContent || '').trim(),
     [documentContent, renderArtifact?.report_markdown],
@@ -2166,20 +2181,43 @@ export function Workshop() {
     setStructuredDraft(createEmptyStructuredDraft('planning'));
     setDiagnosisReport(null);
     setShowDiagnosis(false);
+    const workshopProjectId = normalizedProjectId;
+    if (!workshopProjectId) {
+      setIsSessionLoading(false);
+      return;
+    }
     try {
       const archivedResume = archiveResumeId ? getArchiveItem(archiveResumeId) : null;
-      const sessions = await api.get<WorkshopSessionResponse[]>(`/api/v1/workshops?project_id=${projectId}`);
+      const sessions = await api.get<WorkshopSessionResponse[]>('/api/v1/workshops', {
+        params: { project_id: workshopProjectId },
+      });
       const active = sessions.find(session => session.status !== 'completed');
       const preferredQuality = localStorage.getItem('uni_foli_quality_level');
       const createQuality: QualityLevel =
         preferredQuality === 'low' || preferredQuality === 'mid' || preferredQuality === 'high'
           ? preferredQuality
           : 'mid';
-      const state = archivedResume?.workshopId
-        ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${archivedResume.workshopId}`)
-        : active
+      let state: WorkshopStateResponse;
+      if (archivedResume?.workshopId) {
+        try {
+          state = await api.get<WorkshopStateResponse>(`/api/v1/workshops/${archivedResume.workshopId}`);
+        } catch (archiveError) {
+          if (!isNotFoundResponse(archiveError)) throw archiveError;
+          state = active
+            ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`)
+            : await api.post<WorkshopStateResponse>('/api/v1/workshops', {
+                project_id: workshopProjectId,
+                quality_level: createQuality,
+              });
+        }
+      } else {
+        state = active
           ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`)
-          : await api.post<WorkshopStateResponse>('/api/v1/workshops', { project_id: projectId, quality_level: createQuality });
+          : await api.post<WorkshopStateResponse>('/api/v1/workshops', {
+              project_id: workshopProjectId,
+              quality_level: createQuality,
+            });
+      }
 
       setWorkshopState(state);
       setQualityLevel(state.session.quality_level);
@@ -2189,16 +2227,16 @@ export function Workshop() {
       if (isProjectBacked && preferredDiagnosisRunId) {
         try {
           const run = await api.get<DiagnosisRunResponse>(`/api/v1/diagnosis/${preferredDiagnosisRunId}`);
-          if (!projectId || run.project_id === projectId) {
+          if (run.project_id === workshopProjectId) {
             latestDiagnosisRun = run;
           }
         } catch {
           latestDiagnosisRun = null;
         }
       }
-      if (!latestDiagnosisRun && isProjectBacked && projectId) {
+      if (!latestDiagnosisRun && isProjectBacked) {
         try {
-          latestDiagnosisRun = await api.get<DiagnosisRunResponse>(`/api/v1/diagnosis/project/${projectId}/latest`);
+          latestDiagnosisRun = await api.get<DiagnosisRunResponse>(`/api/v1/diagnosis/project/${workshopProjectId}/latest`);
         } catch {
           latestDiagnosisRun = null;
         }
@@ -2291,7 +2329,7 @@ export function Workshop() {
       } else {
         try {
           const guidedStart = await api.post<GuidedChatStartResponse>('/api/v1/guided-chat/start', {
-            project_id: projectId,
+            project_id: workshopProjectId,
           });
           const greeting = ((guidedStart?.greeting || GUIDED_CHAT_GREETING) ?? '').trim();
           const stateSummary = guidedStart.state_summary || {};
@@ -2397,6 +2435,25 @@ export function Workshop() {
         }
       }
     } catch (error) {
+      if (isProjectBacked && isStaleProjectResponse(error)) {
+        console.warn('Workshop project link is stale; redirecting to standalone workshop bootstrap.', {
+          project_id: normalizedProjectId,
+          status: getApiResponseStatus(error),
+        });
+        if (clearStoredWorkshopProjectReference(normalizedProjectId)) {
+          setStoredWorkshopProjectId(readStoredWorkshopProjectId());
+        }
+        toast('이전 워크숍 프로젝트 연결이 만료되어 새 문서작성 세션을 준비합니다.');
+        navigate(`/app/workshop${location.search}`, {
+          replace: true,
+          state: {
+            ...(workshopLocationState || {}),
+            fromDiagnosis: false,
+            chatbotMode: requestedChatbotMode,
+          },
+        });
+        return;
+      }
       console.error('Workshop init failed:', error);
       toast.error('워크숍을 불러오지 못했어요. 로컬 모드로 전환합니다.');
       setGuidedPhase('freeform_coauthoring');
@@ -2412,7 +2469,17 @@ export function Workshop() {
     } finally {
       setIsSessionLoading(false);
     }
-  }, [archiveResumeId, isProjectBacked, openedFromDiagnosis, preferredDiagnosisRunId, projectId, requestedChatbotMode]);
+  }, [
+    archiveResumeId,
+    isProjectBacked,
+    location.search,
+    navigate,
+    normalizedProjectId,
+    openedFromDiagnosis,
+    preferredDiagnosisRunId,
+    requestedChatbotMode,
+    workshopLocationState,
+  ]);
 
   useEffect(() => {
     if (!shouldRedirectToStoredProject || !storedWorkshopProjectId) return;
@@ -2649,7 +2716,7 @@ export function Workshop() {
       saveArchiveItem({
         id: snapshotId,
         kind: 'workshop',
-        projectId: isProjectBacked ? projectId ?? workshopState?.session.project_id ?? null : null,
+        projectId: isProjectBacked ? normalizedProjectId ?? workshopState?.session.project_id ?? null : null,
         workshopId: sessionId,
         title: titleBase,
         subject: initialMajor || guidedSubject || '탐구',
@@ -2673,7 +2740,7 @@ export function Workshop() {
       initialMajor,
       isProjectBacked,
       messages,
-      projectId,
+      normalizedProjectId,
       structuredDraft,
       workshopState?.session.id,
       workshopState?.session.project_id,
@@ -2723,12 +2790,12 @@ export function Workshop() {
     ]);
     setArchivePanelRefreshKey((prev) => prev + 1);
 
-    if (!isProjectBacked || !projectId) return;
+    if (!isProjectBacked || !normalizedProjectId) return;
 
     setIsSessionLoading(true);
     try {
       const state = await api.post<WorkshopStateResponse>('/api/v1/workshops', {
-        project_id: projectId,
+        project_id: normalizedProjectId,
         quality_level: qualityLevel,
       });
       setWorkshopState(state);
@@ -2741,13 +2808,13 @@ export function Workshop() {
     } finally {
       setIsSessionLoading(false);
     }
-  }, [isProjectBacked, persistWorkshopSnapshot, projectId, qualityLevel, resetConversationDraft]);
+  }, [isProjectBacked, normalizedProjectId, persistWorkshopSnapshot, qualityLevel, resetConversationDraft]);
 
   const handleResumeArchivedConversation = useCallback(
     async (item: ArchiveItem) => {
       persistWorkshopSnapshot('manual');
 
-      if (item.projectId && projectId && item.projectId !== projectId) {
+      if (item.projectId && normalizedProjectId && item.projectId !== normalizedProjectId) {
         navigate(`/app/workshop/${encodeURIComponent(item.projectId)}?archiveId=${encodeURIComponent(item.id)}`);
         return;
       }
@@ -2784,7 +2851,7 @@ export function Workshop() {
         setIsSessionLoading(false);
       }
     },
-    [isProjectBacked, navigate, persistWorkshopSnapshot, projectId],
+    [isProjectBacked, navigate, normalizedProjectId, persistWorkshopSnapshot],
   );
 
   useEffect(() => {
@@ -3394,7 +3461,7 @@ export function Workshop() {
 
     try {
       const streamResult = await streamFoliReply(
-        isProjectBacked ? projectId : undefined,
+        isProjectBacked ? normalizedProjectId ?? undefined : undefined,
         workshopState?.session.id,
         text,
         documentContent,
@@ -3448,7 +3515,7 @@ export function Workshop() {
         console.warn('Workshop chat stream returned limited_mode fallback.', {
           reason: streamLimitedReason,
           auth_source: streamAuthSource,
-          project_id: projectId ?? null,
+          project_id: normalizedProjectId ?? null,
           workshop_id: workshopState?.session.id ?? null,
         });
         const handledLimitedModeToast = showReadableLimitedModeToast(streamLimitedReason);
@@ -3489,7 +3556,7 @@ export function Workshop() {
           content_type: error.contentType,
           detail: error.detail,
           auth_source: error.authSource ?? streamAuthSource,
-          project_id: projectId ?? null,
+          project_id: normalizedProjectId ?? null,
           workshop_id: workshopState?.session.id ?? null,
         });
         toast.error(resolveChatStreamToastMessage(error));
