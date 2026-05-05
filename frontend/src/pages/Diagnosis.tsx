@@ -139,6 +139,20 @@ function toFlowDebugState(failure: ApiErrorInfo): FlowDebugState {
   };
 }
 
+function shouldUseStatelessDiagnosisFallback(failure: ApiErrorInfo): boolean {
+  if (failure.status !== 503) return false;
+  const code = (failure.debugCode || '').toUpperCase();
+  const detail = (failure.debugDetail || '').toLowerCase();
+  return (
+    code === 'DATABASE_UNAVAILABLE' ||
+    code === 'BACKEND_STARTUP_FAILED' ||
+    detail.includes('database_initialization') ||
+    detail.includes('data transfer quota') ||
+    detail.includes('postgres') ||
+    detail.includes('database')
+  );
+}
+
 export function Diagnosis() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -366,6 +380,34 @@ export function Diagnosis() {
     finishTimingPhase('diagnosis', 'done', '진단 생성 완료');
     setProjectId(run.project_id);
     setDiagnosisRun(run);
+    setDiagnosisJob(null);
+    setDiagnosisResult(payload);
+    setDiagnosisError(null);
+    setFlowError(null);
+    setFlowDebug(null);
+    setStep('RESULT');
+    setDiagnosisRunId(null);
+    setIsUploading(false);
+
+    const primaryGoal = diagnosisGoals[0];
+    persistDiagnosisStorageSnapshot(run, {
+      major: primaryGoal?.major ?? null,
+      targetUniversity: primaryGoal?.university ?? null,
+      targetMajor: primaryGoal?.major ?? null,
+    });
+
+    return true;
+  }, [diagnosisGoals, finishTimingPhase, setDiagnosisRunId, setProjectId, setStep]);
+
+  const completeStatelessDiagnosis = useCallback((run: DiagnosisRunResponse) => {
+    const payload = mergeDiagnosisPayload(run);
+    if (!payload) return false;
+
+    finishTimingPhase('upload', 'done', '업로드 완료');
+    finishTimingPhase('parse', 'done', '비상 진단 모드에서 텍스트 추출 완료');
+    finishTimingPhase('diagnosis', 'done', '비상 진단 완료');
+    setProjectId(run.project_id || 'demo');
+    setDiagnosisRun(null);
     setDiagnosisJob(null);
     setDiagnosisResult(payload);
     setDiagnosisError(null);
@@ -791,11 +833,16 @@ export function Diagnosis() {
 
     try {
       beginTimingPhase('upload', '서버 상태를 확인하고 있습니다.');
+      let useStatelessFallback = false;
       try {
         await api.getBackendReadiness();
       } catch (readinessError) {
         const failure = getApiErrorInfo(readinessError, '백엔드 서버 준비 상태 확인에 실패했습니다.');
-        throw failure;
+        if (!shouldUseStatelessDiagnosisFallback(failure)) {
+          throw failure;
+        }
+        useStatelessFallback = true;
+        setFlowDebug(toFlowDebugState(failure));
       }
 
       const formData = new FormData();
@@ -814,6 +861,21 @@ export function Diagnosis() {
           formData.append('interest_universities', JSON.stringify(otherGoals));
         }
         formData.append('title', `${mainGoal.university} ${mainGoal.major} 진단`);
+      }
+
+      if (useStatelessFallback) {
+        setStep('ANALYSING');
+        setActiveDocumentId(null);
+        finishTimingPhase('upload', 'done', `업로드 준비 완료 (${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
+        beginTimingPhase('parse', '운영 DB 장애로 비상 진단 모드에서 PDF 텍스트를 추출하고 있습니다.');
+        beginTimingPhase('diagnosis', '저장 없이 AI 진단을 생성하고 있습니다.');
+        const run = await api.post<DiagnosisRunResponse>('/api/v1/diagnosis/stateless/run', formData);
+        const completed = completeStatelessDiagnosis(run);
+        if (!completed) {
+          throw new Error('비상 진단 결과를 정리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        }
+        toast.success('비상 진단 모드로 결과를 생성했습니다. DB 복구 전까지 저장과 보고서 생성은 제한됩니다.', { id: loadingId });
+        return;
       }
 
       const uploadRes = await api.post<{ project_id: string; id: string }>('/api/v1/documents/upload', formData);
@@ -851,6 +913,7 @@ export function Diagnosis() {
     beginTimingPhase,
     clearActiveProjectContext,
     clearProjectQueryParam,
+    completeStatelessDiagnosis,
     failRunningTimingPhases,
     finishTimingPhase,
     diagnosisGoals,

@@ -110,6 +110,7 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
     const data = error.response.data as Record<string, unknown> | string | undefined;
     const rootRecord = extractRecord(data);
     const detailRecord = extractRecord(rootRecord?.detail);
+    const startupRecord = extractRecord(rootRecord?.startup);
     const responseHeaders = error.response.headers as Record<string, unknown> | undefined;
     const responseText = typeof data === 'string' ? data : null;
     const vercelError = coerceString(responseHeaders?.['x-vercel-error']);
@@ -118,7 +119,9 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
       coerceString(rootRecord?.code) ||
       coerceString(rootRecord?.error_code) ||
       coerceString(detailRecord?.code) ||
-      coerceString(detailRecord?.error_code);
+      coerceString(detailRecord?.error_code) ||
+      coerceString(startupRecord?.code) ||
+      coerceString(startupRecord?.error_code);
 
     if (!debugCode && (vercelError === 'FUNCTION_INVOCATION_FAILED' || responseText?.includes('FUNCTION_INVOCATION_FAILED'))) {
       debugCode = 'BACKEND_STARTUP_FAILED';
@@ -131,11 +134,14 @@ export function getApiErrorInfo(error: unknown, fallbackMessage: string): ApiErr
     const detailMessage =
       toDetailMessage(detailRecord) ||
       toDetailMessage(rootRecord?.detail) ||
+      toDetailMessage(startupRecord) ||
       toDetailMessage(rootRecord) ||
       toDetailMessage(data);
     const debugDetail =
       coerceString(detailRecord?.debug_detail) ||
       coerceString(rootRecord?.debug_detail) ||
+      coerceString(startupRecord?.debug_detail) ||
+      coerceString(startupRecord?.message) ||
       vercelError ||
       detailMessage;
     const mappedMessage = debugCode ? mapErrorCodeToUserMessage(debugCode) : null;

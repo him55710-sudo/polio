@@ -1,13 +1,18 @@
+from datetime import datetime
+from io import BytesIO
+import json
 import logging
 from pathlib import Path
 from urllib.parse import quote
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from unifoli_api.api.deps import get_current_user, get_db
+from unifoli_api.api.deps import _decode_firebase_claims, _decode_jwt_claims, get_current_user, get_db
 from unifoli_api.core.config import get_settings
 from unifoli_api.core.errors import (
     UniFoliErrorCode,
@@ -15,6 +20,7 @@ from unifoli_api.core.errors import (
     extract_error_code,
     extract_error_message,
 )
+from unifoli_api.core.llm import resolve_llm_runtime
 from unifoli_api.core.rate_limit import rate_limit
 from unifoli_api.core.security import ensure_resolved_within_base
 from unifoli_api.db.models.diagnosis_run import DiagnosisRun
@@ -54,7 +60,9 @@ from unifoli_api.services.diagnosis_service import (
     DiagnosisCitation,
     attach_policy_flags_to_run,
     build_guided_outline_plan,
+    build_grounded_diagnosis_result,
     detect_policy_flags,
+    evaluate_student_record,
     ensure_review_task_for_flags,
     latest_response_trace,
     serialize_citation,
@@ -69,6 +77,7 @@ from unifoli_shared.paths import get_export_root, resolve_project_path
 router = APIRouter()
 logger = logging.getLogger("unifoli.api.diagnosis")
 INTERNAL_REPORT_MODE = "premium"
+stateless_security = HTTPBearer(auto_error=False)
 
 
 def _normalize_report_mode(value: str | None) -> str:
@@ -81,6 +90,137 @@ def _normalize_report_mode(value: str | None) -> str:
     if normalized == "consultant":
         return "consultant"
     return INTERNAL_REPORT_MODE
+
+
+def _require_stateless_diagnosis_auth(
+    credentials: HTTPAuthorizationCredentials | None = Depends(stateless_security),
+) -> object | None:
+    settings = get_settings()
+    if credentials is None:
+        if settings.app_env == "local" and settings.auth_allow_local_dev_bypass:
+            return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=build_error_detail(
+                UniFoliErrorCode.AUTH_MISSING,
+                "Authentication is required for emergency diagnosis.",
+                stage="diagnosis_stateless_auth",
+            ),
+        )
+
+    token = credentials.credentials
+    try:
+        return _decode_jwt_claims(token, settings)
+    except HTTPException as jwt_error:
+        if not settings.auth_firebase_fallback_enabled:
+            raise
+        try:
+            return _decode_firebase_claims(token)
+        except HTTPException:
+            raise jwt_error
+
+
+def _parse_interest_universities(raw: str | None) -> list[str] | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(parsed, list):
+        return [str(item).strip() for item in parsed if str(item).strip()]
+    return None
+
+
+def _decode_text_bytes(data: bytes) -> str:
+    for encoding in ("utf-8", "utf-8-sig", "cp949", "euc-kr"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="ignore")
+
+
+def _extract_pdf_text(data: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(data))
+        if getattr(reader, "is_encrypted", False):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=build_error_detail(
+                    UniFoliErrorCode.ENCRYPTED_PDF,
+                    "Encrypted PDFs cannot be diagnosed. Upload an unlocked student record PDF.",
+                    stage="diagnosis_stateless_extract",
+                ),
+            )
+        return "\n\n".join((page.extract_text() or "").strip() for page in reader.pages)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=build_error_detail(
+                UniFoliErrorCode.MALFORMED_PDF,
+                "The uploaded PDF could not be read. Try exporting or scanning the PDF again.",
+                stage="diagnosis_stateless_extract",
+                debug_detail=str(exc),
+            ),
+        ) from exc
+
+
+async def _extract_stateless_upload_text(file: UploadFile) -> str:
+    settings = get_settings()
+    data = await file.read()
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=build_error_detail(
+                UniFoliErrorCode.NO_USABLE_TEXT,
+                "The uploaded file is empty.",
+                stage="diagnosis_stateless_extract",
+            ),
+        )
+    if len(data) > settings.upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=build_error_detail(
+                UniFoliErrorCode.INTERNAL_ERROR,
+                "The uploaded file is too large.",
+                stage="diagnosis_stateless_extract",
+                extra={"max_bytes": settings.upload_max_bytes},
+            ),
+        )
+
+    filename = (file.filename or "").lower()
+    content_type = (file.content_type or "").lower()
+    if filename.endswith(".pdf") or content_type == "application/pdf":
+        text = _extract_pdf_text(data)
+    elif filename.endswith((".txt", ".md")) or content_type.startswith("text/"):
+        text = _decode_text_bytes(data)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=build_error_detail(
+                UniFoliErrorCode.MALFORMED_PDF,
+                "Only PDF, TXT, and Markdown files can be used for emergency diagnosis.",
+                stage="diagnosis_stateless_extract",
+            ),
+        )
+
+    normalized = text.strip()
+    if len(normalized) < 80:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=build_error_detail(
+                UniFoliErrorCode.NO_USABLE_TEXT,
+                "The uploaded record does not contain enough readable text for diagnosis.",
+                stage="diagnosis_stateless_extract",
+            ),
+        )
+    return normalized[: settings.diagnosis_llm_max_input_chars]
 
 
 def _build_diagnosis_download_filename(user: User, *, student_name: str | None = None) -> str:
@@ -325,6 +465,81 @@ async def trigger_diagnosis(
         report_async_job_status=None,
         report_artifact_id=None,
         report_error_message=None,
+    )
+
+
+@router.post("/stateless/run", response_model=DiagnosisRunResponse)
+async def trigger_stateless_diagnosis(
+    file: UploadFile = File(...),
+    target_university: str | None = Form(default=None),
+    target_major: str | None = Form(default=None),
+    interest_universities: str | None = Form(default=None),
+    _: object | None = Depends(_require_stateless_diagnosis_auth),
+) -> DiagnosisRunResponse:
+    started_at = datetime.utcnow()
+    full_text = await _extract_stateless_upload_text(file)
+    interests = _parse_interest_universities(interest_universities)
+    resolution = resolve_llm_runtime(profile="standard", concern="diagnosis")
+    result = None
+
+    if resolution.client is not None:
+        result = await evaluate_student_record(
+            user_major=(target_major or "").strip() or "general inquiry",
+            masked_text=full_text,
+            target_university=(target_university or "").strip() or None,
+            target_major=(target_major or "").strip() or None,
+            interest_universities=interests,
+            project_title=(file.filename or "Student record diagnosis").strip(),
+            scope_key=f"stateless:{uuid4().hex}",
+            evidence_keys=[file.filename or "uploaded-file"],
+            record_completion_state="unknown",
+            bypass_cache=True,
+            raise_on_llm_failure=False,
+            llm_client=resolution.client,
+            llm_resolution=resolution,
+        )
+
+    if result is None:
+        result = build_grounded_diagnosis_result(
+            project_title=(file.filename or "Student record diagnosis").strip(),
+            target_major=(target_major or "").strip() or None,
+            target_university=(target_university or "").strip() or None,
+            interest_universities=interests,
+            document_count=1,
+            full_text=full_text,
+        )
+        result.fallback_used = True
+        result.fallback_reason = "stateless_no_llm_client"
+
+    result.requested_llm_provider = resolution.attempted_provider
+    result.requested_llm_model = resolution.attempted_model
+    result.actual_llm_provider = resolution.actual_provider or "deterministic_fallback"
+    result.actual_llm_model = resolution.actual_model or "grounded-fallback"
+    result.llm_profile_used = "standard"
+    if resolution.fallback_used and not result.fallback_used:
+        result.fallback_used = True
+        result.fallback_reason = resolution.fallback_reason or "llm_runtime_fallback"
+    result.processing_duration_ms = int(max(0.0, (datetime.utcnow() - started_at).total_seconds() * 1000.0))
+    result.record_completion_state = "unknown"
+
+    return DiagnosisRunResponse(
+        id=f"stateless-{uuid4().hex}",
+        project_id="demo",
+        status="COMPLETED",
+        status_message="Emergency diagnosis completed without database persistence.",
+        result_payload=DiagnosisResultPayload.model_validate(result.model_dump()),
+        error_message=None,
+        review_required=False,
+        policy_flags=[],
+        citations=[],
+        response_trace_id=None,
+        async_job_id=None,
+        async_job_status=None,
+        report_status="NOT_REQUESTED",
+        report_async_job_id=None,
+        report_async_job_status=None,
+        report_artifact_id=None,
+        report_error_message="Database is unavailable, so report artifacts are not generated in emergency diagnosis mode.",
     )
 
 

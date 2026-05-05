@@ -29,8 +29,11 @@ def classify_startup_failure(error: Exception | str | None) -> str:
         token in normalized
         for token in (
             "connection refused",
+            "connection failed",
             "could not connect",
             "could not translate host name",
+            "data transfer quota",
+            "exceeded the data transfer quota",
             "name or service not known",
             "timeout expired",
             "timed out",

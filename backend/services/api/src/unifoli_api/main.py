@@ -123,6 +123,7 @@ def _is_readiness_exempt_path(path: str, api_prefix: str) -> bool:
         f"{api_prefix}/health",
         f"{api_prefix}/readiness",
         f"{api_prefix}/runtime/capabilities",
+        f"{api_prefix}/diagnosis/stateless/run",
     }
     return path in exempt_suffixes
 
