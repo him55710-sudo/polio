@@ -310,11 +310,19 @@ def _sync_user_from_claims(db: Session, claims: AuthClaims) -> User:
 
 
 def _get_or_create_local_dev_user(db: Session) -> User:
+    settings = _get_auth_bootstrap_settings()
+    configured_admin_email = next((email.strip() for email in settings.admin_emails if email.strip()), "")
+    email = configured_admin_email or "test@example.com"
     claims = AuthClaims(
         subject="local:test-user-id",
-        email="test@example.com",
-        name="Local Test User",
-        raw={"sub": "local:test-user-id", "email": "test@example.com", "name": "Local Test User"},
+        email=email,
+        name="Local Admin User" if configured_admin_email else "Local Test User",
+        raw={
+            "sub": "local:test-user-id",
+            "email": email,
+            "name": "Local Admin User" if configured_admin_email else "Local Test User",
+            "admin": bool(configured_admin_email),
+        },
     )
     return _sync_user_from_claims(db, claims)
 

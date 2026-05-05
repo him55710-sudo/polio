@@ -632,16 +632,19 @@ function readStoredDiagnosisSnapshot(): StoredDiagnosisLike | null {
 
 function getApiResponseStatus(error: unknown): number | null {
   const response = (error as { response?: { status?: unknown } } | null)?.response;
-  return typeof response?.status === 'number' ? response.status : null;
-}
-
-function isNotFoundResponse(error: unknown): boolean {
-  return getApiResponseStatus(error) === 404;
+  if (typeof response?.status === 'number') return response.status;
+  const directStatus = (error as { status?: unknown } | null)?.status;
+  return typeof directStatus === 'number' ? directStatus : null;
 }
 
 function isStaleProjectResponse(error: unknown): boolean {
   const status = getApiResponseStatus(error);
   return status === 403 || status === 404;
+}
+
+function isRecoverableWorkshopSessionResponse(error: unknown): boolean {
+  const status = getApiResponseStatus(error);
+  return status === 404 || status === 409 || status === 410 || (typeof status === 'number' && status >= 500);
 }
 
 function resolveRecordAreaOption(areaId: RecordAreaId): RecordAreaOption {
@@ -2190,35 +2193,73 @@ export function Workshop() {
     }
     try {
       const archivedResume = archiveResumeId ? getArchiveItem(archiveResumeId) : null;
-      const sessions = await api.get<WorkshopSessionResponse[]>('/api/v1/workshops', {
-        params: { project_id: workshopProjectId },
-      });
-      const active = sessions.find(session => session.status !== 'completed');
       const preferredQuality = localStorage.getItem('uni_foli_quality_level');
       const createQuality: QualityLevel =
         preferredQuality === 'low' || preferredQuality === 'mid' || preferredQuality === 'high'
           ? preferredQuality
           : 'mid';
+
+      const createWorkshopSession = () =>
+        api.post<WorkshopStateResponse>('/api/v1/workshops', {
+          project_id: workshopProjectId,
+          quality_level: createQuality,
+        });
+
+      let sessions: WorkshopSessionResponse[] = [];
+      try {
+        sessions = await api.get<WorkshopSessionResponse[]>('/api/v1/workshops', {
+          params: { project_id: workshopProjectId },
+        });
+      } catch (sessionListError) {
+        if (isStaleProjectResponse(sessionListError)) {
+          throw sessionListError;
+        }
+        console.warn('Workshop session list failed; trying to create a fresh session.', {
+          project_id: workshopProjectId,
+          status: getApiResponseStatus(sessionListError),
+          error: sessionListError,
+        });
+      }
+
+      const active = sessions.find(session => session.status !== 'completed');
+      const loadActiveOrCreate = async (): Promise<WorkshopStateResponse> => {
+        if (!active) {
+          return createWorkshopSession();
+        }
+        try {
+          return await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`);
+        } catch (activeSessionError) {
+          if (!isRecoverableWorkshopSessionResponse(activeSessionError)) {
+            throw activeSessionError;
+          }
+          console.warn('Existing workshop session failed; creating a replacement session.', {
+            project_id: workshopProjectId,
+            workshop_id: active.id,
+            status: getApiResponseStatus(activeSessionError),
+            error: activeSessionError,
+          });
+          return createWorkshopSession();
+        }
+      };
+
       let state: WorkshopStateResponse;
       if (archivedResume?.workshopId) {
         try {
           state = await api.get<WorkshopStateResponse>(`/api/v1/workshops/${archivedResume.workshopId}`);
         } catch (archiveError) {
-          if (!isNotFoundResponse(archiveError)) throw archiveError;
-          state = active
-            ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`)
-            : await api.post<WorkshopStateResponse>('/api/v1/workshops', {
-                project_id: workshopProjectId,
-                quality_level: createQuality,
-              });
+          if (!isRecoverableWorkshopSessionResponse(archiveError) && !isStaleProjectResponse(archiveError)) {
+            throw archiveError;
+          }
+          console.warn('Archived workshop session is unavailable; falling back to active or fresh session.', {
+            project_id: workshopProjectId,
+            workshop_id: archivedResume.workshopId,
+            status: getApiResponseStatus(archiveError),
+            error: archiveError,
+          });
+          state = await loadActiveOrCreate();
         }
       } else {
-        state = active
-          ? await api.get<WorkshopStateResponse>(`/api/v1/workshops/${active.id}`)
-          : await api.post<WorkshopStateResponse>('/api/v1/workshops', {
-              project_id: workshopProjectId,
-              quality_level: createQuality,
-            });
+        state = await loadActiveOrCreate();
       }
 
       setWorkshopState(state);

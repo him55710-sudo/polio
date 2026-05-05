@@ -23,6 +23,7 @@ export function Layout() {
   const location = useLocation();
   const { user, isGuestSession, isAdmin, logout } = useAuth();
   const dbUser = useAuthStore(state => state.user);
+  const storeAuthenticated = useAuthStore(state => state.isAuthenticated);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(isDesktopViewport);
   const [isPartnershipModalOpen, setIsPartnershipModalOpen] = useState(false);
@@ -50,7 +51,9 @@ export function Layout() {
   const hasTargets = Boolean(dbUser?.target_university && dbUser?.target_major);
   const rankedGoals = useMemo(() => buildRankedGoals(dbUser, 6), [dbUser]);
   const primaryGoal = rankedGoals[0] ?? null;
-  const visibleNavSections = useMemo(() => getAppNavSections(isAdmin), [isAdmin]);
+  const hasSignedInIdentity = Boolean(user || storeAuthenticated || (dbUser && !dbUser.is_guest));
+  const shouldShowAdminMenu = isAdmin || (import.meta.env.DEV && hasSignedInIdentity && !isGuestSession);
+  const visibleNavSections = useMemo(() => getAppNavSections(shouldShowAdminMenu), [shouldShowAdminMenu]);
   const currentSection = useMemo(
     () => resolveCurrentNavSection(location.pathname, visibleNavSections),
     [location.pathname, visibleNavSections],
