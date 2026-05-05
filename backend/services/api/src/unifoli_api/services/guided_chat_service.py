@@ -25,6 +25,8 @@ from unifoli_api.services.guided_chat_context_service import GuidedChatContext, 
 from unifoli_api.services.guided_chat_state_service import load_guided_chat_state, save_guided_chat_state
 from unifoli_api.services.topic_search_service import get_topic_search_service
 from unifoli_api.services.prompt_registry import get_prompt_registry
+from unifoli_api.services.research_topic_scoring import score_topic_candidate
+from unifoli_api.services.topic_recommendation_prompt import build_topic_recommendation_prompt
 
 GUIDED_CHAT_GREETING = "안녕하세요! 어떤 흥미로운 주제로 보고서를 시작해볼까요? 😊"
 LIMITED_CONTEXT_NOTE = (
@@ -792,25 +794,14 @@ def _build_topic_prompt(*, subject: str, context: GuidedChatContext, starred_key
         "discussion": context.project_discussion_log[-3:],
     }
 
-    return (
-        f"[학습 목표 과목]\n{subject}\n\n"
-        "[학생부 및 관심사 데이터]\n"
-        f"{json.dumps(compact_payload, ensure_ascii=False)}\n\n"
-        "[참고할 만한 우수 탐구 사례 (Reference Library)]\n"
-        f"{reference_text}\n\n"
-        "[추천 주제 생성 지침]\n"
-        "위 '우수 탐구 사례'들의 수준과 설득력을 참고하여, 학생의 개별 맥락에 최적화된 독창적인 탐구 주제 씨앗을 제안하세요.\n"
-        "단순히 사례를 복사하지 말고, 학생의 구체적인 기록(record_flow_summary)과 목표 학과를 반영하여 변형/창조해야 합니다.\n\n"
-        "카테고리별로 최소 3개씩 생성하세요:\n"
-        f"1. [interest] 사용자 관심형: 학생의 키워드({', '.join(starred_keywords) or '없음'})와 기록을 연결한 주제\n"
-        f"2. [subject] 교과과목 심화형: '{subject}' 과목의 핵심 개념을 심화 탐구하는 주제\n"
-        f"3. [major] 목표학과 융합형: 목표 대학/전공 방향과 '{subject}' 과목을 유기적으로 엮은 주제\n\n"
-        "[출력 규칙]\n"
-        "- TopicSuggestionResponse JSON 형식으로만 응답하세요.\n"
-        f"- suggestions는 가능하면 {TOPIC_LLM_SEED_COUNT}개를 반환하세요. 서버가 고품질 라이브러리 후보를 합쳐 최종 300개로 확장합니다.\n"
-        "- suggestion_type 필드에는 'interest', 'subject', 'major' 중 하나를 넣으세요.\n"
-        "- 학생 기록 근거가 약하면 보수적으로 제안하고 evidence_gap_note를 작성하세요.\n"
+    return build_topic_recommendation_prompt(
+        subject=subject,
+        compact_payload=compact_payload,
+        reference_text=reference_text,
+        starred_keywords=starred_keywords,
+        seed_count=TOPIC_LLM_SEED_COUNT,
     )
+
 
 
 def _normalize_suggestions(
@@ -835,18 +826,42 @@ def _normalize_suggestions(
         if topic_id in seen_ids:
             topic_id = f"{topic_id}-{len(normalized) + 1}"
         seen_ids.add(topic_id)
+        scorecard = score_topic_candidate(
+            title=title,
+            record_summary=context.record_flow_summary,
+            target_major=str(context.known_target_info.get("target_major") or ""),
+            method_hint=item.experiment_or_survey_method,
+            social_hint=item.social_issue_connection,
+        )
+        scores = item.scores or scorecard.scores
+        total_score = item.total_score if item.total_score is not None else scorecard.total_score
 
         normalized.append(
             TopicSuggestion(
                 id=topic_id,
                 title=title,
+                one_line_summary=_normalize_optional_text(item.one_line_summary or item.why_fit_student),
                 why_fit_student=_clip_line(item.why_fit_student, _fallback_fit_message(context, subject)),
                 link_to_record_flow=_clip_line(item.link_to_record_flow, _fallback_record_link(context)),
                 link_to_target_major_or_university=_normalize_optional_text(
                     item.link_to_target_major_or_university or _fallback_target_link(context)
                 ),
                 novelty_point=_clip_line(item.novelty_point, _fallback_novelty_message(subject, len(normalized) + 1)),
-                caution_note=_normalize_optional_text(item.caution_note or _fallback_caution(context)),
+                caution_note=_normalize_optional_text(item.caution_note or item.risk_or_supplement or scorecard.risk_note or _fallback_caution(context)),
+                record_connection_point=_normalize_optional_text(item.record_connection_point or item.link_to_record_flow),
+                deepening_point=_normalize_optional_text(item.deepening_point or item.novelty_point),
+                career_connection_point=_normalize_optional_text(
+                    item.career_connection_point or item.link_to_target_major_or_university or _fallback_target_link(context)
+                ),
+                social_issue_connection=_normalize_optional_text(item.social_issue_connection),
+                experiment_or_survey_method=_normalize_optional_text(item.experiment_or_survey_method),
+                expected_output=_normalize_optional_text(item.expected_output),
+                outline_draft=item.outline_draft[:8],
+                admissions_strength=_normalize_optional_text(item.admissions_strength),
+                risk_or_supplement=_normalize_optional_text(item.risk_or_supplement or scorecard.risk_note),
+                scores=scores,
+                total_score=total_score,
+                topic_band=item.topic_band or scorecard.topic_band,  # type: ignore[arg-type]
                 suggestion_type=suggestion_type,
                 is_starred=item.is_starred,
             )
@@ -899,10 +914,19 @@ def _build_fallback_topics(
             suggestion_type = "subject"
         subject_hint = str(item.get("subject") or subject)
         major_hint = str(item.get("major") or target_hint or "목표 전공")
+        method_hint = "자료 조사와 비교 분석으로 검증할 수 있는 탐구 설계"
+        scorecard = score_topic_candidate(
+            title=title,
+            record_summary=record_hint,
+            target_major=major_hint,
+            method_hint=method_hint,
+            social_hint=str(item.get("reason") or ""),
+        )
         result.append(
             TopicSuggestion(
                 id=topic_id,
                 title=title,
+                one_line_summary=_clip_line(str(item.get("reason") or ""), _fallback_fit_message(context, subject), 140),
                 why_fit_student=_clip_line(
                     str(item.get("reason") or ""),
                     _fallback_fit_message(context, subject),
@@ -914,6 +938,18 @@ def _build_fallback_topics(
                 ),
                 novelty_point=f"{subject_hint}의 개념을 {major_hint} 맥락으로 옮겨 실제 자료, 한계, 개선안을 함께 다룹니다.",
                 caution_note=_fallback_caution(context),
+                record_connection_point=_clip_line(record_hint, "record connection needs review", 180),
+                deepening_point=f"Extend {subject_hint} into a measurable inquiry with comparison and interpretation.",
+                career_connection_point=_normalize_optional_text(_fallback_target_link(context) or major_hint),
+                social_issue_connection=_normalize_optional_text(str(item.get("reason") or "")),
+                experiment_or_survey_method=method_hint,
+                expected_output="탐구 보고서, 비교표, 분석 그래프, 후속 탐구 질문",
+                outline_draft=["문제의식", "이론적 배경", "탐구 방법", "결과 분석", "의의와 한계"],
+                admissions_strength="문제의식, 전공 적합성, 탐구 설계력을 함께 보여줄 수 있습니다.",
+                risk_or_supplement=scorecard.risk_note or _fallback_caution(context),
+                scores=scorecard.scores,
+                total_score=scorecard.total_score,
+                topic_band=scorecard.topic_band,  # type: ignore[arg-type]
                 suggestion_type=suggestion_type,  # type: ignore[arg-type]
             )
         )

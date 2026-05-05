@@ -31,6 +31,7 @@ interface ChatBubbleProps {
   onUseResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onRefineResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
   onExcludeResearchCandidate?: (candidateId: string, message: WorkshopChatMessage) => void | Promise<void>;
+  onOpenProfessionalEditor?: (patch: ReviewPatch, message: WorkshopChatMessage) => void | Promise<void>;
   onStarToggle?: (topicId: string, isStarred: boolean, label: string) => void | Promise<void>;
   isGuidedActionLoading?: boolean;
   selectingTopicId?: string | null;
@@ -115,6 +116,7 @@ export const ChatBubble = memo(function ChatBubble({
   onUseResearchCandidate,
   onRefineResearchCandidate,
   onExcludeResearchCandidate,
+  onOpenProfessionalEditor,
   onStarToggle: _onStarToggleProp, // 부모의 prop은 무시 (훅 사용)
   isGuidedActionLoading,
   selectingTopicId,
@@ -171,6 +173,7 @@ export const ChatBubble = memo(function ChatBubble({
             onApply={(patch) => void onApplyPatch(patch, message)}
             onReject={(patch) => void onRejectPatch(patch, message)}
             onRequestRewrite={(patch, tone) => void onRequestPatchRewrite?.(patch, tone, message)}
+            onOpenProfessionalEditor={(patch) => void onOpenProfessionalEditor?.(patch, message)}
           />
         ) : null}
 

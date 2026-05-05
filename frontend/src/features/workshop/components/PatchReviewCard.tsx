@@ -24,6 +24,7 @@ interface PatchReviewCardProps {
   onReject: (patch: ReviewablePatch) => void;
   onRequestRewrite?: (patch: ReviewablePatch, tone: 'simpler' | 'professional' | 'custom') => void;
   onEditBeforeApply?: (patch: ReviewablePatch) => void;
+  onOpenProfessionalEditor?: (patch: ReviewablePatch) => void;
 }
 
 export function PatchReviewCard({
@@ -36,6 +37,7 @@ export function PatchReviewCard({
   onReject,
   onRequestRewrite,
   onEditBeforeApply,
+  onOpenProfessionalEditor,
 }: PatchReviewCardProps) {
   const normalizedPatch = useMemo(() => normalizePatchForReview(patch), [patch]);
   const preview = useMemo(() => formatPatchPreview(patch), [patch]);
@@ -142,6 +144,12 @@ export function PatchReviewCard({
           <Edit3 size={14} />
           수정해서 반영
         </Button>
+        {onOpenProfessionalEditor ? (
+          <Button className="sm:col-span-2" size="sm" variant="secondary" onClick={() => onOpenProfessionalEditor(patch)} disabled={disabled}>
+            <FileText size={14} />
+            전문 편집기로 열기
+          </Button>
+        ) : null}
         <Button className="sm:col-span-2" size="sm" variant="ghost" onClick={() => onReject(patch)} disabled={disabled}>
           <X size={14} />
           거절

@@ -6,6 +6,16 @@ import { getChoiceValue, isChoiceBusy, isChoiceDisabled } from '../utils/guidedC
 export interface ChoiceCardOption extends GuidedChoiceOption {
   suggestion_type?: 'interest' | 'subject' | 'major' | null;
   is_starred?: boolean;
+  total_score?: number | null;
+  topic_band?: 'safe' | 'challenging' | null;
+  scores?: Record<string, number>;
+  record_connection_point?: string | null;
+  deepening_point?: string | null;
+  career_connection_point?: string | null;
+  social_issue_connection?: string | null;
+  experiment_or_survey_method?: string | null;
+  admissions_strength?: string | null;
+  risk_or_supplement?: string | null;
 }
 
 interface ChoiceCardGroupProps {
@@ -129,6 +139,31 @@ export function ChoiceCardGroup({
                       {option.description ? (
                         <p className="mt-1.5 text-[13px] font-medium leading-relaxed text-slate-500">
                           {option.description}
+                        </p>
+                      ) : null}
+                      {option.total_score ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-black text-white">
+                            score {option.total_score}
+                          </span>
+                          {option.topic_band ? (
+                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                              {option.topic_band === 'challenging' ? '도전형' : '안전형'}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {resolvedGroupId === 'topic-selection' ? (
+                        <dl className="mt-3 grid gap-1.5 text-[11px] leading-5 text-slate-500 sm:grid-cols-2">
+                          {option.record_connection_point ? <div><dt className="font-black text-slate-700">연결</dt><dd>{option.record_connection_point}</dd></div> : null}
+                          {option.deepening_point ? <div><dt className="font-black text-slate-700">심화</dt><dd>{option.deepening_point}</dd></div> : null}
+                          {option.experiment_or_survey_method ? <div><dt className="font-black text-slate-700">검증</dt><dd>{option.experiment_or_survey_method}</dd></div> : null}
+                          {option.admissions_strength ? <div><dt className="font-black text-slate-700">강점</dt><dd>{option.admissions_strength}</dd></div> : null}
+                        </dl>
+                      ) : null}
+                      {option.risk_or_supplement ? (
+                        <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold leading-5 text-amber-900">
+                          보완점: {option.risk_or_supplement}
                         </p>
                       ) : null}
                     </div>

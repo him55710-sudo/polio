@@ -30,6 +30,21 @@ import { fetchWithAuth } from '../lib/requestAuth';
 import type { DiagnosisResultPayload, DiagnosisRunResponse } from '../types/api';
 import { TiptapEditor, type TiptapEditorHandle } from '../components/editor/TiptapEditor';
 import { ExportModal } from '../components/editor/ExportModal';
+import { CitationPanel } from '../components/editor/CitationPanel';
+import {
+  DOCUMENT_TEMPLATE_REGISTRY,
+  buildTemplateMarkdown,
+  convertTemplatePreservingContent,
+  getDocumentTemplate,
+} from '../components/editor/templates/documentTemplates';
+import {
+  createDocumentModel,
+  markSectionsGenerated,
+  type CitationStyleId,
+  type UniFoliCitationSource,
+  type UniFoliDocumentModel,
+  type UniFoliDocumentTemplateId,
+} from '../components/editor/model/documentModel';
 import { PrimaryButton, SecondaryButton, StatusBadge } from '../components/primitives';
 
 interface Draft {
@@ -46,6 +61,9 @@ interface EditorLocationState {
   archiveId?: string;
   archiveTitle?: string;
   archiveSubject?: string;
+  reportTemplateId?: UniFoliDocumentTemplateId;
+  openMode?: 'section' | 'full';
+  sectionId?: string;
 }
 
 interface EditorInsights {
@@ -295,6 +313,30 @@ function getInitialContent(draft: Draft | null, seedMarkdown: string): JSONConte
   }
 }
 
+function parseDraftContentJson(contentJson: string | null): JSONContent | null {
+  if (!contentJson) return null;
+  try {
+    return JSON.parse(contentJson) as JSONContent;
+  } catch {
+    return null;
+  }
+}
+
+function readLocalDocumentModel(key: string): UniFoliDocumentModel | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as UniFoliDocumentModel) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDocumentModel(key: string, model: UniFoliDocumentModel) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(model));
+}
+
 export function DocumentEditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -307,8 +349,13 @@ export function DocumentEditorPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isAssistantRunning, setIsAssistantRunning] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [editorVersion, setEditorVersion] = useState(0);
+  const [templateId, setTemplateId] = useState<UniFoliDocumentTemplateId>('basic');
+  const [citations, setCitations] = useState<UniFoliCitationSource[]>([]);
+  const [citationStyle, setCitationStyle] = useState<CitationStyleId>('korean_report');
+  const [documentMarkdownSnapshot, setDocumentMarkdownSnapshot] = useState('');
   const [assistantPrompt, setAssistantPrompt] = useState(
     '이 초안에서 학생부 근거가 약한 부분과 다음에 써야 할 문단을 구체적으로 제안해줘.',
   );
@@ -326,6 +373,21 @@ export function DocumentEditorPage() {
   const archiveSubject = editorLocationState.archiveSubject || null;
   const seedMarkdown = (editorLocationState.seedMarkdown || '').trim();
   const isLocalMode = !projectId || projectId === 'demo' || projectId === 'undefined';
+  const localDocumentModelKey = useMemo(
+    () => `unifoli:document-model:${projectId || 'demo'}:${archiveId || 'draft'}`,
+    [archiveId, projectId],
+  );
+
+  useEffect(() => {
+    if (editorLocationState.reportTemplateId) {
+      setTemplateId(editorLocationState.reportTemplateId);
+      return;
+    }
+    const stored = readLocalDocumentModel(localDocumentModelKey);
+    if (stored?.templateId) setTemplateId(stored.templateId);
+    if (stored?.citations) setCitations(stored.citations);
+    if (stored?.bibliographyStyle) setCitationStyle(stored.bibliographyStyle);
+  }, [editorLocationState.reportTemplateId, localDocumentModelKey]);
 
   const fetchLatestDiagnosis = useCallback(async (): Promise<DiagnosisRunResponse | null> => {
     if (!projectId || isLocalMode) return null;
@@ -346,20 +408,25 @@ export function DocumentEditorPage() {
 
       if (isLocalMode) {
         const archivedItem = archiveId ? getArchiveItem(archiveId) : null;
+        const storedModel = readLocalDocumentModel(localDocumentModelKey);
         const archivedMarkdown = archivedItem ? resolveArchiveDownloadContent(archivedItem) : '';
-        const localMarkdown = archivedMarkdown || seedMarkdown || buildLocalTemplate();
+        const localMarkdown = storedModel?.contentMarkdown || archivedMarkdown || seedMarkdown || buildTemplateMarkdown(templateId, archiveTitle || undefined) || buildLocalTemplate();
         const localTitle = deriveArchiveTitle({
           contentMarkdown: localMarkdown,
           structuredDraft: archivedItem?.structuredDraft,
           fallbackTitle: archiveTitle || archivedItem?.title || LOCAL_DRAFT_TITLE,
           subject: archiveSubject || archivedItem?.subject,
         });
+        if (storedModel?.templateId) setTemplateId(storedModel.templateId);
+        if (storedModel?.citations) setCitations(storedModel.citations);
+        if (storedModel?.bibliographyStyle) setCitationStyle(storedModel.bibliographyStyle);
+        setDocumentMarkdownSnapshot(localMarkdown);
         setDraft({
           id: archiveId || 'local',
           project_id: projectId ?? 'demo',
           title: localTitle,
           content_markdown: localMarkdown,
-          content_json: null,
+          content_json: storedModel?.contentJson ? JSON.stringify(storedModel.contentJson) : null,
           status: 'in_progress',
         });
         setIsLoading(false);
@@ -386,8 +453,10 @@ export function DocumentEditorPage() {
               status: 'in_progress',
             });
             setDraft(updated);
+            setDocumentMarkdownSnapshot(generatedMarkdown);
           } else {
             setDraft(selected);
+            setDocumentMarkdownSnapshot(selected.content_markdown || generatedMarkdown);
           }
         } else {
           const newDraft = await api.post<Draft>(`/api/v1/projects/${projectId}/drafts`, {
@@ -396,17 +465,20 @@ export function DocumentEditorPage() {
             content_json: null,
           });
           setDraft(newDraft);
+          setDocumentMarkdownSnapshot(generatedMarkdown);
         }
       } catch (err) {
         console.error('Load draft failed:', err);
+        const fallbackMarkdown = seedMarkdown || buildLocalTemplate();
         setDraft({
           id: 'local',
           project_id: projectId ?? 'demo',
           title: LOCAL_DRAFT_TITLE,
-          content_markdown: seedMarkdown || buildLocalTemplate(),
+          content_markdown: fallbackMarkdown,
           content_json: null,
           status: 'in_progress',
         });
+        setDocumentMarkdownSnapshot(fallbackMarkdown);
         toast.error('문서 초안을 불러오지 못해 임시 편집 모드로 전환했습니다.');
       } finally {
         setIsLoading(false);
@@ -414,7 +486,7 @@ export function DocumentEditorPage() {
     }
 
     void load();
-  }, [archiveId, archiveSubject, archiveTitle, fetchLatestDiagnosis, isLocalMode, projectId, seedMarkdown]);
+  }, [archiveId, archiveSubject, archiveTitle, fetchLatestDiagnosis, isLocalMode, localDocumentModelKey, projectId, seedMarkdown, templateId]);
 
   const flushSave = useCallback(async () => {
     const content = pendingContentRef.current ?? editorRef.current?.getJSON();
@@ -428,6 +500,7 @@ export function DocumentEditorPage() {
     }
 
     setIsSaving(true);
+    setSaveError(null);
     try {
       const updated = await api.patch<Draft>(`/api/v1/projects/${projectId}/drafts/${draft.id}`, {
         content_json: JSON.stringify(content),
@@ -439,6 +512,7 @@ export function DocumentEditorPage() {
       pendingContentRef.current = null;
     } catch (err) {
       console.error('Auto-save failed:', err);
+      setSaveError('자동 저장 실패');
       toast.error('자동 저장에 실패했습니다. 잠시 후 다시 저장해 주세요.');
     } finally {
       setIsSaving(false);
@@ -472,6 +546,19 @@ export function DocumentEditorPage() {
         chatMessages: previous?.chatMessages,
       };
       saveArchiveItem(item);
+      const template = getDocumentTemplate(templateId);
+      const model = createDocumentModel({
+        id,
+        title,
+        templateId,
+        contentMarkdown: markdown,
+        contentJson: json || null,
+        sections: template.sections,
+        citations,
+        bibliographyStyle: citationStyle,
+      });
+      model.sections = markSectionsGenerated(model.sections, markdown);
+      writeLocalDocumentModel(localDocumentModelKey, model);
       setDraft((current) =>
         current
           ? {
@@ -484,18 +571,42 @@ export function DocumentEditorPage() {
           : current,
       );
       setLastSaved(new Date());
+      setSaveError(null);
+      setDocumentMarkdownSnapshot(markdown);
       return item;
     },
-    [archiveId, archiveSubject, archiveTitle, draft, isLocalMode],
+    [archiveId, archiveSubject, archiveTitle, citationStyle, citations, draft, isLocalMode, localDocumentModelKey, templateId],
   );
+
+  useEffect(() => {
+    if (!draft) return;
+    const markdown = documentMarkdownSnapshot || editorRef.current?.getMarkdown() || draft.content_markdown || '';
+    const json = editorRef.current?.getJSON() || parseDraftContentJson(draft.content_json);
+    const template = getDocumentTemplate(templateId);
+    const model = createDocumentModel({
+      id: draft.id,
+      title: draft.title,
+      templateId,
+      contentMarkdown: markdown,
+      contentJson: json,
+      sections: template.sections,
+      citations,
+      bibliographyStyle: citationStyle,
+    });
+    model.sections = markSectionsGenerated(model.sections, markdown);
+    writeLocalDocumentModel(localDocumentModelKey, model);
+  }, [citationStyle, citations, documentMarkdownSnapshot, draft, localDocumentModelKey, templateId]);
 
   const handleEditorUpdate = useCallback(
     (json: JSONContent) => {
       pendingContentRef.current = json;
+      setDocumentMarkdownSnapshot(editorRef.current?.getMarkdown() || '');
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
 
       if (isLocalMode) {
-        setLastSaved(new Date());
+        saveTimerRef.current = window.setTimeout(() => {
+          saveLocalArchiveSnapshot();
+        }, 1000);
         return;
       }
 
@@ -503,7 +614,7 @@ export function DocumentEditorPage() {
         void flushSave();
       }, 2000);
     },
-    [flushSave, isLocalMode],
+    [flushSave, isLocalMode, saveLocalArchiveSnapshot],
   );
 
   const handleManualSave = useCallback(async () => {
@@ -553,6 +664,49 @@ export function DocumentEditorPage() {
       setIsRegenerating(false);
     }
   }, [draft, fetchLatestDiagnosis, isLocalMode, projectId]);
+
+  const handleTemplateChange = useCallback(
+    (nextTemplateId: UniFoliDocumentTemplateId) => {
+      if (nextTemplateId === templateId) return;
+      const currentMarkdown = editorRef.current?.getMarkdown() || documentMarkdownSnapshot || draft?.content_markdown || '';
+      const converted = convertTemplatePreservingContent({
+        fromMarkdown: currentMarkdown,
+        toTemplateId: nextTemplateId,
+        title: draft?.title,
+      });
+      editorRef.current?.setContent(converted);
+      setTemplateId(nextTemplateId);
+      setDocumentMarkdownSnapshot(converted);
+      const json = editorRef.current?.getJSON();
+      if (json) pendingContentRef.current = json;
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = window.setTimeout(() => {
+        if (isLocalMode) {
+          saveLocalArchiveSnapshot(converted);
+        } else {
+          void flushSave();
+        }
+      }, 800);
+      toast.success('보고서 양식을 전환했습니다. 기존 내용은 보존된 초안 섹션에 남겼습니다.');
+    },
+    [documentMarkdownSnapshot, draft?.content_markdown, draft?.title, flushSave, isLocalMode, saveLocalArchiveSnapshot, templateId],
+  );
+
+  const handleInsertCitation = useCallback((citationText: string, source: UniFoliCitationSource) => {
+    editorRef.current?.insertCitationText(citationText);
+    setCitations((current) =>
+      current.map((item) => (item.id === source.id ? { ...item, verificationStatus: item.verificationStatus || 'needs_verification' } : item)),
+    );
+    toast.success('선택한 위치에 인용을 삽입했습니다.');
+  }, []);
+
+  const handleUpdateBibliography = useCallback((markdown: string) => {
+    editorRef.current?.updateBibliographyMarkdown(markdown);
+    setDocumentMarkdownSnapshot(editorRef.current?.getMarkdown() || documentMarkdownSnapshot);
+    const json = editorRef.current?.getJSON();
+    if (json) pendingContentRef.current = json;
+    toast.success('참고문헌 섹션을 업데이트했습니다.');
+  }, [documentMarkdownSnapshot]);
 
   const handleAskAssistant = useCallback(async () => {
     const message = assistantPrompt.trim();
@@ -673,13 +827,15 @@ export function DocumentEditorPage() {
     [latestDiagnosis?.result_payload],
   );
 
-  const editorStatus = isSaving
-    ? { tone: 'active' as const, label: '저장 중' }
-    : lastSaved
-      ? { tone: 'success' as const, label: `${lastSaved.toLocaleTimeString('ko-KR')} 저장됨` }
-      : isLocalMode
-        ? { tone: 'warning' as const, label: '임시 편집' }
-        : { tone: 'neutral' as const, label: '자동 저장 켜짐' };
+  const editorStatus = saveError
+    ? { tone: 'warning' as const, label: saveError }
+    : isSaving
+      ? { tone: 'active' as const, label: '저장 중' }
+      : lastSaved
+        ? { tone: 'success' as const, label: `${lastSaved.toLocaleTimeString('ko-KR')} 저장됨` }
+        : isLocalMode
+          ? { tone: 'warning' as const, label: '임시 편집' }
+          : { tone: 'neutral' as const, label: '자동 저장 대기' };
 
   if (isLoading) {
     return (
@@ -730,6 +886,18 @@ export function DocumentEditorPage() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <select
+            value={templateId}
+            onChange={(event) => handleTemplateChange(event.target.value as UniFoliDocumentTemplateId)}
+            className="hidden h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none transition focus:border-violet-300 focus:ring-4 focus:ring-violet-100 md:block"
+            title="보고서 양식"
+          >
+            {Object.values(DOCUMENT_TEMPLATE_REGISTRY).map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label}
+              </option>
+            ))}
+          </select>
           {!isLocalMode ? (
             <SecondaryButton
               size="sm"
@@ -759,6 +927,7 @@ export function DocumentEditorPage() {
             ref={editorRef}
             initialContent={initialContent}
             onJsonUpdate={handleEditorUpdate}
+            onImageError={(message) => toast.error(message)}
           />
         </section>
 
@@ -867,6 +1036,18 @@ export function DocumentEditorPage() {
                   현재 초안과 진단 근거를 함께 보내므로, 일반론보다 문서에 바로 붙일 수 있는 제안을 받을 수 있습니다.
                 </p>
               )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <CitationPanel
+                sources={citations}
+                citationStyle={citationStyle}
+                documentMarkdown={documentMarkdownSnapshot || draft?.content_markdown || ''}
+                onCitationStyleChange={setCitationStyle}
+                onSourcesChange={setCitations}
+                onInsertCitation={handleInsertCitation}
+                onUpdateBibliography={handleUpdateBibliography}
+              />
             </div>
           </div>
         </aside>

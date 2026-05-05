@@ -49,11 +49,24 @@ class GuidedChatStartResponse(BaseModel):
 class TopicSuggestion(BaseModel):
     id: str
     title: str
+    one_line_summary: str | None = None
     why_fit_student: str
     link_to_record_flow: str
     link_to_target_major_or_university: str | None = None
     novelty_point: str | None = None
     caution_note: str | None = None
+    record_connection_point: str | None = None
+    deepening_point: str | None = None
+    career_connection_point: str | None = None
+    social_issue_connection: str | None = None
+    experiment_or_survey_method: str | None = None
+    expected_output: str | None = None
+    outline_draft: list[str] = Field(default_factory=list)
+    admissions_strength: str | None = None
+    risk_or_supplement: str | None = None
+    scores: dict[str, int] = Field(default_factory=dict)
+    total_score: int | None = None
+    topic_band: Literal["safe", "challenging"] | None = None
     suggestion_type: Literal["interest", "subject", "major"] | None = None
     is_starred: bool = False
 

@@ -12,7 +12,6 @@ import { Table } from '@tiptap/extension-table';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TableRow from '@tiptap/extension-table-row';
-import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -21,9 +20,13 @@ import { Minus, Plus } from 'lucide-react';
 
 import { FontSize } from './extensions/FontSize';
 import { LineHeight } from './extensions/LineHeight';
+import { Indent } from './extensions/Indent';
+import { PageBreak } from './extensions/PageBreak';
+import { ReportImage } from './extensions/ReportImage';
 import { EditorToolbar } from './EditorToolbar';
 import { A4Container } from './A4Container';
 import { getResearchReportTemplate } from './templates/researchReport';
+import { tableTemplateToTiptapContent, type ReportTableTemplate } from './tableTemplates';
 import { sourceRecordToCitationText } from '../../features/workshop/adapters/sourceAdapter';
 import type {
   ContentPatch,
@@ -51,8 +54,13 @@ export interface TiptapEditorHandle {
   focusSection: (sectionId: UniFoliReportSectionId) => void;
   insertMathBlock: (block: MathContentBlock) => void;
   insertFigureBlock: (block: FigureContentBlock) => void;
+  insertImageFile: (file: File, options?: { alt?: string; caption?: string }) => void;
+  insertImageFromUrl: (src: string, options?: { alt?: string; caption?: string; alignment?: 'left' | 'center' | 'right' }) => void;
+  insertCitationText: (text: string) => void;
+  insertTableTemplate: (template: ReportTableTemplate) => void;
   updateCoverMetadata: (metadata: ReportMetadata) => void;
   updateReferences: (sources: SourceRecord[]) => void;
+  updateBibliographyMarkdown: (markdown: string) => void;
 }
 
 interface TiptapEditorProps {
@@ -60,6 +68,7 @@ interface TiptapEditorProps {
   onUpdate?: (json: JSONContent, html: string, text: string) => void;
   onJsonUpdate?: (json: JSONContent) => void;
   onHtmlUpdate?: (html: string) => void;
+  onImageError?: (message: string) => void;
   readOnly?: boolean;
 }
 
@@ -151,44 +160,45 @@ function markdownStringToHtml(markdown: string): string {
   return blocks.join('');
 }
 
+
 const SECTION_HEADING_LABELS: Record<UniFoliReportSectionId, string> = {
-  cover: '표지',
-  table_of_contents: '목차',
-  motivation: 'I. 탐구 동기 및 목적',
-  research_purpose: '탐구 목적',
-  research_question: '탐구 질문',
-  background_theory: 'II. 이론적 배경',
-  prior_research: '선행연구',
-  research_method: 'III. 탐구 방법',
-  research_process: '탐구 과정',
-  data_analysis: '데이터 분석',
-  result: 'IV. 탐구 결과',
-  conclusion: 'V. 결론 및 제언',
-  limitation: '한계점',
-  future_research: '후속 탐구',
-  student_record_connection: '학생부 기록 연결',
-  references: '참고 문헌',
-  appendix: '부록',
+  cover: 'Cover',
+  table_of_contents: 'Table of contents',
+  motivation: 'I. Motivation and purpose',
+  research_purpose: 'Research purpose',
+  research_question: 'Research question',
+  background_theory: 'II. Background theory',
+  prior_research: 'Prior research',
+  research_method: 'III. Research method',
+  research_process: 'Research process',
+  data_analysis: 'Data analysis',
+  result: 'IV. Results',
+  conclusion: 'V. Conclusion',
+  limitation: 'Limitations',
+  future_research: 'Future research',
+  student_record_connection: 'Student record connection',
+  references: 'References',
+  appendix: 'Appendix',
 };
 
 const SECTION_HEADING_KEYWORDS: Record<UniFoliReportSectionId, string[]> = {
-  cover: ['표지', 'title', 'cover', '탐구 보고서'],
-  table_of_contents: ['목차', 'table of contents'],
-  motivation: ['탐구 동기', '동기 및 목적', 'motivation', 'introduction'],
-  research_purpose: ['탐구 목적', 'purpose'],
-  research_question: ['탐구 질문', 'research question', '핵심 질문'],
-  background_theory: ['이론적 배경', 'background', 'theory'],
-  prior_research: ['선행연구', 'prior research'],
-  research_method: ['탐구 방법', 'method'],
-  research_process: ['탐구 과정', 'process'],
-  data_analysis: ['데이터 분석', 'data analysis'],
-  result: ['탐구 결과', 'result'],
-  conclusion: ['결론', '제언', 'conclusion'],
-  limitation: ['한계', 'limitation'],
-  future_research: ['후속 탐구', 'future research', 'next step'],
-  student_record_connection: ['학생부 기록', '생기부 기반', 'record connection'],
-  references: ['참고 문헌', 'references', 'bibliography'],
-  appendix: ['부록', 'appendix'],
+  cover: ['cover', 'title', 'report'],
+  table_of_contents: ['table of contents', 'contents'],
+  motivation: ['motivation', 'purpose', 'introduction'],
+  research_purpose: ['research purpose', 'purpose'],
+  research_question: ['research question', 'question'],
+  background_theory: ['background', 'theory'],
+  prior_research: ['prior research', 'previous study'],
+  research_method: ['research method', 'method'],
+  research_process: ['research process', 'process'],
+  data_analysis: ['data analysis', 'analysis'],
+  result: ['result', 'results'],
+  conclusion: ['conclusion'],
+  limitation: ['limitation', 'limitations'],
+  future_research: ['future research', 'next step'],
+  student_record_connection: ['student record', 'record connection'],
+  references: ['references', 'bibliography'],
+  appendix: ['appendix'],
 };
 
 function reportContentBlocksToTiptapNodes(blocks: ReportContentBlock[]): JSONContent[] {
@@ -284,6 +294,17 @@ function sourceRecordsToReferenceNodes(sources: SourceRecord[]): JSONContent[] {
 
 function jsonContentToMarkdown(node: JSONContent | null | undefined): string {
   if (!node) return '';
+  if (node.type === 'table') {
+    const rows = (node.content || []).map((row) =>
+      (row.content || []).map((cell) => jsonContentToMarkdown(cell).replace(/\n+/g, ' ').trim()).join(' | '),
+    );
+    if (!rows.length) return '';
+    const separator = rows[0].split('|').map(() => '---').join(' | ');
+    return [`| ${rows[0]} |`, `| ${separator} |`, ...rows.slice(1).map((row) => `| ${row} |`)].join('\n');
+  }
+  if (node.type === 'tableRow' || node.type === 'tableCell' || node.type === 'tableHeader') {
+    return (node.content || []).map(jsonContentToMarkdown).filter(Boolean).join(' ');
+  }
   const children = (node.content || []).map(jsonContentToMarkdown).filter(Boolean);
   const text = node.text || children.join('\n\n');
   switch (node.type) {
@@ -310,6 +331,8 @@ function jsonContentToMarkdown(node: JSONContent | null | undefined): string {
       return `![${node.attrs?.alt || ''}](${node.attrs?.src || ''})`;
     case 'horizontalRule':
       return '---';
+    case 'pageBreak':
+      return '<div style="page-break-after: always"></div>';
     case 'text':
       return node.text || '';
     default:
@@ -406,11 +429,12 @@ export function normalizeInitialStringContent(value: string): string {
 }
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
-  function TiptapEditor({ initialContent, onUpdate, onJsonUpdate, onHtmlUpdate, readOnly = false }, ref) {
+  function TiptapEditor({ initialContent, onUpdate, onJsonUpdate, onHtmlUpdate, onImageError, readOnly = false }, ref) {
     const contentRef = useRef<JSONContent | null>(null);
     const [zoom, setZoom] = useState(100);
     const [isResizing, setIsResizing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const editorInstanceRef = useRef<Editor | null>(null);
 
     // Auto-scale on mount and resize to fit container if too narrow
     useEffect(() => {
@@ -431,16 +455,56 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const handleImageUpload = useCallback((file: File, editorInstance: Editor) => {
+    const insertImageFromUrl = useCallback((
+      src: string,
+      options: { alt?: string; caption?: string; alignment?: 'left' | 'center' | 'right' } = {},
+    ) => {
+      const activeEditor = editorInstanceRef.current;
+      if (!activeEditor || !src) return;
+      const caption = options.caption || '';
+      activeEditor
+        .chain()
+        .focus()
+        .setImage({
+          src,
+          alt: options.alt || caption || 'report image',
+          caption,
+          alignment: options.alignment || 'center',
+          uploadedAt: new Date().toISOString(),
+        } as any)
+        .run();
+      if (caption) {
+        activeEditor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'paragraph',
+            attrs: { textAlign: 'center' },
+            content: [{ type: 'text', text: `그림. ${caption}` }],
+          })
+          .run();
+      }
+    }, []);
+
+    const insertImageFile = useCallback((file: File, options: { alt?: string; caption?: string } = {}) => {
+      if (!file.type.startsWith('image/')) {
+        onImageError?.('이미지 파일만 삽입할 수 있습니다.');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (e) => {
         const src = e.target?.result as string;
         if (src) {
-          editorInstance.chain().focus().setImage({ src }).run();
+          insertImageFromUrl(src, {
+            alt: options.alt || file.name,
+            caption: options.caption || '',
+            alignment: 'center',
+          });
         }
       };
+      reader.onerror = () => onImageError?.('이미지를 읽는 중 문제가 발생했습니다.');
       reader.readAsDataURL(file);
-    }, []);
+    }, [insertImageFromUrl, onImageError]);
 
     // Resolve initial content — if it's a string (markdown/html), 
     // use it directly (Tiptap will parse HTML). If null, use template.
@@ -471,15 +535,17 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         FontFamily.configure({ types: ['textStyle'] }),
         FontSize,
         LineHeight,
+        Indent,
         TextAlign.configure({ types: ['heading', 'paragraph'] }),
         Table.configure({ resizable: true }),
         TableRow,
         TableHeader,
         TableCell,
-        Image.configure({ inline: false, allowBase64: true }),
+        ReportImage.configure({ inline: false, allowBase64: true }),
         Link.configure({ openOnClick: false }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        PageBreak,
         Placeholder.configure({
           placeholder: ({ node }) => {
             if (node.type.name === 'heading') return '제목을 입력하세요...';
@@ -520,7 +586,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
           if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]) {
             const file = event.dataTransfer.files[0];
             if (/image/i.test(file.type)) {
-              handleImageUpload(file, view.state as any);
+              insertImageFile(file);
               return true;
             }
           }
@@ -530,14 +596,29 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
           if (event.clipboardData && event.clipboardData.files && event.clipboardData.files[0]) {
             const file = event.clipboardData.files[0];
             if (/image/i.test(file.type)) {
-              handleImageUpload(file, view.state as any);
+              insertImageFile(file);
               return true;
             }
+          }
+          const html = event.clipboardData?.getData('text/html') || '';
+          const imageSrc = html.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1];
+          if (imageSrc) {
+            insertImageFromUrl(imageSrc, { alt: 'pasted web image' });
+            return true;
           }
           return false;
         },
       },
     });
+
+    useEffect(() => {
+      editorInstanceRef.current = editor;
+      return () => {
+        if (editorInstanceRef.current === editor) {
+          editorInstanceRef.current = null;
+        }
+      };
+    }, [editor]);
 
     const insertTemplate = useCallback(() => {
       if (!editor) return;
@@ -623,6 +704,36 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       [editor],
     );
 
+    const insertCitationText = useCallback(
+      (text: string) => {
+        if (!editor || !text.trim()) return;
+        editor.chain().focus().insertContent(` ${text.trim()}`).run();
+      },
+      [editor],
+    );
+
+    const updateBibliographyMarkdown = useCallback(
+      (markdown: string) => {
+        if (!editor) return;
+        const html = normalizeInitialStringContent(markdown || '아직 등록된 참고문헌이 없습니다.');
+        const range = findSectionRange(editor, 'references');
+        if (range) {
+          editor.chain().focus().deleteRange({ from: range.contentStart, to: range.contentEnd }).insertContentAt(range.contentStart, html).run();
+          return;
+        }
+        editor.chain().focus('end').insertContent(`<h2>참고문헌</h2>${html}`).run();
+      },
+      [editor],
+    );
+
+    const insertTableTemplate = useCallback(
+      (template: ReportTableTemplate) => {
+        if (!editor) return;
+        editor.chain().focus().insertContent(tableTemplateToTiptapContent(template)).run();
+      },
+      [editor],
+    );
+
     const updateCoverMetadata = useCallback(
       (metadata: ReportMetadata) => {
         if (!editor) return;
@@ -683,19 +794,29 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         focusSection,
         insertMathBlock,
         insertFigureBlock,
+        insertImageFile,
+        insertImageFromUrl,
+        insertCitationText,
+        insertTableTemplate,
         updateCoverMetadata,
         updateReferences,
+        updateBibliographyMarkdown,
       }),
       [
         appendToSection,
         applyPatch,
         editor,
         focusSection,
+        insertCitationText,
         insertFigureBlock,
+        insertImageFile,
+        insertImageFromUrl,
         insertMathBlock,
+        insertTableTemplate,
         insertTemplate,
         replaceSection,
         setEditorContent,
+        updateBibliographyMarkdown,
         updateCoverMetadata,
         updateReferences,
       ],

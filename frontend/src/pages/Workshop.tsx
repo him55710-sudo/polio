@@ -68,6 +68,7 @@ import {
   WorkflowNotice,
 } from '../components/primitives';
 import { TiptapEditor, type TiptapEditorHandle } from '../components/editor/TiptapEditor';
+import type { UniFoliDocumentTemplateId } from '../components/editor/model/documentModel';
 import { ChatBubble as WorkshopChatBubble } from '../features/workshop/components/ChatBubble';
 import { PatchReviewCard } from '../features/workshop/components/PatchReviewCard';
 import { WorkshopMobileToggle } from '../features/workshop/components/WorkshopMobileToggle';
@@ -2033,6 +2034,7 @@ export function Workshop() {
   const [guidedPageRanges, setGuidedPageRanges] = useState<GuidedTopicSelectionResponse['recommended_page_ranges']>([]);
   const [guidedStructureOptions, setGuidedStructureOptions] = useState<GuidedStructureOption[]>([]);
   const [guidedNextActionOptions, setGuidedNextActionOptions] = useState<GuidedChoiceOption[]>([]);
+  const [reportTemplateId, setReportTemplateId] = useState<UniFoliDocumentTemplateId>('basic');
   const [isGuidedTopicSelected, setIsGuidedTopicSelected] = useState(false);
   const [isSelectingGuidedTopicId, setIsSelectingGuidedTopicId] = useState<string | null>(null);
   const [isGuidedActionLoading, setIsGuidedActionLoading] = useState(false);
@@ -3006,7 +3008,12 @@ export function Workshop() {
 
         const nextPhase = response.phase || 'drafting_next_step';
         const nextActions = response.next_action_options || [];
+        const nextTemplateId: UniFoliDocumentTemplateId =
+          selectedStructureId.includes('deep') || selectedStructureId.includes('academic') || selectedStructureId.includes('paper')
+            ? 'academic'
+            : 'basic';
 
+        setReportTemplateId(nextTemplateId);
         setGuidedPhase(nextPhase);
         setGuidedNextActionOptions(nextActions);
         setIsGuidedTopicSelected(true);
@@ -3096,13 +3103,40 @@ export function Workshop() {
     },
     [guidedProjectId],
   );
-  const handleOpenProfessionalEditor = useCallback(() => {
+  const handleOpenProfessionalEditor = useCallback((patch?: ReviewablePatch) => {
+    const baseMarkdown = documentContent || structuredDraftToMarkdown(structuredDraft);
+    const patchMarkdown =
+      patch && 'content_markdown' in patch
+        ? patch.content_markdown
+        : patch && 'type' in patch && patch.type === 'content'
+          ? patch.contentMarkdown || ''
+          : '';
+    const patchHeading =
+      patch && 'heading' in patch && patch.heading
+        ? patch.heading
+        : patch && 'type' in patch && patch.type === 'content'
+          ? patch.targetSection
+          : undefined;
+    const seedMarkdown =
+      patchMarkdown.trim() && !baseMarkdown.includes(patchMarkdown.trim())
+        ? `${baseMarkdown.trim()}\n\n## ${patchHeading || 'AI 작성 초안'}\n${patchMarkdown.trim()}`
+        : baseMarkdown;
+    const sectionId =
+      patch && 'block_id' in patch
+        ? patch.block_id
+        : patch && 'type' in patch && patch.type === 'content'
+          ? patch.targetSection
+          : undefined;
+
     navigate(`/app/editor/${projectId || 'demo'}`, {
       state: {
-        seedMarkdown: documentContent,
+        seedMarkdown,
+        openMode: patch ? 'section' : 'full',
+        sectionId,
+        reportTemplateId,
       },
     });
-  }, [documentContent, navigate, projectId]);
+  }, [documentContent, navigate, projectId, reportTemplateId, structuredDraft]);
 
   const coauthoringTier = useMemo<'basic' | 'plus' | 'pro'>(() => {
     if (qualityLevel === 'high') return 'pro';
@@ -4233,6 +4267,15 @@ export function Workshop() {
                   <BookOpen size={16} />
                   웹/논문 리서치 {advancedMode ? 'ON' : 'OFF'}
                 </button>
+                <select
+                  value={reportTemplateId}
+                  onChange={(event) => setReportTemplateId(event.target.value as UniFoliDocumentTemplateId)}
+                  className="h-10 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none focus:border-indigo-300"
+                  aria-label="보고서 양식 선택"
+                >
+                  <option value="basic">기본형</option>
+                  <option value="academic">논문형</option>
+                </select>
                 <button
                   type="button"
                   onClick={() => void handleGenerateDraft()}
@@ -4250,6 +4293,15 @@ export function Workshop() {
                 >
                   <Download size={16} />
                   보고서 다운로드
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenProfessionalEditor()}
+                  disabled={!(documentContent || structuredDraftToMarkdown(structuredDraft)).trim()}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition-all"
+                >
+                  <PenSquare size={16} />
+                  전문 편집기로 열기
                 </button>
                 <button
                   type="button"
@@ -4404,6 +4456,7 @@ export function Workshop() {
                                   onUseResearchCandidate={handleUseResearchCandidate}
                                   onRefineResearchCandidate={handleRefineResearchCandidate}
                                   onExcludeResearchCandidate={handleExcludeResearchCandidate}
+                                  onOpenProfessionalEditor={(patch) => handleOpenProfessionalEditor(patch)}
                                   onGuidedChoiceSelect={handleGuidedChoiceSelect}
                                   isGuidedActionLoading={isGuidedActionLoading}
                                   selectingTopicId={isSelectingGuidedTopicId}
@@ -4579,11 +4632,13 @@ export function Workshop() {
                 <TiptapEditor
                   ref={editorRef}
                   initialContent={documentContent}
-                  onUpdate={(json, html, text) => {
-                    // Simple text update for documentContent to keep it synced
-                    // In a real app, you'd convert HTML to Markdown properly
-                    setDocumentContent(text);
+                  onUpdate={(_json, _html, text) => {
+                    const markdown = editorRef.current?.getMarkdown() || text;
+                    setDocumentContent(markdown);
+                    setStructuredDraft(markdownToStructuredDraft(markdown, 'revision'));
+                    setLatestDraftUpdatedAt(new Date().toISOString());
                   }}
+                  onImageError={(message) => toast.error(message)}
                 />
               </div>
 

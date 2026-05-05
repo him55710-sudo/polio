@@ -1,11 +1,24 @@
 export interface GuidedTopicSuggestion {
   id: string;
   title: string;
+  one_line_summary?: string | null;
   why_fit_student: string;
   link_to_record_flow: string;
   link_to_target_major_or_university: string | null;
   novelty_point?: string | null;
   caution_note: string | null;
+  record_connection_point?: string | null;
+  deepening_point?: string | null;
+  career_connection_point?: string | null;
+  social_issue_connection?: string | null;
+  experiment_or_survey_method?: string | null;
+  expected_output?: string | null;
+  outline_draft?: string[];
+  admissions_strength?: string | null;
+  risk_or_supplement?: string | null;
+  scores?: Record<string, number>;
+  total_score?: number | null;
+  topic_band?: 'safe' | 'challenging' | null;
   suggestion_type?: 'interest' | 'subject' | 'major' | null;
   is_starred?: boolean;
 }
