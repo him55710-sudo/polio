@@ -46,7 +46,7 @@ export const appNavSections: AppNavSection[] = [
       {
         path: '/app/workshop',
         label: '문서 작성',
-        hint: '탐구 보고서 초안과 워크숍',
+        hint: '생기부 없이도 탐구 보고서 작성',
         icon: PenTool,
       },
       {

@@ -145,7 +145,7 @@ export function buildSpecificTopicCheckGroup(): GuidedChoiceGroup {
       {
         id: 'specific-no-recommend',
         label: KR_RECOMMEND_MANY,
-        description: '\ud559\uc0dd \uae30\ub85d\uc744 \ubc14\ud0d5\uc73c\ub85c \ucd94\ucc9c\ubc1b\uc744\uac8c\uc694.',
+        description: '생기부가 없으면 관심사 기준으로, 있으면 기록 근거까지 반영해 추천받을게요.',
         value: KR_RECOMMEND_MANY,
       },
     ],

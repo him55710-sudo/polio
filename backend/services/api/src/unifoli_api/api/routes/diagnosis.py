@@ -300,7 +300,10 @@ async def trigger_diagnosis(
         },
     )
     if wait_for_completion:
-        process_async_job(db, async_job.id)
+        try:
+            process_async_job(db, async_job.id)
+        except Exception:  # noqa: BLE001
+            logger.exception("Inline diagnosis job processing failed. run_id=%s job_id=%s", run.id, async_job.id)
         completed_run = _get_run_for_user(db, run.id, current_user.id)
         if completed_run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis run not found.")

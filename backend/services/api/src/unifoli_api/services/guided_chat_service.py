@@ -27,7 +27,10 @@ from unifoli_api.services.topic_search_service import get_topic_search_service
 from unifoli_api.services.prompt_registry import get_prompt_registry
 
 GUIDED_CHAT_GREETING = "안녕하세요! 어떤 흥미로운 주제로 보고서를 시작해볼까요? 😊"
-LIMITED_CONTEXT_NOTE = "학생부 기록이 조금 부족해서, 안전하게 시작할 수 있는 주제들로 준비했어요."
+LIMITED_CONTEXT_NOTE = (
+    "생기부 없이도 바로 문서작성을 시작할 수 있어요. 다만 생기부 PDF를 첨부하면 실제 세특·창체·교과활동 근거를 "
+    "바탕으로 더 효과적인 주제와 내용을 넣을 수 있습니다."
+)
 TOPIC_SUGGESTION_TARGET_COUNT = 300
 TOPIC_LLM_SEED_COUNT = 9
 TOPIC_REFERENCE_COUNT = 24
@@ -138,10 +141,17 @@ async def generate_topic_suggestions(
     )
     
     limited_mode = bool(context.evidence_gaps or limited_reason)
+    context_label = "학생 기록, 관심사, 목표 전공" if context.record_flow_summary else "입력한 과목, 관심사, 목표 전공"
+    record_upgrade_note = (
+        "\n생기부 PDF를 나중에 첨부하면 실제 세특·창체·교과활동 근거에 맞춰 후보를 더 정밀하게 다시 고를 수 있습니다."
+        if not context.record_flow_summary
+        else ""
+    )
     assistant_message = (
-        f"좋아요. '{normalized_subject}'를 바탕으로 학생 기록, 관심사, 목표 전공을 섞어 "
+        f"좋아요. '{normalized_subject}'를 바탕으로 {context_label}을 섞어 "
         f"탐구 주제 {len(normalized)}개를 준비했어요.\n"
         "처음 12개는 하이라이트로 먼저 보여드리고, 아래 카드 목록에서 전체 후보를 골라 시작할 수 있습니다."
+        f"{record_upgrade_note}"
     )
     
     choice_groups = [
@@ -579,7 +589,8 @@ def _build_start_prompt(
         )
         return (
             "안녕하세요. 어떤 과목의 탐구보고서를 준비하고 계신가요?\n"
-            "예를 들어 수학, 수2, 화학, 생명과학처럼 편하게 적어주세요.",
+            "예를 들어 수학, 수2, 화학, 생명과학처럼 편하게 적어주세요.\n"
+            "생기부는 필수가 아니지만, 첨부하면 실제 기록에 맞는 주제와 문장을 훨씬 정밀하게 잡을 수 있습니다.",
             choice_groups,
         )
 
@@ -599,7 +610,7 @@ def _build_start_prompt(
                     GuidedChoiceOption(
                         id="specific-no-recommend",
                         label="추천 300개 받아보기",
-                        description="학생 기록과 목표를 바탕으로 넓게 추천받을게요.",
+                        description="생기부가 없으면 관심사와 목표 기준으로, 있으면 기록 근거까지 반영해 추천받을게요.",
                         value="추천 300개 받아보기",
                     ),
                 ],
@@ -607,7 +618,8 @@ def _build_start_prompt(
         )
         return (
             f"좋아요. {subject or '해당 과목'}로 진행해볼게요.\n"
-            "특별히 생각해 둔 주제가 있을까요? 아직 없다면 학생 기록을 바탕으로 300개 이상 추천해드릴게요.",
+            "특별히 생각해 둔 주제가 있을까요? 아직 없다면 현재 정보만으로도 300개 이상 추천해드릴게요.\n"
+            "생기부를 첨부하면 세특·창체·교과활동과 더 자연스럽게 연결된 후보를 고를 수 있습니다.",
             choice_groups,
         )
 
@@ -1156,7 +1168,7 @@ def _fallback_fit_message(context: GuidedChatContext, subject: str) -> str:
 def _fallback_record_link(context: GuidedChatContext) -> str:
     if context.record_flow_summary:
         return f"확인된 기록 요약: {_clip_line(context.record_flow_summary, '기록 요약이 존재합니다.')}"
-    return "학생부 문서 근거가 제한적이어서 확인 가능한 범위만 사용합니다."
+    return "생기부 없이 시작한 후보라, 현재 입력한 과목·관심사·목표 전공 범위에서 안전하게 제안합니다."
 
 
 def _fallback_target_link(context: GuidedChatContext) -> str | None:

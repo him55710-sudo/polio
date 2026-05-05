@@ -350,9 +350,9 @@ export default function Dashboard() {
 
     const steps: WorkflowStep[] = [
       { key: 'targets', title: '목표 설정', description: hasPrimaryGoal ? `${profile?.target_university} · ${profile?.target_major}` : '지원 대학/학과 설정', status: hasPrimaryGoal ? 'done' : 'active' },
-      { key: 'record', title: '기록 업로드', description: hasDiagnosis ? '업로드 완료' : (hasPrimaryGoal ? '학생부 PDF 업로드' : '대기 중'), status: hasDiagnosis ? 'done' : (hasPrimaryGoal ? 'active' : 'pending') },
+      { key: 'record', title: '기록 첨부', description: hasDiagnosis ? '업로드 완료' : (hasPrimaryGoal ? '선택 사항 · 첨부 시 품질 향상' : '선택 사항'), status: hasDiagnosis ? 'done' : (hasPrimaryGoal ? 'active' : 'pending') },
       { key: 'diagnosis', title: '진단 실행', description: diagnosisSummary, status: hasDiagnosis ? 'done' : (hasPrimaryGoal && !hasDiagnosis ? 'pending' : 'pending') },
-      { key: 'workshop', title: '워크숍 실행', description: hasBlueprint ? (primaryQuest ? `우선: ${primaryQuest.title}` : '진행 가능') : '액션 플랜 대기', status: hasBlueprint ? 'active' : 'pending' },
+      { key: 'workshop', title: '워크숍 실행', description: hasBlueprint ? (primaryQuest ? `우선: ${primaryQuest.title}` : '진행 가능') : '생기부 없이 시작 가능', status: hasBlueprint || hasPrimaryGoal ? 'active' : 'pending' },
     ];
     return steps;
   }, [activeStoredDiagnosis, hasBlueprint, hasDiagnosis, hasPrimaryGoal, primaryQuest, profile]);
@@ -373,11 +373,11 @@ export default function Dashboard() {
     }
     if (!hasDiagnosis) {
       return {
-        title: '학생부를 업로드하고 진단을 받으세요',
-        description: '업로드 후 즉시 진단',
-        primaryLabel: '학생부 업로드',
-        onPrimary: () => navigate('/app/record'),
-        secondaryLabel: '진단 시작하기',
+        title: '생기부 없이도 문서작성을 시작할 수 있어요',
+        description: '생기부를 첨부하면 실제 기록 기반으로 더 정밀하게 보강됩니다.',
+        primaryLabel: '문서작성 시작',
+        onPrimary: () => navigate('/app/workshop'),
+        secondaryLabel: '생기부 첨부하고 진단',
         onSecondary: () => navigate('/app/diagnosis'),
       };
     }
@@ -412,10 +412,10 @@ export default function Dashboard() {
       tone: 'secondary' as const,
     },
     {
-      label: hasDiagnosis ? '워크숍 열기' : '학생부 업로드',
+      label: hasDiagnosis ? '워크숍 열기' : '생기부 첨부',
       onClick: hasDiagnosis
         ? () => navigate(activeStoredDiagnosis?.projectId ? `/app/workshop/${activeStoredDiagnosis.projectId}` : '/app/workshop')
-        : () => navigate('/app/record'),
+        : () => navigate('/app/diagnosis'),
       tone: 'secondary' as const,
     },
   ];
@@ -431,7 +431,7 @@ export default function Dashboard() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-              {user?.displayName || '반가워요!'} 생기부 분석을 시작할까요?
+              {user?.displayName || '반가워요!'} 문서작성을 시작할까요?
             </h1>
           </div>
           <div className="flex gap-2">
@@ -439,7 +439,7 @@ export default function Dashboard() {
               onClick={() => navigate('/app/diagnosis')}
               className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-5 text-sm font-black text-[#3182f6] shadow-lg transition-all hover:scale-105 active:scale-95"
             >
-              생기부 업로드
+              생기부 첨부
               <ArrowRight size={16} />
             </button>
             <button

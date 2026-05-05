@@ -75,6 +75,11 @@ interface FlowDebugState {
   status?: number | null;
 }
 
+interface DiagnosisGoalSnapshot {
+  university: string;
+  major: string;
+}
+
 function normalizeDocumentKind(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -183,6 +188,16 @@ export function Diagnosis() {
     () => resolvePreferredDiagnosisProjectId(queryProjectId, projectId),
     [projectId, queryProjectId],
   );
+
+  const diagnosisGoals = useMemo<DiagnosisGoalSnapshot[]>(() => {
+    if (goalList.length > 0) {
+      return goalList.map((goal) => ({
+        university: goal.university,
+        major: goal.major,
+      }));
+    }
+    return buildRankedGoals(user, 6);
+  }, [goalList, user]);
 
   const preferredProjectKey = useMemo(() => {
     if (!preferredProjectId) return null;
@@ -360,7 +375,7 @@ export function Diagnosis() {
     setDiagnosisRunId(null);
     setIsUploading(false);
 
-    const primaryGoal = goalList[0] ?? buildRankedGoals(user, 1)[0];
+    const primaryGoal = diagnosisGoals[0];
     persistDiagnosisStorageSnapshot(run, {
       major: primaryGoal?.major ?? null,
       targetUniversity: primaryGoal?.university ?? null,
@@ -368,14 +383,14 @@ export function Diagnosis() {
     });
 
     return true;
-  }, [finishTimingPhase, goalList, setDiagnosisRunId, setProjectId, setStep, user]);
+  }, [diagnosisGoals, finishTimingPhase, setDiagnosisRunId, setProjectId, setStep]);
 
   const startDiagnosisForProject = useCallback(async (activeProjectId: string): Promise<boolean> => {
     try {
       const diagnosisUrl = useSynchronousApiJobs
         ? '/api/v1/diagnosis/run?wait_for_completion=true'
         : '/api/v1/diagnosis/run';
-      const others = goalList.slice(1).map((goal) => `${goal.university} (${goal.major})`);
+      const others = diagnosisGoals.slice(1).map((goal) => `${goal.university} (${goal.major})`);
       const run = await api.post<DiagnosisRunResponse>(diagnosisUrl, {
         project_id: activeProjectId,
         interest_universities: others,
@@ -418,7 +433,7 @@ export function Diagnosis() {
   }, [
     applyFailureState,
     completeDiagnosis,
-    goalList,
+    diagnosisGoals,
     recoverFromInvalidProject,
     setDiagnosisRunId,
     setProjectId,
@@ -790,10 +805,14 @@ export function Diagnosis() {
       }));
       formData.append('file', file);
 
-      const mainGoal = goalList[0];
+      const mainGoal = diagnosisGoals[0];
       if (mainGoal) {
         formData.append('target_university', mainGoal.university);
         formData.append('target_major', mainGoal.major);
+        const otherGoals = diagnosisGoals.slice(1).map((goal) => `${goal.university} (${goal.major})`);
+        if (otherGoals.length > 0) {
+          formData.append('interest_universities', JSON.stringify(otherGoals));
+        }
         formData.append('title', `${mainGoal.university} ${mainGoal.major} 진단`);
       }
 
@@ -834,7 +853,7 @@ export function Diagnosis() {
     clearProjectQueryParam,
     failRunningTimingPhases,
     finishTimingPhase,
-    goalList,
+    diagnosisGoals,
     resetTimingPhases,
     setActiveDocumentId,
     setDiagnosisRunId,
@@ -1024,7 +1043,7 @@ export function Diagnosis() {
                 onClick={() =>
                   navigate(`/app/workshop/${projectId}`, {
                     state: {
-                      major: goalList[0]?.major,
+                      major: diagnosisGoals[0]?.major,
                       chatbotMode: 'diagnosis',
                       fromDiagnosis: true,
                       diagnosisRunId: diagnosisRun?.id ?? null,

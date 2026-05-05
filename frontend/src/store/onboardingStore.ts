@@ -297,8 +297,20 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           major: project.target_major || '',
         });
 
-        if (project.interest_universities?.length) {
-          project.interest_universities.forEach((interestUniversity: any, index: number) => {
+        const currentGoalList = get().goalList;
+        const currentPrimary = currentGoalList[0];
+        const fallbackInterests =
+          currentPrimary?.university === project.target_university
+            ? currentGoalList
+                .slice(1)
+                .map((goal) => `${goal.university} (${goal.major})`)
+            : useAuthStore.getState().user?.interest_universities;
+        const projectInterestUniversities = Array.isArray(project.interest_universities)
+          ? project.interest_universities
+          : fallbackInterests;
+
+        if (projectInterestUniversities?.length) {
+          projectInterestUniversities.forEach((interestUniversity: any, index: number) => {
             if (!interestUniversity || typeof interestUniversity !== 'string') return;
             const match = interestUniversity.match(/^(.+)\s\((.+)\)$/);
             if (match) {

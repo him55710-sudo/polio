@@ -258,6 +258,13 @@ interface WorkshopStreamTokenResponse {
   expires_in: number;
 }
 
+interface WorkshopProjectResponse {
+  id: string;
+  title: string;
+  target_university?: string | null;
+  target_major?: string | null;
+}
+
 interface WorkshopRenderStartResponse {
   artifact_id: string;
   status: string;
@@ -393,7 +400,7 @@ const RECORD_AREA_OPTIONS: RecordAreaOption[] = [
   {
     id: 'ai_auto',
     label: 'AI가 알아서 선택',
-    description: '생기부 근거가 가장 많은 영역을 AI가 먼저 고릅니다.',
+    description: '입력 정보와 첨부 기록이 있으면 그 근거를 함께 보고 AI가 먼저 고릅니다.',
     promptLabel: 'AI 자동 선택',
     detailPlaceholder: '원하는 방향이 있으면 한 줄만 적어도 됩니다.',
     keywords: [],
@@ -401,7 +408,7 @@ const RECORD_AREA_OPTIONS: RecordAreaOption[] = [
 ];
 
 const WRITING_GRADE_OPTIONS: WritingGradeOption[] = [
-  { id: 'auto', label: '진단 기준', description: '생기부에 드러난 학년 흐름을 자동 반영' },
+  { id: 'auto', label: '진단 기준', description: '진단/입력 정보에서 보이는 학년 흐름을 자동 반영' },
   { id: 'high1', label: '고1', description: '관심 형성과 기본 개념 이해 중심' },
   { id: 'high2', label: '고2', description: '과정, 방법, 실패와 보완 중심' },
   { id: 'high3', label: '고3', description: '전공 수렴, 결과 해석, 면접 방어 중심' },
@@ -412,9 +419,9 @@ const ACCUMULATION_STEPS: AccumulationStep[] = [
   {
     id: 'intro',
     label: '서론',
-    description: '동기, 문제의식, 생기부 출발점',
+    description: '동기, 문제의식, 탐구 출발점',
     blockId: 'introduction_background',
-    instruction: '서론만 작성하세요. 학생부 근거에서 출발한 동기와 탐구 질문이 자연스럽게 이어져야 합니다.',
+    instruction: '서론만 작성하세요. 생기부 근거가 있으면 실제 기록에서, 없으면 학생의 관심사와 과목 경험에서 출발한 동기와 탐구 질문이 자연스럽게 이어져야 합니다.',
   },
   {
     id: 'body1',
@@ -456,9 +463,9 @@ const ACCUMULATION_STEPS: AccumulationStep[] = [
   {
     id: 'references',
     label: '출처',
-    description: '생기부 p.X와 참고자료 목록',
+    description: '생기부 근거와 참고자료 목록',
     blockId: 'conclusion_reflection_next_step',
-    instruction: '출처 부분만 작성하세요. 생기부 근거는 [출처: 생기부 p.X] 형식으로 남기고, 외부 자료가 필요하면 후보만 제안하세요.',
+    instruction: '출처 부분만 작성하세요. 생기부 근거가 있으면 [출처: 생기부 p.X] 형식으로 남기고, 아직 첨부하지 않았다면 확인 필요 항목과 외부 자료 후보만 제안하세요.',
     subheading: '출처',
   },
 ];
@@ -828,8 +835,13 @@ function buildWritingCandidates(options: {
   const strengths = collectWritingTextList(options.payload?.strengths, 4);
   const gaps = collectWritingTextList(options.payload?.gaps, 4);
   const focus = asCleanText(options.payload?.recommended_focus) || asCleanText(options.payload?.headline) || options.fallbackTopic || '';
-  const fallbackEvidence = evidenceItems[0]?.text || strengths[0] || '아직 생기부 원문 근거가 충분히 연결되지 않았습니다.';
-  const fallbackSource = evidenceItems[0]?.source || '진단 요약';
+  const hasRecordEvidence = Boolean(evidenceItems.length || strengths.length || focus);
+  const fallbackEvidence =
+    evidenceItems[0]?.text ||
+    strengths[0] ||
+    focus ||
+    '생기부 없이 시작한 초안이라, 현재 입력한 과목·활동·관심사를 기준으로 안전하게 방향을 잡습니다.';
+  const fallbackSource = evidenceItems[0]?.source || (hasRecordEvidence ? '진단 요약' : '관심사 기반');
 
   const templates = [
     {
@@ -902,16 +914,16 @@ function buildWritingPlanPrompt(options: {
     `- 목표 전공/방향: ${options.targetMajor || '미정'}`,
     `- 선택 후보: ${options.candidate.title}`,
     `- 후보 추천 이유: ${options.candidate.reason}`,
-    `- 생기부 기반 근거: ${options.candidate.source}: ${options.candidate.evidence}`,
+    `- 추천 근거: ${options.candidate.source}: ${options.candidate.evidence}`,
     `- 학년 반영 포인트: ${options.candidate.gradeFit}`,
     `- 학생 선호/의견: ${preference || (options.aiAutoSelect ? 'AI가 알아서 방향을 선택해도 됨' : '아직 입력 없음')}`,
     '',
     '[작성 규칙]',
     '1. 전체 보고서를 한 번에 완성하지 말고, 먼저 제목 후보와 서론만 다룹니다.',
     '2. 학생 의견이 부족하면 질문을 1개만 먼저 물어보고, AI 자동 선택이 허용된 경우에는 보수적인 가정을 명시한 뒤 진행합니다.',
-    '3. 생기부에 없는 활동, 수상, 실험 결과, 수치, 논문명은 만들지 마세요.',
+    '3. 생기부나 사용자가 확인해주지 않은 활동, 수상, 실험 결과, 수치, 논문명은 만들지 마세요.',
     '4. 작성 가능하면 [DRAFT_PATCH] JSON [/DRAFT_PATCH]를 정확히 1개만 포함하고 block_id는 introduction_background로 하세요.',
-    '5. 서론에는 동기, 문제의식, 탐구 질문, 생기부 근거의 연결만 담고 본론/결론은 다음 단계로 남겨두세요.',
+    '5. 서론에는 동기, 문제의식, 탐구 질문, 확인 가능한 근거의 연결만 담고 본론/결론은 다음 단계로 남겨두세요.',
   ].join('\n');
 }
 
@@ -938,7 +950,7 @@ function buildAccumulationPrompt(options: {
     `- 학생 학년: ${options.gradeLabel}`,
     `- 목표 전공/방향: ${options.targetMajor || '미정'}`,
     options.candidate ? `- 선택 후보: ${options.candidate.title}` : null,
-    options.candidate ? `- 생기부 근거: ${options.candidate.source}: ${options.candidate.evidence}` : null,
+    options.candidate ? `- 추천 근거: ${options.candidate.source}: ${options.candidate.evidence}` : null,
     `- 학생 선호/의견: ${options.preference.trim() || '없으면 AI가 보수적으로 질문하거나 가정'}`,
     `- 현재 블록 내용: ${currentPreview}`,
     '',
@@ -1376,7 +1388,7 @@ function downloadMarkdownFile(filename: string, content: string) {
 }
 
 function sanitizeArchiveFilename(title: string): string {
-  return (title || '생기부_기반_탐구_보고서').replace(/[^\w\-\uAC00-\uD7A3]+/g, '_').replace(/^_+|_+$/g, '') || '생기부_기반_탐구_보고서';
+  return (title || '탐구_보고서').replace(/[^\w\-\uAC00-\uD7A3]+/g, '_').replace(/^_+|_+$/g, '') || '탐구_보고서';
 }
 
 function serializeWorkshopMessages(messages: Message[]): ArchiveItem['chatMessages'] {
@@ -1523,7 +1535,10 @@ function WritingPlannerPanel({
               <Sparkles size={14} />
               문서작성 설정
             </p>
-            <h3 className="mt-1 text-lg font-black text-slate-900">생기부 근거로 먼저 방향을 고릅니다</h3>
+            <h3 className="mt-1 text-lg font-black text-slate-900">생기부 없이도 바로 방향을 잡습니다</h3>
+            <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
+              생기부를 첨부하면 실제 세특·창체·교과활동 근거를 반영해 더 효과적인 주제와 내용을 제안할 수 있어요.
+            </p>
           </div>
           <button
             type="button"
@@ -1625,7 +1640,7 @@ function WritingPlannerPanel({
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="flex items-center gap-2 text-xs font-black text-slate-600">
               <Target size={15} className="text-indigo-500" />
-              생기부 기반 후보
+              추천 후보
             </p>
             <span className="text-[11px] font-bold text-slate-400">선택 후보: {selectedCandidate?.title || '없음'}</span>
           </div>
@@ -2029,6 +2044,7 @@ export function Workshop() {
   const [completedAccumulationStepId, setCompletedAccumulationStepId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<TiptapEditorHandle | null>(null);
+  const standaloneBootstrapPromiseRef = useRef<Promise<WorkshopProjectResponse> | null>(null);
   const reportDocumentState = useMemo(() => structuredDraftToReportDocumentState(structuredDraft), [structuredDraft]);
   const editorBridge = useEditorBridge({
     editorRef,
@@ -2048,6 +2064,7 @@ export function Workshop() {
   const openedFromDiagnosis = workshopLocationState?.fromDiagnosis === true;
   const isProjectBacked = Boolean(projectId && projectId !== 'demo');
   const shouldRedirectToStoredProject = !archiveResumeId && !isProjectBacked && Boolean(storedWorkshopProjectId);
+  const shouldBootstrapStandaloneProject = !archiveResumeId && !isProjectBacked && !storedWorkshopProjectId && !projectId;
   const guidedProjectId = isProjectBacked ? projectId ?? null : null;
   const reportDownloadContent = useMemo(
     () => (renderArtifact?.report_markdown || documentContent || '').trim(),
@@ -2406,13 +2423,73 @@ export function Workshop() {
   }, [location.search, navigate, shouldRedirectToStoredProject, storedWorkshopProjectId, workshopLocationState]);
 
   useEffect(() => {
+    if (!shouldBootstrapStandaloneProject) return;
+
+    let cancelled = false;
+    const bootstrapStandaloneProject = async () => {
+      setIsSessionLoading(true);
+      try {
+        const targetMajor = initialMajor && initialMajor !== '미정' ? initialMajor : undefined;
+        if (!standaloneBootstrapPromiseRef.current) {
+          standaloneBootstrapPromiseRef.current = api.post<WorkshopProjectResponse>('/api/v1/projects', {
+            title: questStart?.title ? `문서작성 - ${questStart.title}` : targetMajor ? `${targetMajor} 탐구 보고서` : '새 탐구 보고서',
+            description:
+              '생기부 없이 시작한 문서작성 프로젝트입니다. 생기부 PDF를 나중에 첨부하면 실제 세특·창체·교과활동 근거를 반영해 더 정밀하게 보강할 수 있습니다.',
+            target_major: targetMajor,
+          });
+        }
+        const project = await standaloneBootstrapPromiseRef.current;
+        if (cancelled) return;
+        navigate(`/app/workshop/${encodeURIComponent(project.id)}${location.search}`, {
+          replace: true,
+          state: {
+            ...(workshopLocationState || {}),
+            fromDiagnosis: false,
+            chatbotMode: requestedChatbotMode,
+          },
+        });
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Standalone workshop project creation failed:', error);
+        standaloneBootstrapPromiseRef.current = null;
+        toast.error('문서작성 프로젝트를 만들지 못해 로컬 초안 모드로 시작합니다.');
+        setMessages([
+          {
+            id: 'standalone-local-fallback',
+            role: 'foli',
+            content:
+              '생기부 없이도 문서 초안은 바로 시작할 수 있어요. 다만 서버 프로젝트 연결이 실패해 현재는 로컬 저장 중심으로 진행됩니다. 생기부를 첨부하면 나중에 실제 세특·창체·교과활동 근거를 바탕으로 더 정밀하게 보강할 수 있습니다.',
+          },
+        ]);
+        setGuidedPhase('freeform_coauthoring');
+        setIsGuidedTopicSelected(true);
+        setIsSessionLoading(false);
+      }
+    };
+
+    void bootstrapStandaloneProject();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialMajor,
+    location.search,
+    navigate,
+    questStart?.title,
+    requestedChatbotMode,
+    shouldBootstrapStandaloneProject,
+    workshopLocationState,
+  ]);
+
+  useEffect(() => {
     if (archiveResumeId) {
       setActiveArchiveId(archiveResumeId);
     }
   }, [archiveResumeId]);
 
   useEffect(() => {
-    if (shouldRedirectToStoredProject) {
+    if (shouldRedirectToStoredProject || shouldBootstrapStandaloneProject) {
       return;
     }
     const savedLevel = localStorage.getItem('uni_foli_quality_level');
@@ -2450,13 +2527,20 @@ export function Workshop() {
         setIsEditorOpen(true);
         setMobileView('draft');
       } else {
-        setMessages([{ id: 'demo-init', role: 'foli', content: '데모 모드입니다. 질문을 보내면 초안 작성을 이어갈 수 있게 도와드릴게요.' }]);
+        setMessages([
+          {
+            id: 'demo-init',
+            role: 'foli',
+            content:
+              '생기부 없이도 문서작성은 시작할 수 있어요. 과목이나 활동을 알려주면 초안 방향을 잡아드릴게요. 생기부를 첨부하면 실제 기록 기반으로 더 효과적인 주제와 내용을 넣을 수 있습니다.',
+          },
+        ]);
       }
       setIsSessionLoading(false);
       setGuidedPhase('freeform_coauthoring');
       setIsGuidedTopicSelected(true);
     }
-  }, [archiveResumeId, initialMajor, isProjectBacked, initWorkshop, questStart, shouldRedirectToStoredProject]);
+  }, [archiveResumeId, initialMajor, isProjectBacked, initWorkshop, questStart, shouldBootstrapStandaloneProject, shouldRedirectToStoredProject]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -3197,8 +3281,8 @@ export function Workshop() {
           setGuidedPhase('specific_topic_check');
           pushGuidedAssistantMessage({
             content: broadSubject
-              ? `좋아요. ${normalizedSubject}로 진행해볼게요.\n특별히 생각해 둔 주제가 있을까요? 아직 없다면 학생 기록 기반으로 300개 이상 추천해드릴게요.`
-              : `좋아요. ${normalizedSubject} 방향으로 진행해볼게요.\n이미 생각해 둔 탐구 질문이 있다면 알려주세요. 없으면 학생 기록을 바탕으로 300개 이상 추천해드릴게요.`,
+              ? `좋아요. ${normalizedSubject}로 진행해볼게요.\n특별히 생각해 둔 주제가 있을까요? 아직 없다면 현재 입력 정보만으로 300개 이상 추천해드릴게요. 생기부를 첨부하면 실제 기록 기반으로 더 정밀하게 고를 수 있습니다.`
+              : `좋아요. ${normalizedSubject} 방향으로 진행해볼게요.\n이미 생각해 둔 탐구 질문이 있다면 알려주세요. 없으면 현재 입력 정보만으로 300개 이상 추천해드릴게요. 생기부를 첨부하면 실제 기록 기반으로 더 정밀하게 고를 수 있습니다.`,
             phase: 'specific_topic_check',
             topicSubject: normalizedSubject,
             choiceGroups: [buildSpecificTopicCheckGroup()],
@@ -3972,8 +4056,9 @@ export function Workshop() {
     if (!chatMeta?.limited_mode) return null;
     if (limitedReason === 'evidence_gap') {
       return {
-        title: '근거 보완 모드가 활성화되었습니다.',
-        description: '현재 확인 가능한 학생 기록의 우선 해결 및 보수적인 대안 중심으로 안내하고 있습니다.',
+        title: '생기부 없이도 문서작성을 진행할 수 있습니다.',
+        description:
+          '현재는 과목, 관심사, 목표 전공을 기준으로 안전하게 작성합니다. 생기부 PDF를 첨부하면 실제 세특·창체·교과활동 근거를 반영해 더 높은 품질의 주제와 내용을 제안할 수 있습니다.',
       };
     }
     if (limitedReason === 'llm_unavailable') {
@@ -4042,7 +4127,7 @@ export function Workshop() {
   }, [chatbotMode, diagnosisHeadline, guidedSetupComplete, isProjectBacked]);
 
   return (
-    <div className={cn("mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col overflow-hidden px-2 py-2 transition-all duration-700 sm:px-4 sm:py-4", advancedMode && "rounded-[32px] bg-[linear-gradient(145deg,rgba(124,58,237,0.06)_0%,rgba(6,182,212,0.05)_100%)] shadow-[inset_0_0_100px_rgba(124,58,237,0.06)] sm:rounded-[48px]")}>
+    <div className={cn("mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col overflow-hidden px-0 sm:px-4 sm:py-4", advancedMode && "rounded-none sm:rounded-[48px] bg-[linear-gradient(145deg,rgba(124,58,237,0.06)_0%,rgba(6,182,212,0.05)_100%)] shadow-[inset_0_0_100px_rgba(124,58,237,0.06)]")}>
       <motion.div
         className="flex min-h-0 flex-1 flex-col"
         animate={advancedMode ? { y: [0, -2, 0] } : {}}
@@ -4066,7 +4151,7 @@ export function Workshop() {
             />
           </div>
           <div className={cn("flex flex-col min-h-0 flex-1 transition-all duration-500 items-center w-full", isEditorOpen ? "lg:mr-[400px] xl:mr-[500px]" : "")}>
-            <div className="w-full max-w-4xl flex-1 flex flex-col relative h-full">
+            <div className="w-full max-w-4xl flex-1 flex flex-col relative">
               <div className="absolute top-2 right-4 z-20 hidden lg:flex items-center gap-2">
                 <button
                   type="button"
@@ -4124,11 +4209,15 @@ export function Workshop() {
                       </div>
                       <div className="flex flex-col overflow-hidden">
                         <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500/80 mb-0.5">탐구 워크숍</p>
-                        <h3 className="text-sm font-black text-slate-800 truncate max-w-[280px] sm:max-w-[400px]">
+                        <h3 className="text-sm font-black text-slate-800 truncate max-w-[200px] sm:max-w-[400px]">
                           {(() => {
-                            const title = structuredDraft.blocks.find(b => b.block_id === 'title')?.content_markdown?.trim();
-                            if (title && title !== '제목' && title !== '') return title;
-                            return '새로운 탐구 보고서 작성';
+                            const titleBlock = structuredDraft.blocks.find(b => b.block_id === 'title');
+                            const title = titleBlock?.content_markdown?.replace(/^#\s*/, '').trim();
+                            if (title && title !== '제목' && title !== '' && title.length > 1) return title;
+
+                            if (guidedSubject && guidedSubject !== '과목') return `${guidedSubject} 탐구 보고서`;
+
+                            return '새로운 탐구 워크숍';
                           })()}
                         </h3>
                       </div>
@@ -4157,12 +4246,12 @@ export function Workshop() {
                           </h2>
                           <div className="space-y-2 mb-14">
                             <p className="text-slate-500 max-w-lg leading-relaxed text-lg font-medium">
-                              생기부 근거를 바탕으로 나만의 독창적인<br />
+                              생기부가 없어도 과목과 관심사만으로<br />
                               탐구 보고서를 함께 완성해 나갑니다.
                             </p>
                             <p className="text-slate-400 max-w-lg leading-relaxed text-base font-medium">
-                              학생부 분석부터 리포트 작성까지,<br />
-                              당신의 대입 성공을 위한 AI 코파일럿 <span className="text-violet-600 font-bold">Foli</span>입니다.
+                              생기부를 첨부하면 실제 기록에 맞는<br />
+                              주제와 내용을 더 정밀하게 제안할 수 있어요.
                             </p>
                           </div>
                           
@@ -4272,48 +4361,48 @@ export function Workshop() {
                   </div>
 
                   {/* Input Area */}
-                  <div className="px-4 pb-8 pt-4 bg-gradient-to-t from-slate-50/50 to-transparent">
+                  <div className="flex-shrink-0 px-4 pb-3 sm:pb-8 pt-4 bg-gradient-to-t from-slate-50/50 to-transparent">
                     <div className="max-w-4xl mx-auto w-full">
-                      <div className="mb-3 flex gap-2 lg:hidden">
+                      <div className="mb-2 flex gap-1.5 lg:hidden">
                         <button
                           type="button"
                           onClick={() => void handleToggleDeepResearchMode()}
                           className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-2xl border shadow-sm",
+                            "flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm",
                             advancedMode
                               ? "bg-slate-900 border-slate-900 text-white"
                               : "bg-white border-slate-200 text-slate-700",
                           )}
                           aria-label="웹/논문 리서치 모드 전환"
                         >
-                          <BookOpen size={17} />
+                          <BookOpen size={16} />
                         </button>
                         <button
                           type="button"
                           onClick={() => void handleGenerateDraft()}
                           disabled={isRendering || !workshopState}
-                          className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-3 py-2 text-sm font-black text-white shadow-sm disabled:bg-slate-200 disabled:text-slate-500"
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-black text-white shadow-sm disabled:bg-slate-200 disabled:text-slate-500"
                         >
-                          {isRendering ? <Loader2 size={16} className="animate-spin" /> : <Presentation size={16} />}
+                          {isRendering ? <Loader2 size={14} className="animate-spin" /> : <Presentation size={14} />}
                           보고서 생성
                         </button>
                         <button
                           type="button"
                           onClick={handleDownloadReport}
                           disabled={!reportDownloadContent}
-                          className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm disabled:opacity-40"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm disabled:opacity-40"
                           aria-label="보고서 다운로드"
                         >
-                          <Download size={17} />
+                          <Download size={16} />
                         </button>
                       </div>
                       {renderProgressMessage && (
-                        <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm">
+                        <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm">
                           <span className="flex items-center gap-2">
                             {isRendering ? (
-                              <Loader2 size={16} className="animate-spin text-indigo-600" />
+                              <Loader2 size={14} className="animate-spin text-indigo-600" />
                             ) : (
-                              <FileText size={16} className="text-indigo-600" />
+                              <FileText size={14} className="text-indigo-600" />
                             )}
                             {renderProgressMessage}
                           </span>
@@ -4321,40 +4410,44 @@ export function Workshop() {
                             <button
                               type="button"
                               onClick={handleDownloadReport}
-                              className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-700 hover:border-indigo-200 hover:text-indigo-600"
+                              className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-700 hover:border-indigo-200 hover:text-indigo-600"
                             >
                               다운로드
                             </button>
                           )}
                         </div>
                       )}
-                      <div className="relative group">
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void handleSend();
+                        }}
+                        className="relative group"
+                      >
                         <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-500 rounded-[32px] opacity-15 group-focus-within:opacity-30 transition duration-500 blur-md"></div>
-                        <div className="relative flex items-center gap-3 bg-white p-2.5 pl-7 rounded-[30px] border border-slate-200/80 shadow-2xl shadow-indigo-100/30 transition-all duration-300 group-focus-within:border-violet-300 group-focus-within:shadow-violet-200/40">
+                        <div className="relative flex items-center gap-2 sm:gap-3 bg-white p-1.5 sm:p-2.5 pl-4 sm:pl-7 rounded-[24px] sm:rounded-[30px] border border-slate-200/80 shadow-2xl shadow-indigo-100/30 transition-all duration-300 group-focus-within:border-violet-300 group-focus-within:shadow-violet-200/40">
                           <input
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                void handleSend();
-                              }
-                            }}
                             placeholder={inputPlaceholder}
                             disabled={isTyping || !!isSelectingGuidedTopicId || isGuidedActionLoading}
-                            className="flex-1 py-4 bg-transparent text-[17px] font-semibold text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-50"
+                            className="flex-1 min-w-0 py-2.5 sm:py-4 bg-transparent text-[16px] sm:text-[17px] font-semibold text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-50"
                           />
                           <button
-                            type="button"
-                            onClick={() => void handleSend()}
+                            type="submit"
                             disabled={!input.trim() || isTyping || !!isSelectingGuidedTopicId || isGuidedActionLoading}
-                            className="flex h-14 w-14 items-center justify-center rounded-[24px] bg-slate-900 text-white shadow-xl transition-all duration-300 hover:bg-violet-600 disabled:bg-slate-100 disabled:text-slate-400"
+                            className={cn(
+                              "flex h-10 w-10 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-[18px] sm:rounded-[24px] transition-all duration-300 shadow-xl",
+                              input.trim()
+                                ? "bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200/50"
+                                : "bg-slate-100 text-slate-400"
+                            )}
                           >
-                            <Send size={24} />
+                            <Send size={18} className={cn("transition-transform sm:w-5 sm:h-5", input.trim() && "scale-110")} />
                           </button>
                         </div>
-                      </div>
-                      <p className="mt-4 text-center text-[12px] text-slate-400 font-bold tracking-tight opacity-70">
+                      </form>
+                      <p className="mt-3 text-center text-[10px] sm:text-[12px] text-slate-400 font-bold tracking-tight opacity-70">
                         Foli는 AI 기술을 통해 분석을 돕지만, 최종 결정은 사용자에게 있습니다.
                       </p>
                     </div>
