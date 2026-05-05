@@ -29,6 +29,18 @@ These values are required before upload, parse, and diagnosis can work in produc
 - `CORS_ORIGINS=https://<your-frontend-origin>`
 - `AUTH_ALLOW_LOCAL_DEV_BYPASS=false`
 
+If the database provider gives a provider-specific environment variable instead
+of `DATABASE_URL`, the backend also accepts these aliases:
+
+- `SUPABASE_DATABASE_URL`
+- `POSTGRES_URL`
+- `POSTGRES_URL_NON_POOLING`
+- `POSTGRES_PRISMA_URL`
+
+`DATABASE_URL` has priority when more than one of these values is set. When
+moving to Supabase, replace or remove the old provider `DATABASE_URL` instead
+of leaving it alongside a new alias.
+
 Recommended for shared Vercel serverless runtime:
 
 - `ALLOW_INLINE_JOB_PROCESSING=true`
@@ -131,8 +143,8 @@ Common failure signals:
 
 ## 7. Required manual steps outside the repo
 
-1. Provision a managed Postgres database (e.g., Neon, Supabase, AWS RDS).
-2. Set `DATABASE_URL` in the Vercel project settings.
+1. Provision a managed Postgres database (recommended: Supabase Postgres; AWS RDS is also compatible).
+2. Set `DATABASE_URL` in the Vercel project settings, or set one of the supported aliases such as `SUPABASE_DATABASE_URL`.
 3. Run Alembic migrations against that database:
    - 로컬에서 운영 DB URL을 임시로 `DATABASE_URL`로 설정한 후 `alembic upgrade head` 실행
    - 또는 CI/CD 파이프라인에서 실행
@@ -143,6 +155,30 @@ Common failure signals:
    - backend `CORS_ORIGINS`
    - Firebase Authorized Domains
 8. Set Gemini credentials if you want Gemini-backed diagnosis enrichment.
+
+### 7.1 Moving to Supabase without rewriting the app
+
+The backend data model is SQLAlchemy plus Alembic. Use another managed
+Postgres service when the current database quota is exhausted. Supabase
+Postgres is the lowest-risk replacement because it preserves SQL migrations,
+relationships, and the existing query code. Firebase Auth and Firebase Storage
+can still be used alongside Postgres.
+
+Recommended Supabase path:
+
+1. Create a Supabase project.
+2. Copy the Supabase pooled Postgres connection string for app runtime.
+3. Set it as `SUPABASE_DATABASE_URL` or `DATABASE_URL` in Vercel.
+4. Remove or replace any old provider `DATABASE_URL` so it does not take priority.
+5. Keep `POSTGRES_ENABLE_PGVECTOR=false` unless the target database has the
+   vector extension enabled.
+6. Run migrations once against the same database.
+7. Deploy and verify `/api/v1/readiness?check_db=true`.
+
+Avoid moving the primary relational data to Cloud Firestore unless you are
+planning a larger persistence rewrite. Firestore is a document database, so it
+does not run the current Alembic migrations, joins, SQL queries, or pgvector
+path.
 
 ## 8. Symptoms and direct meaning
 

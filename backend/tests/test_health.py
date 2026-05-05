@@ -11,7 +11,11 @@ from fastapi.testclient import TestClient
 
 from unifoli_api.api.routes import health as health_route
 from unifoli_api.core.config import Settings, get_settings
-from unifoli_api.core.runtime_diagnostics import build_health_payload, snapshot_settings_from_env
+from unifoli_api.core.runtime_diagnostics import (
+    build_health_payload,
+    classify_startup_failure,
+    snapshot_settings_from_env,
+)
 from unifoli_api.main import app, create_app
 
 
@@ -339,3 +343,21 @@ def test_snapshot_settings_from_env_accepts_gemini_key_alias(monkeypatch) -> Non
 
     assert settings.gemini_api_key == "test-gemini-key"
     assert settings.pdf_analysis_gemini_api_key == "test-gemini-key"
+
+
+def test_snapshot_settings_from_env_accepts_supabase_database_url_alias(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL_NON_POOLING", raising=False)
+    monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
+    monkeypatch.setenv("SUPABASE_DATABASE_URL", "postgresql://user:password@db.example.com/unifoli")
+
+    settings = snapshot_settings_from_env()
+
+    assert settings.database_url == "postgresql://user:password@db.example.com/unifoli"
+
+
+def test_startup_failure_classifies_database_quota_errors() -> None:
+    code = classify_startup_failure("quota exceeded for database plan limit")
+
+    assert code == "DATABASE_UNAVAILABLE"

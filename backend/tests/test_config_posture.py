@@ -85,6 +85,24 @@ def test_postgresql_url_uses_psycopg_driver() -> None:
     assert settings.database_url.startswith("postgresql+psycopg://")
 
 
+def test_supabase_database_url_alias_uses_psycopg_driver(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL_NON_POOLING", raising=False)
+    monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
+    monkeypatch.setenv("SUPABASE_DATABASE_URL", "postgresql://user:password@db.example.com/unifoli")
+
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        app_debug=False,
+        auth_allow_local_dev_bypass=False,
+        llm_provider="gemini",
+    )
+
+    assert settings.database_url.startswith("postgresql+psycopg://")
+
+
 def test_serverless_runtime_infers_vercel_blob_when_token_is_configured(monkeypatch) -> None:
     monkeypatch.setenv("VERCEL", "1")
     monkeypatch.setenv("VERCEL_ENV", "production")

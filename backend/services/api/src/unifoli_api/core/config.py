@@ -25,7 +25,16 @@ class Settings(BaseSettings):
     api_docs_enabled: bool = False
     api_root_redirect_enabled: bool = True
     public_app_base_url: str = "https://uni-foli.vercel.app/app"
-    database_url: str = "sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30"
+    database_url: str = Field(
+        default="sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30",
+        validation_alias=AliasChoices(
+            "DATABASE_URL",
+            "SUPABASE_DATABASE_URL",
+            "POSTGRES_URL",
+            "POSTGRES_URL_NON_POOLING",
+            "POSTGRES_PRISMA_URL",
+        ),
+    )
     database_echo: bool = False
     database_auto_create_tables: bool = True
     database_pool_size: int = 5
@@ -258,6 +267,7 @@ class Settings(BaseSettings):
         ),
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     @field_validator("cors_origins", mode="before")

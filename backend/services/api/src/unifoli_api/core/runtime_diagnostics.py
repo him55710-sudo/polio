@@ -34,6 +34,10 @@ def classify_startup_failure(error: Exception | str | None) -> str:
             "could not translate host name",
             "data transfer quota",
             "exceeded the data transfer quota",
+            "quota exceeded",
+            "compute hours",
+            "project limit",
+            "plan limit",
             "name or service not known",
             "timeout expired",
             "timed out",
@@ -147,7 +151,14 @@ def snapshot_settings_from_env(api_prefix: str | None = None) -> Any:
         auth_social_login_enabled=(os.getenv("AUTH_SOCIAL_LOGIN_ENABLED") or "").strip().lower() == "true",
         auth_jwt_secret=(os.getenv("AUTH_JWT_SECRET") or "").strip() or None,
         auth_jwt_public_key=(os.getenv("AUTH_JWT_PUBLIC_KEY") or "").strip() or None,
-        database_url=(os.getenv("DATABASE_URL") or "").strip() or "sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30",
+        database_url=_read_first_env(
+            "DATABASE_URL",
+            "SUPABASE_DATABASE_URL",
+            "POSTGRES_URL",
+            "POSTGRES_URL_NON_POOLING",
+            "POSTGRES_PRISMA_URL",
+        )
+        or "sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30",
         allow_production_sqlite=(os.getenv("ALLOW_PRODUCTION_SQLITE") or "").strip().lower() == "true",
         database_auto_create_tables=(os.getenv("DATABASE_AUTO_CREATE_TABLES") or "").strip().lower() != "false",
     )
