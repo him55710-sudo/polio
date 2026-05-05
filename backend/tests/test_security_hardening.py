@@ -12,13 +12,15 @@ from reportlab.pdfgen import canvas
 
 from backend.tests.auth_helpers import auth_headers
 from unifoli_api.api.routes import projects as projects_route
-from unifoli_api.api.deps import LOCAL_DEV_JWT_SECRET
+from unifoli_api.api.deps import LOCAL_DEV_JWT_SECRET, AuthClaims, _sync_user_from_claims
 from unifoli_api.core.config import Settings, get_settings
 from unifoli_api.core.database import SessionLocal
 from unifoli_api.core.oauth_state import build_client_binding, build_oauth_state, validate_oauth_state
 from unifoli_api.db.models.render_job import RenderJob
+from unifoli_api.db.models.user import User
 from unifoli_api.db.models.workshop import WorkshopSession
 from unifoli_api.main import app
+from unifoli_api.services.scholar_service import ScholarSearchResult, ScholarServiceError
 from unifoli_ingest import ResearchPipelineError, normalize_research_source
 from unifoli_ingest.models import ResearchSourceInput
 from unifoli_shared.paths import find_project_root, get_export_root, get_runtime_root
@@ -108,6 +110,47 @@ def test_invalid_token_does_not_fall_back_to_local_dev_user() -> None:
             settings.auth_jwt_secret,
             settings.auth_firebase_fallback_enabled,
         ) = original
+
+
+def test_user_sync_skips_conflicting_claim_email() -> None:
+    db = SessionLocal()
+    suffix = uuid4().hex
+    uid_user = User(
+        firebase_uid=f"uid-owner-{suffix}",
+        email=f"old-{suffix}@example.com",
+        name="Old Name",
+    )
+    email_owner = User(
+        firebase_uid=f"email-owner-{suffix}",
+        email=f"shared-{suffix}@example.com",
+        name="Email Owner",
+    )
+    db.add_all([uid_user, email_owner])
+    db.commit()
+    uid_user_id = uid_user.id
+    original_email = uid_user.email
+    conflicting_email = email_owner.email
+
+    try:
+        synced = _sync_user_from_claims(
+            db,
+            AuthClaims(
+                subject=uid_user.firebase_uid,
+                email=conflicting_email,
+                name="Updated Name",
+                raw={},
+            ),
+        )
+
+        assert synced.id == uid_user_id
+        assert synced.email == original_email
+        assert synced.name == "Updated Name"
+    finally:
+        db.query(User).filter(
+            User.firebase_uid.in_([f"uid-owner-{suffix}", f"email-owner-{suffix}"])
+        ).delete(synchronize_session=False)
+        db.commit()
+        db.close()
 
 
 def test_expired_token_is_rejected() -> None:
@@ -292,23 +335,40 @@ def test_research_paper_search_requires_authentication() -> None:
     assert response.status_code == 401
 
 
-def test_kci_search_requires_configured_api_key() -> None:
+def test_kci_search_degrades_when_api_key_is_not_configured(monkeypatch) -> None:
     headers = auth_headers(f"kci-user-{uuid4().hex}")
-    settings = get_settings()
-    original_kci_api_key = settings.kci_api_key
-    settings.kci_api_key = None
 
-    try:
-        with TestClient(app) as client:
-            response = client.get(
-                "/api/v1/research/papers",
-                params={"query": "biology", "source": "kci"},
-                headers=headers,
-            )
-        assert response.status_code == 503
-        assert response.json()["detail"] == "KCI search is not configured for this environment."
-    finally:
-        settings.kci_api_key = original_kci_api_key
+    async def fake_kci_search(query: str, limit: int = 5) -> ScholarSearchResult:
+        del query, limit
+        raise ScholarServiceError(
+            status_code=503,
+            detail="KCI search is not configured for this environment.",
+        )
+
+    async def fake_semantic_search(query: str, limit: int = 5) -> ScholarSearchResult:
+        del query, limit
+        raise ScholarServiceError(
+            status_code=429,
+            detail="Semantic Scholar rate limit exceeded. Please retry later.",
+        )
+
+    monkeypatch.setattr("unifoli_api.services.search_provider_service.search_kci_papers", fake_kci_search)
+    monkeypatch.setattr(
+        "unifoli_api.services.search_provider_service.search_semantic_scholar_papers",
+        fake_semantic_search,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/research/papers",
+            params={"query": "biology", "source": "kci"},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["requested_source"] == "kci"
+    assert payload["fallback_applied"] is True
+    assert payload["papers"] == []
 
 
 def test_research_ingestion_rejects_private_network_urls() -> None:

@@ -276,14 +276,16 @@ def _decode_firebase_claims(token: str) -> AuthClaims:
 
 
 def _sync_user_from_claims(db: Session, claims: AuthClaims) -> User:
+    normalized_email = (claims.email or "").strip() or None
     user = db.query(User).filter(User.firebase_uid == claims.subject).first()
-    if user is None and claims.email:
-        user = db.query(User).filter(User.email == claims.email).first()
+    email_owner = db.query(User).filter(User.email == normalized_email).first() if normalized_email else None
+    if user is None and email_owner is not None:
+        user = email_owner
 
     if user is None:
         user = User(
             firebase_uid=claims.subject,
-            email=claims.email,
+            email=normalized_email,
             name=claims.name,
         )
         db.add(user)
@@ -295,9 +297,10 @@ def _sync_user_from_claims(db: Session, claims: AuthClaims) -> User:
     if user.firebase_uid != claims.subject:
         user.firebase_uid = claims.subject
         changed = True
-    if user.email != claims.email:
-        user.email = claims.email
-        changed = True
+    if normalized_email and user.email != normalized_email:
+        if email_owner is None or email_owner.id == user.id:
+            user.email = normalized_email
+            changed = True
     if user.name != claims.name:
         user.name = claims.name
         changed = True
@@ -352,20 +355,11 @@ def get_current_user(
 
     token = credentials.credentials
     try:
-        try:
-            claims = _decode_jwt_claims(token, settings)
-        except HTTPException:
-            if not settings.auth_firebase_fallback_enabled:
-                raise
-            claims = _decode_firebase_claims(token)
-    except HTTPException as exc:
-        if settings.auth_allow_local_dev_bypass:
-            user = _get_or_create_local_dev_user(db)
-            request.state.current_user_id = user.id
-            request.state.tenant_user_id = user.id
-            request.state.auth_claims = {"sub": user.firebase_uid, "email": user.email, "name": user.name}
-            return user
-        raise
+        claims = _decode_jwt_claims(token, settings)
+    except HTTPException:
+        if not settings.auth_firebase_fallback_enabled:
+            raise
+        claims = _decode_firebase_claims(token)
 
     user = _sync_user_from_claims(db, claims)
     request.state.current_user_id = user.id
