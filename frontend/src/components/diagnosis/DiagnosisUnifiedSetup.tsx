@@ -197,11 +197,11 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
       exit={{ opacity: 0, y: -10 }}
       className="w-full"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         
         {/* Left Column: Configuration */}
-        <div className="lg:col-span-5 space-y-6">
-          <SectionCard title="기본 설정" description="생기부 분석에 필요한 정보를 입력합니다." className="p-6">
+        <div className="lg:col-span-5 flex flex-col">
+          <SectionCard title="기본 설정" description="생기부 분석에 필요한 정보를 입력합니다." className="p-6 flex-1 flex flex-col justify-between">
             
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -327,26 +327,26 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
         </div>
 
         {/* Right Column: Upload */}
-        <div className="lg:col-span-7">
+        <div className="lg:col-span-7 flex flex-col">
           <div
             {...getRootProps({ onClick: open })}
             className={cn(
-              'relative flex h-full min-h-[400px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[2.5rem] border-2 border-dashed transition-all duration-300',
+              'relative flex flex-1 min-h-[480px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed transition-all duration-300 p-6 sm:p-10 shadow-sm',
               isDragActive
-                ? 'border-indigo-500 bg-indigo-50/50 scale-[0.99]'
-                : 'border-slate-200 bg-white hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-100/50',
+                ? 'border-indigo-500 bg-indigo-50/40 scale-[0.99] shadow-inner ring-4 ring-indigo-100'
+                : 'border-slate-200 bg-slate-50/10 hover:border-indigo-400 hover:bg-white hover:shadow-2xl hover:shadow-indigo-100/30',
               isUploading && 'pointer-events-none opacity-60'
             )}
           >
             <input {...getInputProps()} />
             
-            <div className="relative mb-8">
-              <div className="absolute inset-0 animate-ping rounded-[2rem] bg-indigo-200 opacity-20" />
-              <div className="relative flex h-24 w-24 items-center justify-center rounded-[2rem] bg-indigo-600 text-white shadow-xl shadow-indigo-200">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 animate-ping rounded-2xl bg-indigo-250 opacity-20" />
+              <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-200">
                 {isUploading ? (
-                  <Loader2 size={40} className="animate-spin" />
+                  <Loader2 size={32} className="animate-spin" />
                 ) : (
-                  <FileUp size={40} strokeWidth={1.5} />
+                  <FileUp size={32} strokeWidth={1.5} />
                 )}
               </div>
             </div>

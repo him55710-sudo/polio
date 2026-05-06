@@ -40,6 +40,7 @@ interface DiagnosisResultDisplayProps {
   diagnosisRun?: DiagnosisRunResponse | null;
   projectId?: string;
   targetGoals?: DiagnosisTargetGoal[];
+  showReportPanel?: boolean;
 }
 
 const NEEDS_SUPPORT_PATTERN = /\bneeds?\s+support\b/gi;
@@ -88,7 +89,13 @@ function completionStateLabel(value: unknown): string | null {
   return '상태 확인 중';
 }
 
-export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ diagnosisResult, diagnosisRun, projectId, targetGoals = [] }) => {
+export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
+  diagnosisResult,
+  diagnosisRun,
+  projectId,
+  targetGoals = [],
+  showReportPanel = true,
+}) => {
   const navigate = useNavigate();
   const { profile, goalList, setGoalList, submitGoals, isLoading: isStoreLoading } = useOnboardingStore();
 
@@ -232,7 +239,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
           {sanitizeKoreanText(diagnosisResult.overview)}
         </p>
 
-        {diagnosisRun && diagnosisRun.id && (
+        {showReportPanel && diagnosisRun && diagnosisRun.id && (
           <div className="pt-4 flex justify-center">
             <div className="max-w-md w-full">
               <DiagnosisReportPanel

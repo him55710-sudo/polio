@@ -22,20 +22,27 @@ from unifoli_api.services.render_job_service import (
     list_render_jobs_for_owner,
 )
 from unifoli_domain.enums import RenderFormat
-from unifoli_shared.paths import get_export_root, resolve_project_path
+from unifoli_shared.paths import get_export_root, resolve_project_path, resolve_stored_path
 from unifoli_shared.storage import get_storage_provider
 
 router = APIRouter(prefix="/render-jobs")
 
 
 def _resolve_render_output_path(output_path: str) -> Path:
-    try:
-        resolved = ensure_resolved_within_base(resolve_project_path(output_path), get_export_root())
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.") from exc
-    if not resolved.exists() or not resolved.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.")
-    return resolved
+    candidates: list[Path] = []
+    for resolver in (resolve_stored_path, resolve_project_path):
+        try:
+            resolved = ensure_resolved_within_base(resolver(output_path), get_export_root())
+        except ValueError:
+            continue
+        if resolved not in candidates:
+            candidates.append(resolved)
+
+    for resolved in candidates:
+        if resolved.exists() and resolved.is_file():
+            return resolved
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered artifact not found.")
 
 
 @router.get("/formats", response_model=list[RenderFormatInfo])

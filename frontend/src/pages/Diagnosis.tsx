@@ -1084,6 +1084,7 @@ export function Diagnosis() {
               diagnosisRun={diagnosisRun} 
               projectId={projectId} 
               targetGoals={diagnosisGoals}
+              showReportPanel={false}
             />
             {diagnosisRun?.id ? (
               <DiagnosisReportPanel

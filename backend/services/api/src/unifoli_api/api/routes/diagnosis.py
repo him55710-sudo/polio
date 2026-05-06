@@ -72,7 +72,7 @@ from unifoli_api.services.draft_service import create_draft
 from unifoli_api.services.document_service import list_documents_for_project
 from unifoli_api.services.project_service import get_project
 from unifoli_domain.enums import AsyncJobType
-from unifoli_shared.paths import get_export_root, resolve_project_path
+from unifoli_shared.paths import get_export_root, resolve_project_path, resolve_stored_path
 
 router = APIRouter()
 logger = logging.getLogger("unifoli.api.diagnosis")
@@ -354,13 +354,20 @@ def _maybe_process_report_job_inline(db: Session, run: DiagnosisRun) -> None:
 
 
 def _resolve_report_output_path(output_path: str) -> Path:
-    try:
-        resolved = ensure_resolved_within_base(resolve_project_path(output_path), get_export_root())
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis report artifact not found.") from exc
-    if not resolved.exists() or not resolved.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis report artifact not found.")
-    return resolved
+    candidates: list[Path] = []
+    for resolver in (resolve_stored_path, resolve_project_path):
+        try:
+            resolved = ensure_resolved_within_base(resolver(output_path), get_export_root())
+        except ValueError:
+            continue
+        if resolved not in candidates:
+            candidates.append(resolved)
+
+    for resolved in candidates:
+        if resolved.exists() and resolved.is_file():
+            return resolved
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis report artifact not found.")
 
 
 @router.post("/run", response_model=DiagnosisRunResponse)

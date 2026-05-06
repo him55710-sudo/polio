@@ -426,27 +426,34 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="rounded-[28px] border border-slate-200 bg-[#3182f6] p-6 shadow-sm text-white"
+        className="relative overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-700 p-6 sm:p-8 shadow-lg shadow-indigo-100/40 text-white"
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_45%)] pointer-events-none" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-md shrink-0">
+              <Sparkles className="text-yellow-300 animate-pulse" size={22} fill="currentColor" />
+            </div>
+            <div>
+            <h1 className="text-xl font-black tracking-tight sm:text-2xl flex items-center gap-2">
               {user?.displayName || '반가워요!'} 문서작성을 시작할까요?
             </h1>
+            <p className="text-xs font-bold text-blue-100 mt-1 opacity-90 hidden sm:block">실제 학생기록부 분석 데이터에 기반해 한 단계 수준 높은 대학 초안을 작성합니다.</p>
           </div>
-          <div className="flex gap-2">
+        </div>
+          <div className="flex gap-2.5 shrink-0">
             <button
               onClick={() => navigate('/app/diagnosis')}
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-5 text-sm font-black text-[#3182f6] shadow-lg transition-all hover:scale-105 active:scale-95"
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-white px-5 text-sm font-black text-indigo-600 shadow-md transition-all hover:scale-105 hover:bg-indigo-50 active:scale-95"
             >
               생기부 첨부
-              <ArrowRight size={16} />
+              <ArrowRight size={14} strokeWidth={2.5} />
             </button>
             <button
               onClick={() => navigate(activeStoredDiagnosis?.projectId ? `/app/workshop/${activeStoredDiagnosis.projectId}` : '/app/workshop')}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 text-sm font-black text-white backdrop-blur-md transition-all hover:bg-white/20"
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-5 text-sm font-black text-white backdrop-blur-md transition-all hover:bg-white/20 active:scale-95"
             >
-              워크숍
+              워크숍 바로가기
             </button>
           </div>
         </div>
@@ -457,13 +464,13 @@ export default function Dashboard() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.1 }}
         transition={{ duration: 0.5 }}
-        className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]"
+        className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr] items-stretch"
       >
         <PageHeader
           eyebrow="대시보드"
           title={nextAction.title}
           description={nextAction.description}
-          className="border-slate-200 bg-white p-6 sm:p-8"
+          className="border-slate-200 bg-white p-6 sm:p-8 h-full flex flex-col justify-between"
           actions={
             <div className="flex flex-wrap gap-2">
               <button
@@ -505,35 +512,35 @@ export default function Dashboard() {
         <SectionCard
           title="현재 기준"
           subtitle={hasPrimaryGoal ? '현재 목표/다음 단계 요약' : '목표 설정 후 다음 단계가 열립니다.'}
-          className="border-slate-200 bg-white/90 p-6 sm:p-8"
+          className="border-slate-200 bg-white/90 p-6 sm:p-8 h-full flex flex-col justify-between"
         >
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">목표</p>
-              <p className="mt-1 text-lg font-black tracking-tight text-slate-950">
+          <div className="space-y-3 flex-1 flex flex-col justify-center">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">목표</p>
+              <p className="mt-0.5 text-base font-black tracking-tight text-slate-950">
                 {primaryGoal ? `${primaryGoal.university} · ${primaryGoal.major}` : '목표 대학/학과 미설정'}
               </p>
             </div>
-            <div className="group relative rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all hover:border-slate-300">
+            <div className="group relative rounded-2xl border border-slate-100 bg-white px-4 py-3 transition-all hover:border-slate-200">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">진단</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">진단</p>
                 {hasDiagnosis && (
                   <button 
                     onClick={handleDeleteDiagnosis}
                     className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all"
                     title="진단 내역 삭제"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={12} />
                   </button>
                 )}
               </div>
-              <p className="mt-1 text-sm font-bold text-slate-800">
+              <p className="mt-0.5 text-xs font-bold text-slate-800 line-clamp-1">
                 {hasDiagnosis ? toCompactDiagnosisSummary(activeStoredDiagnosis?.diagnosis.headline) : '아직 진단 전입니다.'}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">다음 단계</p>
-              <p className="mt-1 text-sm font-bold text-slate-800">{nextAction.primaryLabel}</p>
+            <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">다음 단계</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-800">{nextAction.primaryLabel}</p>
             </div>
           </div>
         </SectionCard>
@@ -638,11 +645,11 @@ export default function Dashboard() {
         </SectionCard>
       </motion.div>
 
-      <div className="grid gap-6 sm:gap-8 lg:grid-cols-3">
+      <div className="grid gap-6 sm:gap-8 lg:grid-cols-3 items-stretch">
         {/* Target Card */}
-        <SurfaceCard className="relative overflow-hidden border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:col-span-2">
-          <div className="relative z-10">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+        <SurfaceCard className="relative overflow-hidden border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:col-span-2 flex flex-col justify-between">
+          <div className="relative z-10 flex-1 flex flex-col justify-between">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center justify-between">
               <div className="flex items-center gap-4 sm:gap-6 flex-1 min-w-0">
                 <div className="relative shrink-0">
                   <UniversityLogo
@@ -733,8 +740,8 @@ export default function Dashboard() {
         </SurfaceCard>
 
         {/* Workflow Status */}
-        <SectionCard title="워크플로 진행도" className="h-full p-6 sm:p-8">
-          <div className="space-y-3">
+        <SectionCard title="워크플로 진행도" className="h-full p-6 sm:p-8 flex flex-col justify-between">
+          <div className="space-y-2.5 flex-1 flex flex-col justify-center">
             {workflowSteps.map((step) => (
               <div key={step.key} className="flex gap-4 rounded-2xl bg-slate-50/50 p-3 ring-1 ring-slate-100">
                 <div className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
