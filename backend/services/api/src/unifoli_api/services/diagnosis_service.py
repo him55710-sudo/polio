@@ -5,7 +5,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -262,6 +262,53 @@ class DiagnosisResult(BaseModel):
     chatbot_context_json: dict[str, Any] | None = None
 
 
+class DiagnosisLLMCoreResult(BaseModel):
+    headline: str | None = None
+    overview: str | None = None
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    recommended_focus: str | None = None
+    risk_level: str | None = None
+    detailed_gaps: list[DiagnosisGap] = Field(default_factory=list)
+    action_plan: list[DiagnosisQuest] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+    recommended_topics: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_provider_aliases(cls, value: object) -> object:
+        if isinstance(value, DiagnosisResult):
+            value = value.model_dump()
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        summary = data.get("diagnosis_summary")
+        if isinstance(summary, dict):
+            data.setdefault(
+                "headline",
+                summary.get("headline")
+                or summary.get("overall_diagnosis")
+                or summary.get("overview")
+                or summary.get("reasoning"),
+            )
+            data.setdefault(
+                "overview",
+                summary.get("overview")
+                or summary.get("overall_diagnosis")
+                or summary.get("reasoning"),
+            )
+
+        data.setdefault("recommended_focus", data.get("focus") or data.get("next_focus") or data.get("priority_focus"))
+        data.setdefault("strengths", data.get("current_strengths") or data.get("positive_evidence") or data.get("strength_points") or [])
+        data.setdefault("gaps", data.get("weaknesses") or data.get("visible_gaps") or data.get("improvement_gaps") or [])
+        data.setdefault("risks", data.get("risk_factors") or data.get("risk_notes") or [])
+        data.setdefault("next_actions", data.get("actions") or data.get("recommended_actions") or [])
+        data.setdefault("recommended_topics", data.get("topic_candidates") or data.get("topics") or [])
+        return data
+
+
 @dataclass(frozen=True)
 class PolicyFlagMatch:
     code: str
@@ -325,6 +372,48 @@ def _clip(text: str | None, *, limit: int = 160) -> str:
     if len(normalized) <= limit:
         return normalized
     return f"{normalized[: limit - 3].rstrip()}..."
+
+
+def _coerce_text_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        normalized = _normalize_text(value)
+        return [normalized] if normalized else []
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            text = (
+                item.get("text")
+                or item.get("title")
+                or item.get("summary")
+                or item.get("description")
+                or item.get("rationale")
+                or item.get("topic")
+            )
+        else:
+            text = item
+        normalized = _normalize_text(str(text or ""))
+        if normalized:
+            items.append(normalized)
+    return items
+
+
+def _coerce_risk_level(value: object) -> Literal["safe", "warning", "danger"] | None:
+    normalized = _normalize_text(str(value or "")).lower()
+    if not normalized:
+        return None
+    if normalized in {"safe", "low", "낮음", "안전", "양호"}:
+        return "safe"
+    if normalized in {"danger", "high", "높음", "위험", "주의"}:
+        return "danger"
+    if normalized in {"warning", "medium", "moderate", "보통", "중간"}:
+        return "warning"
+    if any(token in normalized for token in ("danger", "high", "위험", "높")):
+        return "danger"
+    if any(token in normalized for token in ("safe", "low", "안전", "낮")):
+        return "safe"
+    return "warning"
 
 
 def _severity_for_score(score: int) -> AxisSeverity:
@@ -1121,6 +1210,58 @@ def build_grounded_diagnosis_result(
     )
 
 
+def _diagnosis_result_from_llm_core(
+    *,
+    core: DiagnosisLLMCoreResult,
+    project_title: str,
+    target_major: str | None,
+    target_university: str | None = None,
+    interest_universities: list[str] | None = None,
+    career_direction: str | None,
+    full_text: str,
+) -> DiagnosisResult:
+    fallback = build_grounded_diagnosis_result(
+        project_title=project_title,
+        target_major=target_major,
+        target_university=target_university,
+        interest_universities=interest_universities,
+        career_direction=career_direction,
+        document_count=1,
+        full_text=full_text,
+    )
+    result = DiagnosisResult(
+        headline=_normalize_text(core.headline) or fallback.headline,
+        overview=_normalize_text(core.overview) or fallback.overview,
+        strengths=_coerce_text_list(core.strengths) or fallback.strengths,
+        gaps=_coerce_text_list(core.gaps) or fallback.gaps,
+        detailed_gaps=core.detailed_gaps or fallback.detailed_gaps,
+        recommended_focus=_normalize_text(core.recommended_focus) or fallback.recommended_focus,
+        action_plan=core.action_plan or fallback.action_plan,
+        risk_level=_coerce_risk_level(core.risk_level) or fallback.risk_level,
+        document_quality=fallback.document_quality,
+        section_analysis=fallback.section_analysis,
+        admission_axes=fallback.admission_axes,
+        risks=_coerce_text_list(core.risks) or fallback.risks,
+        next_actions=_coerce_text_list(core.next_actions) or fallback.next_actions,
+        recommended_topics=_coerce_text_list(core.recommended_topics) or fallback.recommended_topics,
+        diagnosis_summary=fallback.diagnosis_summary,
+        gap_axes=fallback.gap_axes,
+        recommended_directions=fallback.recommended_directions,
+        recommended_default_action=fallback.recommended_default_action,
+        relational_graph=fallback.relational_graph,
+        uncertainty=fallback.uncertainty,
+    )
+    return _hydrate_guided_fields(
+        result=result,
+        project_title=project_title,
+        target_major=target_major,
+        target_university=target_university,
+        interest_universities=interest_universities,
+        career_direction=career_direction,
+        full_text=full_text,
+    )
+
+
 def _has_complete_guided_contract(result: DiagnosisResult) -> bool:
     expected_axes = set(AXIS_LABELS.keys())
     actual_axes = {axis.key for axis in result.gap_axes}
@@ -1290,11 +1431,28 @@ async def evaluate_student_record(
 
         for attempt in range(max_retries + 1):
             try:
-                result = await llm.generate_json(
+                llm_result = await llm.generate_json(
                     prompt=prompt,
-                    response_model=DiagnosisResult,
+                    response_model=DiagnosisLLMCoreResult,
                     system_instruction=system_instruction,
                     temperature=0.2,
+                )
+                result = (
+                    llm_result
+                    if isinstance(llm_result, DiagnosisResult)
+                    else _diagnosis_result_from_llm_core(
+                        core=(
+                            llm_result
+                            if isinstance(llm_result, DiagnosisLLMCoreResult)
+                            else DiagnosisLLMCoreResult.model_validate(llm_result)
+                        ),
+                        project_title=project_title or "?숈깮 湲곕줉遺",
+                        target_major=explicit_target_major,
+                        target_university=target_university,
+                        interest_universities=interest_universities,
+                        career_direction=career_direction,
+                        full_text=masked_text,
+                    )
                 )
                 result = _hydrate_guided_fields(
                     result=result,
@@ -1332,7 +1490,10 @@ async def evaluate_student_record(
             document_count=1,
             full_text=masked_text,
         )
-        fallback.headline = f"{fallback.headline} AI 진단 지연으로 인한 자동 분석 결과가 적용되었습니다."
+        fallback.actual_llm_provider = "local_evidence_engine"
+        fallback.actual_llm_model = "student-record-scoring-v1"
+        fallback.fallback_used = False
+        fallback.fallback_reason = None
         return fallback
 
 

@@ -153,6 +153,22 @@ function shouldUseStatelessDiagnosisFallback(failure: ApiErrorInfo): boolean {
   );
 }
 
+function isQueuedOrRetryingJob(status: unknown): boolean {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  return normalized === 'queued' || normalized === 'retrying';
+}
+
+function resolveInlineJobRetryDelayMs(job: AsyncJobRead | null): number {
+  const rawNextRetryAt = (job as (AsyncJobRead & { next_retry_at?: string | null }) | null)?.next_retry_at;
+  if (rawNextRetryAt) {
+    const nextRetryAt = Date.parse(rawNextRetryAt);
+    if (Number.isFinite(nextRetryAt)) {
+      return Math.max(1500, Math.min(nextRetryAt - Date.now() + 500, 30000));
+    }
+  }
+  return 15000;
+}
+
 export function Diagnosis() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -342,6 +358,11 @@ export function Diagnosis() {
     void api.post<AsyncJobRead>(`/api/v1/jobs/${jobId}/process`)
       .then((processed) => {
         setDiagnosisJob((previous) => (previous && previous.id !== processed.id ? previous : processed));
+        if (isQueuedOrRetryingJob(processed.status)) {
+          window.setTimeout(() => {
+            kickoffCache.delete(jobId);
+          }, resolveInlineJobRetryDelayMs(processed));
+        }
       })
       .catch(() => {
         kickoffCache.delete(jobId);
@@ -497,6 +518,10 @@ export function Diagnosis() {
         }
       }
       setDiagnosisJob(job);
+
+      if (job && isQueuedOrRetryingJob(job.status)) {
+        triggerInlineDiagnosisProcessing(job.id);
+      }
  
       if (isDiagnosisComplete(run)) {
         const completed = completeDiagnosis(run);
@@ -533,7 +558,7 @@ export function Diagnosis() {
       });
       return true;
     }
-  }, [applyFailureState, completeDiagnosis, recoverFromInvalidProject]);
+  }, [applyFailureState, completeDiagnosis, recoverFromInvalidProject, triggerInlineDiagnosisProcessing]);
 
   useEffect(() => {
     if (!preferredProjectId || !preferredProjectKey || !shouldHydratePreferredProject) return;

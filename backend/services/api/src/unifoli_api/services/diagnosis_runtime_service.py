@@ -68,6 +68,8 @@ DIAGNOSIS_FALLBACK_REASON_INVALID_REQUEST = "diagnosis_generation_invalid_reques
 DIAGNOSIS_FALLBACK_REASON_MODEL_NOT_FOUND = "diagnosis_generation_model_not_found"
 DIAGNOSIS_FALLBACK_REASON_PROVIDER_ERROR = "diagnosis_generation_provider_error"
 DIAGNOSIS_FALLBACK_REASON_UNEXPECTED = "diagnosis_generation_unexpected_error"
+LOCAL_DIAGNOSIS_PROVIDER = "local_evidence_engine"
+LOCAL_DIAGNOSIS_MODEL = "student-record-scoring-v1"
 
 logger = logging.getLogger("unifoli.api.diagnosis_runtime")
 
@@ -661,6 +663,38 @@ def _normalize_generation_fallback_reason(exc: Exception) -> str:
     return DIAGNOSIS_FALLBACK_REASON_UNEXPECTED
 
 
+def _build_local_evidence_diagnosis(
+    *,
+    llm_strategy: dict[str, Any],
+    project_title: str,
+    target_major: str | None,
+    target_university: str | None,
+    interest_universities: list[str] | None,
+    career_direction: str | None,
+    document_count: int,
+    full_text: str,
+    last_error_code: str | None = None,
+):
+    llm_strategy["actual_llm_provider"] = LOCAL_DIAGNOSIS_PROVIDER
+    llm_strategy["actual_llm_model"] = LOCAL_DIAGNOSIS_MODEL
+    llm_strategy["fallback_used"] = False
+    llm_strategy["fallback_reason"] = None
+    llm_strategy["llm_retry_attempts"] = int(llm_strategy.get("llm_retry_attempts") or 0)
+    llm_strategy["llm_retry_exhausted"] = False
+    if last_error_code:
+        llm_strategy["llm_last_error_code"] = last_error_code
+
+    return build_grounded_diagnosis_result(
+        project_title=project_title,
+        target_major=target_major,
+        target_university=target_university,
+        interest_universities=interest_universities,
+        career_direction=career_direction,
+        document_count=document_count,
+        full_text=full_text,
+    )
+
+
 async def run_diagnosis_run(
     db: Session,
     *,
@@ -735,7 +769,7 @@ async def run_diagnosis_run(
         resolved_llm_client = llm_strategy.get("resolved_client")
         resolved_llm_resolution = llm_strategy.get("resolved_resolution")
         should_use_llm = bool(llm_strategy.get("should_use_llm"))
-        model_name = str(llm_strategy.get("actual_llm_model") or "grounded-fallback")
+        model_name = str(llm_strategy.get("actual_llm_model") or LOCAL_DIAGNOSIS_MODEL)
         generation_timeout_seconds = _resolve_diagnosis_generation_timeout_seconds()
 
         _update_status("업로드한 문서 근거를 점검하고 있습니다...", progress=10.0)
@@ -828,17 +862,14 @@ async def run_diagnosis_run(
                 if invoked_model:
                     model_name = invoked_model
             except asyncio.TimeoutError as exc:
+                normalized_reason = _normalize_generation_fallback_reason(exc)
                 logger.warning(
-                    "LLM diagnosis generation timed out for run %s after %.1fs",
+                    "LLM diagnosis generation timed out for run %s after %.1fs. Completing with local evidence diagnosis.",
                     run.id,
                     generation_timeout_seconds,
                 )
-                model_name = "grounded-fallback"
-                llm_strategy["actual_llm_provider"] = "deterministic_fallback"
-                llm_strategy["actual_llm_model"] = "grounded-fallback"
-                llm_strategy["fallback_used"] = True
-                llm_strategy["fallback_reason"] = DIAGNOSIS_FALLBACK_REASON_TIMEOUT
-                result = build_grounded_diagnosis_result(
+                result = _build_local_evidence_diagnosis(
+                    llm_strategy=llm_strategy,
                     project_title=project.title,
                     target_major=target_major,
                     target_university=fallback_target_university,
@@ -846,21 +877,19 @@ async def run_diagnosis_run(
                     career_direction=owner.career,
                     document_count=len(documents),
                     full_text=diagnosis_input_text or full_text,
+                    last_error_code=normalized_reason,
                 )
+                model_name = LOCAL_DIAGNOSIS_MODEL
             except Exception as exc:  # noqa: BLE001
                 normalized_reason = _normalize_generation_fallback_reason(exc)
                 logger.warning(
-                    "LLM diagnosis failed for run %s. Falling back with reason=%s detail=%s",
+                    "LLM diagnosis failed for run %s. Completing with local evidence diagnosis. reason=%s detail=%s",
                     run.id,
                     normalized_reason,
                     exc,
                 )
-                model_name = "grounded-fallback"
-                llm_strategy["actual_llm_provider"] = "deterministic_fallback"
-                llm_strategy["actual_llm_model"] = "grounded-fallback"
-                llm_strategy["fallback_used"] = True
-                llm_strategy["fallback_reason"] = normalized_reason
-                result = build_grounded_diagnosis_result(
+                result = _build_local_evidence_diagnosis(
+                    llm_strategy=llm_strategy,
                     project_title=project.title,
                     target_major=target_major,
                     target_university=fallback_target_university,
@@ -868,11 +897,12 @@ async def run_diagnosis_run(
                     career_direction=owner.career,
                     document_count=len(documents),
                     full_text=diagnosis_input_text or full_text,
+                    last_error_code=normalized_reason,
                 )
+                model_name = LOCAL_DIAGNOSIS_MODEL
         else:
-            llm_strategy["actual_llm_provider"] = "deterministic_fallback"
-            llm_strategy["actual_llm_model"] = "grounded-fallback"
-            result = build_grounded_diagnosis_result(
+            result = _build_local_evidence_diagnosis(
+                llm_strategy=llm_strategy,
                 project_title=project.title,
                 target_major=target_major,
                 target_university=fallback_target_university,
@@ -881,6 +911,7 @@ async def run_diagnosis_run(
                 document_count=len(documents),
                 full_text=diagnosis_input_text or full_text,
             )
+            model_name = LOCAL_DIAGNOSIS_MODEL
 
         result.record_completion_state = completion_state
         

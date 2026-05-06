@@ -338,7 +338,7 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
               isUploading && 'pointer-events-none opacity-60'
             )}
           >
-            <input {...getInputProps()} />
+            <input data-testid="diagnosis-upload-input" {...getInputProps()} />
             
             <div className="relative mb-6">
               <div className="absolute inset-0 animate-ping rounded-2xl bg-indigo-250 opacity-20" />

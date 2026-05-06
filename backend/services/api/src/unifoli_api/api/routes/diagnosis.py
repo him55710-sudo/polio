@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from io import BytesIO
 import json
@@ -45,7 +46,12 @@ from unifoli_api.services.async_job_service import (
     get_latest_job_for_resource,
     process_async_job,
 )
-from unifoli_api.services.diagnosis_runtime_service import build_policy_scan_text, combine_project_text
+from unifoli_api.services.diagnosis_runtime_service import (
+    LOCAL_DIAGNOSIS_MODEL,
+    LOCAL_DIAGNOSIS_PROVIDER,
+    build_policy_scan_text,
+    combine_project_text,
+)
 from unifoli_api.services.diagnosis_report_service import (
     build_report_artifact_response,
     generate_consultant_report_artifact,
@@ -58,9 +64,10 @@ from unifoli_api.services.diagnosis_report_service import (
 )
 from unifoli_api.services.diagnosis_service import (
     DiagnosisCitation,
+    DiagnosisGenerationError,
     attach_policy_flags_to_run,
-    build_guided_outline_plan,
     build_grounded_diagnosis_result,
+    build_guided_outline_plan,
     detect_policy_flags,
     evaluate_student_record,
     ensure_review_task_for_flags,
@@ -78,6 +85,7 @@ router = APIRouter()
 logger = logging.getLogger("unifoli.api.diagnosis")
 INTERNAL_REPORT_MODE = "premium"
 stateless_security = HTTPBearer(auto_error=False)
+STATELESS_DIAGNOSIS_TIMEOUT_SECONDS = 240.0
 
 
 def _normalize_report_mode(value: str | None) -> str:
@@ -169,6 +177,34 @@ def _extract_pdf_text(data: bytes) -> str:
                 debug_detail=str(exc),
             ),
         ) from exc
+
+
+def _build_stateless_local_evidence_result(
+    *,
+    full_text: str,
+    filename: str | None,
+    target_university: str | None,
+    target_major: str | None,
+    interest_universities: list[str] | None,
+):
+    return build_grounded_diagnosis_result(
+        project_title=(filename or "Student record diagnosis").strip(),
+        target_major=(target_major or "").strip() or None,
+        target_university=(target_university or "").strip() or None,
+        interest_universities=interest_universities,
+        career_direction=None,
+        document_count=1,
+        full_text=full_text,
+    )
+
+
+def _resolve_stateless_diagnosis_timeout_seconds() -> float:
+    raw = getattr(get_settings(), "diagnosis_generation_timeout_seconds", STATELESS_DIAGNOSIS_TIMEOUT_SECONDS)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return STATELESS_DIAGNOSIS_TIMEOUT_SECONDS
+    return value if value > 0 else STATELESS_DIAGNOSIS_TIMEOUT_SECONDS
 
 
 async def _extract_stateless_upload_text(file: UploadFile) -> str:
@@ -488,42 +524,96 @@ async def trigger_stateless_diagnosis(
     interests = _parse_interest_universities(interest_universities)
     resolution = resolve_llm_runtime(profile="standard", concern="diagnosis")
     result = None
+    local_error_code: str | None = None
+    generation_timeout_seconds = _resolve_stateless_diagnosis_timeout_seconds()
 
-    if resolution.client is not None:
-        result = await evaluate_student_record(
-            user_major=(target_major or "").strip() or "general inquiry",
-            masked_text=full_text,
-            target_university=(target_university or "").strip() or None,
-            target_major=(target_major or "").strip() or None,
-            interest_universities=interests,
-            project_title=(file.filename or "Student record diagnosis").strip(),
-            scope_key=f"stateless:{uuid4().hex}",
-            evidence_keys=[file.filename or "uploaded-file"],
-            record_completion_state="unknown",
-            bypass_cache=True,
-            raise_on_llm_failure=False,
-            llm_client=resolution.client,
-            llm_resolution=resolution,
+    if resolution.client is None:
+        local_error_code = resolution.fallback_reason or "llm_unavailable"
+        logger.warning(
+            "Stateless diagnosis LLM unavailable. Completing with local evidence diagnosis. reason=%s",
+            local_error_code,
         )
-
-    if result is None:
-        result = build_grounded_diagnosis_result(
-            project_title=(file.filename or "Student record diagnosis").strip(),
-            target_major=(target_major or "").strip() or None,
-            target_university=(target_university or "").strip() or None,
-            interest_universities=interests,
-            document_count=1,
+        result = _build_stateless_local_evidence_result(
             full_text=full_text,
+            filename=file.filename,
+            target_university=target_university,
+            target_major=target_major,
+            interest_universities=interests,
         )
-        result.fallback_used = True
-        result.fallback_reason = "stateless_no_llm_client"
+    else:
+        try:
+            result = await asyncio.wait_for(
+                evaluate_student_record(
+                    user_major=(target_major or "").strip() or "general inquiry",
+                    masked_text=full_text,
+                    target_university=(target_university or "").strip() or None,
+                    target_major=(target_major or "").strip() or None,
+                    interest_universities=interests,
+                    project_title=(file.filename or "Student record diagnosis").strip(),
+                    scope_key=f"stateless:{uuid4().hex}",
+                    evidence_keys=[file.filename or "uploaded-file"],
+                    record_completion_state="unknown",
+                    bypass_cache=True,
+                    raise_on_llm_failure=True,
+                    llm_client=resolution.client,
+                    llm_resolution=resolution,
+                ),
+                timeout=generation_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            local_error_code = "diagnosis_generation_timeout"
+            logger.warning(
+                "Stateless diagnosis LLM timed out after %.1fs. Completing with local evidence diagnosis.",
+                generation_timeout_seconds,
+            )
+            result = _build_stateless_local_evidence_result(
+                full_text=full_text,
+                filename=file.filename,
+                target_university=target_university,
+                target_major=target_major,
+                interest_universities=interests,
+            )
+        except DiagnosisGenerationError as exc:
+            local_error_code = str(exc.reason_code or "").strip() or "diagnosis_generation_failed"
+            logger.warning(
+                "Stateless diagnosis LLM failed. Completing with local evidence diagnosis. reason=%s detail=%s",
+                local_error_code,
+                exc.detail or str(exc),
+            )
+            result = _build_stateless_local_evidence_result(
+                full_text=full_text,
+                filename=file.filename,
+                target_university=target_university,
+                target_major=target_major,
+                interest_universities=interests,
+            )
+        except Exception as exc:  # noqa: BLE001
+            local_error_code = "diagnosis_generation_unexpected_error"
+            logger.warning(
+                "Stateless diagnosis LLM errored. Completing with local evidence diagnosis. detail=%s",
+                exc,
+            )
+            result = _build_stateless_local_evidence_result(
+                full_text=full_text,
+                filename=file.filename,
+                target_university=target_university,
+                target_major=target_major,
+                interest_universities=interests,
+            )
 
     result.requested_llm_provider = resolution.attempted_provider
     result.requested_llm_model = resolution.attempted_model
-    result.actual_llm_provider = resolution.actual_provider or "deterministic_fallback"
-    result.actual_llm_model = resolution.actual_model or "grounded-fallback"
+    if local_error_code:
+        result.actual_llm_provider = LOCAL_DIAGNOSIS_PROVIDER
+        result.actual_llm_model = LOCAL_DIAGNOSIS_MODEL
+        result.llm_last_error_code = local_error_code
+        result.fallback_used = False
+        result.fallback_reason = None
+    else:
+        result.actual_llm_provider = resolution.actual_provider or LOCAL_DIAGNOSIS_PROVIDER
+        result.actual_llm_model = resolution.actual_model or LOCAL_DIAGNOSIS_MODEL
     result.llm_profile_used = "standard"
-    if resolution.fallback_used and not result.fallback_used:
+    if not local_error_code and resolution.fallback_used and not result.fallback_used:
         result.fallback_used = True
         result.fallback_reason = resolution.fallback_reason or "llm_runtime_fallback"
     result.processing_duration_ms = int(max(0.0, (datetime.utcnow() - started_at).total_seconds() * 1000.0))

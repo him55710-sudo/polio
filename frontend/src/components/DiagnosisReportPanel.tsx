@@ -325,7 +325,7 @@ export function DiagnosisReportPanel({
 
   if (variant === 'minimal') {
     return (
-      <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
+      <div data-testid="diagnosis-report-panel" className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm text-indigo-600">
           <FileText size={20} />
         </div>
@@ -340,17 +340,17 @@ export function DiagnosisReportPanel({
         </div>
         <div className="flex gap-2">
           {canDownloadReport ? (
-            <PrimaryButton onClick={downloadReport} disabled={isDownloading} className="h-9 px-4 text-xs">
+            <PrimaryButton data-testid="diagnosis-report-download" onClick={downloadReport} disabled={isDownloading} className="h-9 px-4 text-xs">
               {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
               다운로드
             </PrimaryButton>
           ) : (
-            <PrimaryButton onClick={() => generateReport(false)} disabled={isGenerating || isLoading} className="h-9 px-4 text-xs">
+            <PrimaryButton data-testid="diagnosis-report-generate" onClick={() => generateReport(false)} disabled={isGenerating || isLoading} className="h-9 px-4 text-xs">
               {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
               생성하기
             </PrimaryButton>
           )}
-          <SecondaryButton onClick={() => generateReport(true)} disabled={isGenerating || isLoading || isDownloading} className="h-9 w-9 p-0 justify-center">
+          <SecondaryButton data-testid="diagnosis-report-regenerate" onClick={() => generateReport(true)} disabled={isGenerating || isLoading || isDownloading} className="h-9 w-9 p-0 justify-center">
             <RefreshCw size={14} className={isGenerating ? 'animate-spin' : ''} />
           </SecondaryButton>
         </div>
@@ -365,7 +365,7 @@ export function DiagnosisReportPanel({
       description="내부 표준 템플릿으로 자동 생성됩니다."
       actions={<StatusBadge status={resolveBadgeStatus(effectiveStatus)}>{resolveBadgeLabel(effectiveStatus)}</StatusBadge>}
     >
-      <div className="space-y-4">
+      <div data-testid="diagnosis-report-panel" className="space-y-4">
         {reportStateMessage && (artifact?.status === 'FAILED' || normalizedRunStatus === 'FAILED') ? (
           <WorkflowNotice tone="danger" title="보고서 상태" description={reportStateMessage} />
         ) : null}
@@ -384,17 +384,17 @@ export function DiagnosisReportPanel({
           ) : null}
           <div className="flex flex-wrap gap-2">
             {canDownloadReport ? (
-              <PrimaryButton onClick={downloadReport} disabled={isDownloading}>
+              <PrimaryButton data-testid="diagnosis-report-download" onClick={downloadReport} disabled={isDownloading}>
                 {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                 진단서 내려받기
               </PrimaryButton>
             ) : (
-              <PrimaryButton onClick={() => generateReport(false)} disabled={isGenerating || isLoading}>
+              <PrimaryButton data-testid="diagnosis-report-generate" onClick={() => generateReport(false)} disabled={isGenerating || isLoading}>
                 {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                 보고서 생성
               </PrimaryButton>
             )}
-            <SecondaryButton onClick={() => generateReport(true)} disabled={isGenerating || isLoading || isDownloading}>
+            <SecondaryButton data-testid="diagnosis-report-regenerate" onClick={() => generateReport(true)} disabled={isGenerating || isLoading || isDownloading}>
               <RefreshCw size={14} />
               다시 생성
             </SecondaryButton>

@@ -213,6 +213,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
 
   return (
     <motion.div
+      data-testid="diagnosis-result-panel"
       key="result"
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}

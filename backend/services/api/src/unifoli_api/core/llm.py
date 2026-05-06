@@ -136,6 +136,14 @@ def _is_retryable_gemini_exception(exc: Exception) -> bool:
     return False
 
 
+def _is_gemini_response_schema_error(exc: Exception) -> bool:
+    normalized = f"{type(exc).__name__}: {exc}".lower()
+    return (
+        isinstance(exc, (KeyError, TypeError, ValueError))
+        and "response_schema" in normalized
+    ) or (isinstance(exc, KeyError) and str(exc).strip("'\"").lower() == "type")
+
+
 def _classify_gemini_error(exc: Exception) -> str:
     """에러 객체로부터 fallback reason 코드를 추출."""
     exc_str = str(exc).lower()
@@ -189,7 +197,7 @@ class GeminiClient(LLMClient):
     ) -> T:
         started_at = time.perf_counter()
 
-        async def _call_once() -> Any:
+        async def _call_once(*, include_schema: bool = True) -> Any:
             if self.sdk_variant == "google-generativeai":
                 return await self._legacy_generate_content(
                     prompt=prompt,
@@ -202,10 +210,11 @@ class GeminiClient(LLMClient):
             config = {
                 "system_instruction": system_instruction,
                 "response_mime_type": "application/json",
-                "response_schema": response_model,
                 "temperature": temperature,
                 "max_output_tokens": settings.gemini_max_output_tokens,
             }
+            if include_schema:
+                config["response_schema"] = response_model
             generate_async = getattr(self.client.models, "generate_content_async", None)
             if callable(generate_async):
                 return await generate_async(
@@ -240,7 +249,17 @@ class GeminiClient(LLMClient):
             async for attempt in retryer:
                 with attempt:
                     self.last_retry_attempts = attempt.retry_state.attempt_number - 1
-                    response = await _call_once()
+                    try:
+                        response = await _call_once(include_schema=True)
+                    except Exception as schema_exc:  # noqa: BLE001
+                        if not _is_gemini_response_schema_error(schema_exc):
+                            raise
+                        logger.warning(
+                            "Gemini response_schema was rejected; retrying JSON mode without schema. model=%s error=%r",
+                            self.model_name,
+                            schema_exc,
+                        )
+                        response = await _call_once(include_schema=False)
             
             # JSON 파싱 및 Repair Attempt (이 부분은 네트워크 재시도 성공 후에 실행)
             try:
@@ -257,9 +276,9 @@ class GeminiClient(LLMClient):
                 try:
                     repair_config = {
                         "response_mime_type": "application/json",
-                        "response_schema": response_model,
                         "temperature": 0.1,
                     }
+                    repair_config["response_schema"] = response_model
                     if self.sdk_variant == "google-generativeai":
                         repair_response = await self._legacy_generate_content(
                             prompt=repair_prompt,
@@ -271,18 +290,39 @@ class GeminiClient(LLMClient):
                     else:
                         repair_func = getattr(self.client.models, "generate_content_async", self.client.models.generate_content)
                         if asyncio.iscoroutinefunction(repair_func):
-                            repair_response = await repair_func(
-                                model=self.model_name,
-                                contents=repair_prompt,
-                                config=repair_config
-                            )
+                            try:
+                                repair_response = await repair_func(
+                                    model=self.model_name,
+                                    contents=repair_prompt,
+                                    config=repair_config
+                                )
+                            except Exception as schema_exc:  # noqa: BLE001
+                                if not _is_gemini_response_schema_error(schema_exc):
+                                    raise
+                                repair_config.pop("response_schema", None)
+                                repair_response = await repair_func(
+                                    model=self.model_name,
+                                    contents=repair_prompt,
+                                    config=repair_config
+                                )
                         else:
-                            repair_response = await asyncio.to_thread(
-                                repair_func,
-                                model=self.model_name,
-                                contents=repair_prompt,
-                                config=repair_config
-                            )
+                            try:
+                                repair_response = await asyncio.to_thread(
+                                    repair_func,
+                                    model=self.model_name,
+                                    contents=repair_prompt,
+                                    config=repair_config
+                                )
+                            except Exception as schema_exc:  # noqa: BLE001
+                                if not _is_gemini_response_schema_error(schema_exc):
+                                    raise
+                                repair_config.pop("response_schema", None)
+                                repair_response = await asyncio.to_thread(
+                                    repair_func,
+                                    model=self.model_name,
+                                    contents=repair_prompt,
+                                    config=repair_config
+                                )
                     parsed = _parse_response_model(repair_response, response_model)
                 except Exception as repair_exc:
                     logger.error("Gemini JSON repair failed. error=%r", repair_exc)

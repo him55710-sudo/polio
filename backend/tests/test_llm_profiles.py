@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+
+from pydantic import BaseModel
+
 from unifoli_api.core.config import Settings
 from unifoli_api.core.llm import (
     GeminiClient,
@@ -9,6 +14,10 @@ from unifoli_api.core.llm import (
     get_llm_client,
     resolve_llm_runtime,
 )
+
+
+class _SchemaProbeResult(BaseModel):
+    answer: str
 
 
 class _FakeGeminiClient(GeminiClient):
@@ -22,6 +31,37 @@ class _FakeGeminiClient(GeminiClient):
     async def stream_chat(self, prompt, system_instruction=None, temperature=0.5):  # noqa: ANN001
         if False:  # pragma: no cover - keep async generator contract.
             yield ""
+
+
+def test_gemini_json_mode_recovers_when_response_schema_is_rejected(monkeypatch) -> None:
+    settings = Settings(_env_file=None, gemini_max_retries=0, gemini_max_output_tokens=256)
+    seen_configs: list[dict[str, object]] = []
+
+    class _FakeModels:
+        async def generate_content_async(self, *, model, contents, config):  # noqa: ANN001
+            del model, contents
+            seen_configs.append(dict(config))
+            if "response_schema" in config:
+                raise KeyError("type")
+            return SimpleNamespace(text='{"answer":"ok"}')
+
+    client = GeminiClient.__new__(GeminiClient)
+    client.model_name = "gemini-test"
+    client.sdk_variant = "google-genai"
+    client.client = SimpleNamespace(models=_FakeModels())
+    client.last_retry_attempts = 0
+    client.last_retry_exhausted = False
+    client.last_error_code = None
+    monkeypatch.setattr("unifoli_api.core.llm.get_settings", lambda: settings)
+
+    result = asyncio.run(client.generate_json("prompt", _SchemaProbeResult))
+
+    assert result.answer == "ok"
+    assert len(seen_configs) == 2
+    assert seen_configs[0]["response_mime_type"] == "application/json"
+    assert "response_schema" in seen_configs[0]
+    assert seen_configs[1]["response_mime_type"] == "application/json"
+    assert "response_schema" not in seen_configs[1]
 
 
 def test_ollama_profile_model_fallbacks(monkeypatch) -> None:

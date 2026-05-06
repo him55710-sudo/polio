@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
@@ -142,6 +141,14 @@ def _build_minimal_result(headline: str) -> DiagnosisResult:
     )
 
 
+async def _async_identity(value):  # noqa: ANN001
+    return value
+
+
+async def _async_none(**kwargs):  # noqa: ANN003
+    return None
+
+
 def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
     settings = Settings(llm_provider="ollama", ollama_model="gemma4-test", gemini_api_key=None)
     run = SimpleNamespace(
@@ -216,6 +223,7 @@ def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.normalize_major_name", _async_identity)
     monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", fake_extract_semantic_diagnosis)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
@@ -238,7 +246,7 @@ def test_runtime_uses_ollama_llm_path_when_configured(monkeypatch) -> None:
     assert calls["model_name"] == "gemma4-test"
 
 
-def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
+def test_runtime_uses_local_evidence_when_provider_not_usable(monkeypatch) -> None:
     settings = Settings(llm_provider="gemini", gemini_api_key="DUMMY_KEY")
     run = SimpleNamespace(
         id="run-2",
@@ -331,10 +339,10 @@ def test_runtime_falls_back_when_provider_not_usable(monkeypatch) -> None:
     assert completed.status == "COMPLETED"
     assert calls["llm"] == 0
     assert calls["fallback"] == 1
-    assert calls["model_name"] == "grounded-fallback"
+    assert calls["model_name"] == "student-record-scoring-v1"
 
 
-def test_runtime_falls_back_when_diagnosis_generation_times_out(monkeypatch) -> None:
+def test_runtime_completes_with_local_evidence_when_diagnosis_generation_times_out(monkeypatch) -> None:
     settings = Settings(
         llm_provider="ollama",
         ollama_model="gemma4-test",
@@ -378,7 +386,10 @@ def test_runtime_falls_back_when_diagnosis_generation_times_out(monkeypatch) -> 
         await asyncio.sleep(0.05)
         return _build_minimal_result("llm path should timeout")
 
+    fallback_calls: list[dict[str, object]] = []
+
     def fake_build_grounded_diagnosis_result(**kwargs):  # noqa: ANN003
+        fallback_calls.append(kwargs)
         return _build_minimal_result("fallback path")
 
     def fake_create_response_trace(db, **kwargs):  # noqa: ANN001, ANN003
@@ -406,6 +417,8 @@ def test_runtime_falls_back_when_diagnosis_generation_times_out(monkeypatch) -> 
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.normalize_major_name", _async_identity)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", _async_none)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
@@ -421,16 +434,18 @@ def test_runtime_falls_back_when_diagnosis_generation_times_out(monkeypatch) -> 
         )
     )
 
-    payload = DiagnosisResult.model_validate_json(completed.result_payload)
+    payload = DiagnosisResult.model_validate_json(run.result_payload)
     assert completed.status == "COMPLETED"
-    assert completed.status != "RUNNING"
-    assert payload.fallback_used is True
-    assert payload.fallback_reason == "diagnosis_generation_timeout"
-    assert payload.actual_llm_provider == "deterministic_fallback"
-    assert payload.actual_llm_model == "grounded-fallback"
+    assert payload.actual_llm_provider == "local_evidence_engine"
+    assert payload.actual_llm_model == "student-record-scoring-v1"
+    assert payload.fallback_used is False
+    assert payload.fallback_reason is None
+    assert payload.llm_last_error_code == "diagnosis_generation_timeout"
+    assert len(fallback_calls) == 1
+    assert fallback_calls[0]["full_text"] == document.content_text
 
 
-def test_runtime_falls_back_when_diagnosis_provider_raises(monkeypatch) -> None:
+def test_runtime_completes_with_local_evidence_when_diagnosis_provider_raises(monkeypatch) -> None:
     settings = Settings(llm_provider="ollama", ollama_model="gemma4-test", gemini_api_key=None)
     run = SimpleNamespace(
         id="run-provider-1",
@@ -468,7 +483,10 @@ def test_runtime_falls_back_when_diagnosis_provider_raises(monkeypatch) -> None:
     async def fake_evaluate_student_record(**kwargs):  # noqa: ANN003
         raise DiagnosisGenerationError(reason_code="provider_error", detail="forced provider error")
 
+    fallback_calls: list[dict[str, object]] = []
+
     def fake_build_grounded_diagnosis_result(**kwargs):  # noqa: ANN003
+        fallback_calls.append(kwargs)
         return _build_minimal_result("fallback path")
 
     def fake_create_response_trace(db, **kwargs):  # noqa: ANN001, ANN003
@@ -496,6 +514,8 @@ def test_runtime_falls_back_when_diagnosis_provider_raises(monkeypatch) -> None:
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.normalize_major_name", _async_identity)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", _async_none)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
@@ -511,16 +531,18 @@ def test_runtime_falls_back_when_diagnosis_provider_raises(monkeypatch) -> None:
         )
     )
 
-    payload = DiagnosisResult.model_validate_json(completed.result_payload)
+    payload = DiagnosisResult.model_validate_json(run.result_payload)
     assert completed.status == "COMPLETED"
-    assert completed.status != "RUNNING"
-    assert payload.fallback_used is True
-    assert payload.fallback_reason == "diagnosis_generation_provider_error"
-    assert payload.actual_llm_provider == "deterministic_fallback"
-    assert payload.actual_llm_model == "grounded-fallback"
+    assert payload.actual_llm_provider == "local_evidence_engine"
+    assert payload.actual_llm_model == "student-record-scoring-v1"
+    assert payload.fallback_used is False
+    assert payload.fallback_reason is None
+    assert payload.llm_last_error_code == "diagnosis_generation_provider_error"
+    assert len(fallback_calls) == 1
+    assert fallback_calls[0]["full_text"] == document.content_text
 
 
-def test_runtime_falls_back_when_diagnosis_model_not_found(monkeypatch) -> None:
+def test_runtime_completes_with_local_evidence_when_diagnosis_model_not_found(monkeypatch) -> None:
     settings = Settings(llm_provider="ollama", ollama_model="missing-model", gemini_api_key=None)
     run = SimpleNamespace(
         id="run-model-not-found-1",
@@ -558,7 +580,10 @@ def test_runtime_falls_back_when_diagnosis_model_not_found(monkeypatch) -> None:
     async def fake_evaluate_student_record(**kwargs):  # noqa: ANN003
         raise DiagnosisGenerationError(reason_code="model_not_found", detail="forced missing model")
 
+    fallback_calls: list[dict[str, object]] = []
+
     def fake_build_grounded_diagnosis_result(**kwargs):  # noqa: ANN003
+        fallback_calls.append(kwargs)
         return _build_minimal_result("fallback path")
 
     def fake_create_response_trace(db, **kwargs):  # noqa: ANN001, ANN003
@@ -586,6 +611,8 @@ def test_runtime_falls_back_when_diagnosis_model_not_found(monkeypatch) -> None:
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.detect_policy_flags", lambda text: [])
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.evaluate_student_record", fake_evaluate_student_record)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_grounded_diagnosis_result", fake_build_grounded_diagnosis_result)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.normalize_major_name", _async_identity)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_scoring_service.extract_semantic_diagnosis", _async_none)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_response_trace", fake_create_response_trace)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.create_blueprint_from_signals", lambda db, project, diagnosis_run_id, signals: None)
     monkeypatch.setattr("unifoli_api.services.diagnosis_runtime_service.build_blueprint_signals", lambda **kwargs: {})
@@ -601,12 +628,15 @@ def test_runtime_falls_back_when_diagnosis_model_not_found(monkeypatch) -> None:
         )
     )
 
-    payload = DiagnosisResult.model_validate_json(completed.result_payload)
+    payload = DiagnosisResult.model_validate_json(run.result_payload)
     assert completed.status == "COMPLETED"
-    assert payload.fallback_used is True
-    assert payload.fallback_reason == "diagnosis_generation_model_not_found"
-    assert payload.actual_llm_provider == "deterministic_fallback"
-    assert payload.actual_llm_model == "grounded-fallback"
+    assert payload.actual_llm_provider == "local_evidence_engine"
+    assert payload.actual_llm_model == "student-record-scoring-v1"
+    assert payload.fallback_used is False
+    assert payload.fallback_reason is None
+    assert payload.llm_last_error_code == "diagnosis_generation_model_not_found"
+    assert len(fallback_calls) == 1
+    assert fallback_calls[0]["full_text"] == document.content_text
 
 
 def test_runtime_keeps_completed_diagnosis_when_blueprint_generation_fails(monkeypatch) -> None:

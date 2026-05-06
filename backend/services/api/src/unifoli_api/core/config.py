@@ -223,7 +223,7 @@ class Settings(BaseSettings):
     ollama_standard_timeout_seconds: float | None = None
     ollama_render_timeout_seconds: float | None = None
     workshop_chat_timeout_seconds: float = 60.0
-    diagnosis_generation_timeout_seconds: float = 45.0
+    diagnosis_generation_timeout_seconds: float = 240.0
     pdf_analysis_llm_enabled: bool = True
     pdf_analysis_llm_provider: str = "gemini"
     pdf_analysis_gemini_api_key: str | None = Field(

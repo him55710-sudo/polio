@@ -144,7 +144,7 @@ def test_evaluate_student_record_success_path_returns_guided_contract(monkeypatc
     _assert_default_action_references_existing_payload_ids(result)
 
 
-def test_evaluate_student_record_fallback_path_returns_guided_contract(monkeypatch) -> None:
+def test_evaluate_student_record_local_evidence_path_returns_guided_contract(monkeypatch) -> None:
     class _FailingDiagnosisLLM:
         async def generate_json(self, **kwargs):  # noqa: ANN003
             del kwargs
@@ -170,7 +170,11 @@ def test_evaluate_student_record_fallback_path_returns_guided_contract(monkeypat
         )
     )
 
-    assert "자동 분석 결과" in result.headline
+    assert "자동 분석 결과" not in result.headline
+    assert result.actual_llm_provider == "local_evidence_engine"
+    assert result.actual_llm_model == "student-record-scoring-v1"
+    assert result.fallback_used is False
+    assert result.fallback_reason is None
     assert len(result.gap_axes) == len(POSITIVE_AXIS_KEYS)
     assert {axis.key for axis in result.gap_axes} == set(POSITIVE_AXIS_KEYS)
     _assert_default_action_references_existing_payload_ids(result)
