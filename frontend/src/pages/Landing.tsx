@@ -11,6 +11,8 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { PUBLIC_DESIGN_VARIANT_STORAGE_KEY, getPublicDesignVariant } from '../lib/publicDesignVariant';
+import { LandingPortalVariant } from './LandingPortalVariant';
 
 const workflowSteps = [
   {
@@ -60,6 +62,27 @@ const pricingPlans = [
 ];
 
 export function Landing() {
+  const [designVariant, setDesignVariant] = React.useState(() => getPublicDesignVariant());
+
+  React.useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === PUBLIC_DESIGN_VARIANT_STORAGE_KEY) {
+        setDesignVariant(getPublicDesignVariant());
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  if (designVariant === 'portal') {
+    return <LandingPortalVariant />;
+  }
+
+  return <LandingClassic />;
+}
+
+function LandingClassic() {
   const { isAuthenticated } = useAuth();
   const startHref = isAuthenticated ? '/app/diagnosis' : '/auth';
 

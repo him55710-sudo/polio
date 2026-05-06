@@ -263,12 +263,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const dbUser = useAuthStore(state => state.user);
   const isAuthenticated = (Boolean(user) && !user?.isAnonymous) || backendSessionAuthenticated;
   const isGuestSession =
     Boolean(user?.isAnonymous) ||
     guestSessionActive ||
     (guestModeAvailable && !isAuthenticated && !!localStorage.getItem(GUEST_SESSION_KEY));
   const isVerified = isAuthenticated;
+
+  const hasSignedInIdentity = Boolean(user || backendSessionAuthenticated || (dbUser && !dbUser.is_guest));
+  const effectiveIsAdmin = isAdmin || (allowLocalBackendBypass && hasSignedInIdentity && !isGuestSession);
 
   return (
     <AuthContext.Provider
@@ -285,7 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signInWithNaver,
         signInAsGuest,
         logout,
-        isAdmin,
+        isAdmin: effectiveIsAdmin,
         refreshAdminAccess,
       }}
     >

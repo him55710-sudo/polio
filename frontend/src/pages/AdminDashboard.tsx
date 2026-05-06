@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileText,
   MessageSquare,
+  Palette,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -19,6 +20,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { PageHeader, StatusBadge, SurfaceCard, type StatusBadgeProps } from '../components/primitives';
 import { cn } from '../lib/cn';
+import {
+  getPublicDesignVariant,
+  setPublicDesignVariant as savePublicDesignVariant,
+  type PublicDesignVariant,
+} from '../lib/publicDesignVariant';
 
 type StatusTone = NonNullable<StatusBadgeProps['status']>;
 
@@ -241,6 +247,7 @@ const AdminDashboard: React.FC = () => {
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [publicDesignVariant, setPublicDesignVariantState] = useState<PublicDesignVariant>(() => getPublicDesignVariant());
 
   const fetchDashboard = async () => {
     try {
@@ -309,6 +316,12 @@ const AdminDashboard: React.FC = () => {
       console.error('Failed to open admin file:', error);
       toast.error('파일을 불러오지 못했습니다.', { id: 'admin-file-open' });
     }
+  };
+
+  const handlePublicDesignVariantChange = (variant: PublicDesignVariant) => {
+    savePublicDesignVariant(variant);
+    setPublicDesignVariantState(variant);
+    toast.success(`공개 홈 디자인 ${variant === 'classic' ? 'A' : 'B'}안을 선택했습니다.`);
   };
 
   const filteredProjects = useMemo(() => {
@@ -411,6 +424,53 @@ const AdminDashboard: React.FC = () => {
           </div>
         }
       />
+
+      <SurfaceCard className="p-5">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
+              <Palette size={20} />
+            </span>
+            <div>
+              <h2 className="text-lg font-black text-slate-950">공개 홈 디자인 A/B</h2>
+              <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
+                A안은 기존 화면, B안은 리로스쿨형 교육 포털 레이아웃입니다. 선택값은 현재 브라우저에 저장됩니다.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1">
+              {[
+                { value: 'classic' as const, label: 'A안 기존' },
+                { value: 'portal' as const, label: 'B안 포털형' },
+              ].map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handlePublicDesignVariantChange(option.value)}
+                  className={cn(
+                    'h-10 rounded-xl px-4 text-sm font-black transition',
+                    publicDesignVariant === option.value
+                      ? 'bg-slate-950 text-white shadow-sm'
+                      : 'text-slate-500 hover:bg-white hover:text-slate-900',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+            >
+              공개 홈 보기
+              <ExternalLink size={16} />
+            </a>
+          </div>
+        </div>
+      </SurfaceCard>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {metricCards.map(card => (
