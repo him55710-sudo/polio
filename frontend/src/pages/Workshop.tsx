@@ -27,6 +27,9 @@ import {
   User,
   Wand2,
   X,
+  Trash2,
+  Edit2,
+  Check,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
@@ -54,6 +57,8 @@ import {
   listArchiveItems,
   resolveArchiveDownloadContent,
   saveArchiveItem,
+  deleteArchiveItem,
+  updateArchiveItemTitle,
   type ArchiveItem,
 } from '../lib/archiveStore';
 import { readQuestStart } from '../lib/questStart';
@@ -1452,9 +1457,62 @@ interface ConversationHistoryPanelProps {
   disabled?: boolean;
   onNewChat: () => void;
   onResume: (item: ArchiveItem) => void;
+  onRename: (id: string, newTitle: string) => void;
+  onDelete: (id: string) => void;
 }
 
-function ConversationHistoryPanel({ items, activeId, disabled, onNewChat, onResume }: ConversationHistoryPanelProps) {
+function ConversationHistoryPanel({
+  items,
+  activeId,
+  disabled,
+  onNewChat,
+  onResume,
+  onRename,
+  onDelete,
+}: ConversationHistoryPanelProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const startEdit = (e: React.MouseEvent, item: ArchiveItem) => {
+    e.stopPropagation();
+    setEditingId(item.id);
+    setEditTitle(item.title);
+    setDeletingId(null);
+  };
+
+  const cancelEdit = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingId(null);
+    setEditTitle('');
+  };
+
+  const submitEdit = (id: string) => {
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== items.find(item => item.id === id)?.title) {
+      onRename(id, trimmed);
+    }
+    setEditingId(null);
+    setEditTitle('');
+  };
+
+  const startDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setDeletingId(id);
+    setEditingId(null);
+  };
+
+  const cancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeletingId(null);
+  };
+
+  const submitDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    onDelete(id);
+    setDeletingId(null);
+  };
+
   return (
     <aside className="flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white/90 shadow-sm backdrop-blur">
       <div className="border-b border-slate-100 p-4">
@@ -1481,25 +1539,101 @@ function ConversationHistoryPanel({ items, activeId, disabled, onNewChat, onResu
           ) : (
             items.map((item) => {
               const isActive = item.id === activeId;
+              const isEditing = item.id === editingId;
+              const isDeleting = item.id === deletingId;
+
               return (
-                <button
+                <div
                   key={item.id}
-                  type="button"
-                  onClick={() => onResume(item)}
-                  disabled={disabled}
+                  onClick={() => !isEditing && !isDeleting && !disabled && onResume(item)}
                   className={cn(
-                    'w-full rounded-2xl border p-3 text-left transition-all disabled:opacity-50',
+                    'group relative flex w-full flex-col rounded-2xl border p-3 text-left transition-all cursor-pointer',
                     isActive
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-900 shadow-sm'
-                      : 'border-slate-100 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50',
+                      ? 'border-indigo-200 bg-indigo-50/70 text-indigo-900 shadow-sm'
+                      : 'border-slate-100 bg-white text-slate-700 hover:border-indigo-100 hover:bg-slate-50/50',
+                    disabled && 'opacity-50 pointer-events-none'
                   )}
                 >
-                  <div className="line-clamp-2 text-sm font-black leading-snug">{item.title}</div>
-                  <div className="mt-1 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-400">
-                    <span className="truncate">{item.subject || '탐구'}</span>
-                    <span className="shrink-0">{new Date(item.updatedAt || item.createdAt).toLocaleDateString('ko-KR')}</span>
-                  </div>
-                </button>
+                  {isEditing ? (
+                    <div className="flex w-full items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') submitEdit(item.id);
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                        autoFocus
+                        className="flex-1 rounded-lg border border-indigo-300 bg-white px-2 py-1 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => submitEdit(item.id)}
+                        className="rounded-md p-1 text-emerald-600 hover:bg-emerald-50"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cancelEdit()}
+                        className="rounded-md p-1 text-rose-600 hover:bg-rose-50"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : isDeleting ? (
+                    <div className="flex w-full items-center justify-between" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-xs font-black text-rose-600 animate-pulse">정말 삭제할까요?</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => submitDelete(e, item.id)}
+                          className="flex items-center gap-0.5 rounded-lg bg-rose-50 px-2 py-1 text-xs font-black text-rose-600 hover:bg-rose-100"
+                        >
+                          <Check size={12} />
+                          예
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelDelete}
+                          className="flex items-center gap-0.5 rounded-lg bg-slate-50 px-2 py-1 text-xs font-black text-slate-500 hover:bg-slate-100"
+                        >
+                          <X size={12} />
+                          아니오
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="line-clamp-2 pr-6 text-sm font-black leading-snug break-all">{item.title}</div>
+                        
+                        {/* Hover Action Buttons */}
+                        <div className="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={(e) => startEdit(e, item)}
+                            className="rounded-md border border-slate-100 bg-white p-1 text-slate-400 shadow-sm hover:border-slate-200 hover:text-slate-600 hover:bg-slate-50"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => startDelete(e, item.id)}
+                            className="rounded-md border border-slate-100 bg-white p-1 text-slate-400 shadow-sm hover:border-rose-200 hover:text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-400">
+                        <span className="truncate max-w-[120px]">{item.subject || '탐구'}</span>
+                        <span className="shrink-0">{new Date(item.updatedAt || item.createdAt).toLocaleDateString('ko-KR')}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               );
             })
           )}
@@ -3115,6 +3249,21 @@ export function Workshop() {
     [isProjectBacked, navigate, normalizedProjectId, persistWorkshopSnapshot],
   );
 
+  const handleRenameArchive = useCallback((id: string, newTitle: string) => {
+    updateArchiveItemTitle(id, newTitle);
+    setArchivePanelRefreshKey((prev) => prev + 1);
+    toast.success('대화 제목이 수정되었습니다.');
+  }, []);
+
+  const handleDeleteArchive = useCallback((id: string) => {
+    deleteArchiveItem(id);
+    setArchivePanelRefreshKey((prev) => prev + 1);
+    if (id === activeArchiveId) {
+      void handleNewConversation();
+    }
+    toast.success('대화가 삭제되었습니다.');
+  }, [activeArchiveId, handleNewConversation]);
+
   useEffect(() => {
     const nextMarkdown = structuredDraftToMarkdown(structuredDraft);
     setDocumentContent(nextMarkdown);
@@ -4509,6 +4658,8 @@ export function Workshop() {
               disabled={isSessionLoading || isTyping}
               onNewChat={() => void handleNewConversation()}
               onResume={(item) => void handleResumeArchivedConversation(item)}
+              onRename={handleRenameArchive}
+              onDelete={handleDeleteArchive}
             />
           </div>
           <div className={cn("flex flex-col min-h-0 flex-1 transition-all duration-700 items-center w-full", isEditorOpen ? "lg:mr-[450px] xl:mr-[600px]" : "")}>
