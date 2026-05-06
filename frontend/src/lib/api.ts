@@ -13,7 +13,12 @@ function isApiRequestUrl(requestUrl: string): boolean {
   return requestUrl.startsWith('/api/') || /\/api\//.test(requestUrl);
 }
 
+type RetryableApiRequestConfig = AxiosRequestConfig & {
+  __sameOriginFallbackAttempted?: boolean;
+};
+
 let hasWarnedMissingApiUrl = false;
+let hasWarnedApiBaseFallback = false;
 
 export function resolveApiBaseUrl() {
   const configured = (viteEnv.VITE_API_URL || '').trim();
@@ -130,13 +135,82 @@ function assertApiHtmlResponse(config: AxiosRequestConfig, responseHeaders: any,
     (error as any).debugCode = 'HTML_MISROUTE';
     (error as any).status = status;
     (error as any).contentType = contentType;
+    (error as any).requestUrl = requestUrl;
     throw error;
   }
 }
 
+function resolveRequestBaseUrl(config: AxiosRequestConfig): string {
+  const baseUrl = typeof config.baseURL === 'string' && config.baseURL.trim()
+    ? config.baseURL
+    : String(client.defaults.baseURL || resolveApiBaseUrl());
+  return normalizeBaseUrl(baseUrl);
+}
+
+function isGenericNotFoundPayload(data: unknown): boolean {
+  if (typeof data === 'string') {
+    return data.trim().toLowerCase() === 'not found';
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return false;
+  }
+  const record = data as Record<string, unknown>;
+  const detail = typeof record.detail === 'string' ? record.detail.trim().toLowerCase() : '';
+  const message = typeof record.message === 'string' ? record.message.trim().toLowerCase() : '';
+  return detail === 'not found' || message === 'not found';
+}
+
+function shouldRetryWithSameOrigin(error: unknown, config: RetryableApiRequestConfig): boolean {
+  if (config.__sameOriginFallbackAttempted) return false;
+  const requestUrl = String(config.url || '');
+  if (!isApiRequestUrl(requestUrl)) return false;
+
+  const sameOriginBase = resolveSameOriginApiBaseUrl();
+  if (!sameOriginBase) return false;
+
+  const currentBase = resolveRequestBaseUrl(config);
+  if (currentBase === sameOriginBase) return false;
+
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const contentType = String(error.response?.headers?.['content-type'] || '').toLowerCase();
+    if (status === 404 && isGenericNotFoundPayload(error.response?.data)) {
+      return true;
+    }
+    return status === 404 && (contentType.includes('text/plain') || contentType.includes('text/html'));
+  }
+
+  const anyError = error as any;
+  return anyError?.debugCode === 'HTML_MISROUTE' && anyError?.status === 404;
+}
+
+function buildSameOriginFallbackConfig(config: RetryableApiRequestConfig): RetryableApiRequestConfig {
+  const sameOriginBase = resolveSameOriginApiBaseUrl();
+  return {
+    ...config,
+    baseURL: sameOriginBase || config.baseURL,
+    __sameOriginFallbackAttempted: true,
+  };
+}
+
 async function request<T = any>(config: AxiosRequestConfig): Promise<T> {
-  const response = await client.request<T>(config);
-  return response.data;
+  try {
+    const response = await client.request<T>(config);
+    return response.data;
+  } catch (error) {
+    const retryConfig = config as RetryableApiRequestConfig;
+    if (shouldRetryWithSameOrigin(error, retryConfig)) {
+      if (typeof window !== 'undefined' && !hasWarnedApiBaseFallback) {
+        console.warn(
+          'Configured VITE_API_URL returned a generic API 404. Retrying against the current origin API.',
+        );
+        hasWarnedApiBaseFallback = true;
+      }
+      const response = await client.request<T>(buildSameOriginFallbackConfig(retryConfig));
+      return response.data;
+    }
+    throw error;
+  }
 }
 
 export interface ApiDownloadResponse {
@@ -147,12 +221,27 @@ export interface ApiDownloadResponse {
 }
 
 async function download(url: string, config?: AxiosRequestConfig): Promise<ApiDownloadResponse> {
-  const response = await client.request<Blob>({
+  const requestConfig: RetryableApiRequestConfig = {
     ...config,
     method: 'GET',
     url,
     responseType: 'blob',
-  });
+  };
+  let response;
+  try {
+    response = await client.request<Blob>(requestConfig);
+  } catch (error) {
+    if (!shouldRetryWithSameOrigin(error, requestConfig)) {
+      throw error;
+    }
+    if (typeof window !== 'undefined' && !hasWarnedApiBaseFallback) {
+      console.warn(
+        'Configured VITE_API_URL returned a generic API 404. Retrying against the current origin API.',
+      );
+      hasWarnedApiBaseFallback = true;
+    }
+    response = await client.request<Blob>(buildSameOriginFallbackConfig(requestConfig));
+  }
 
   return {
     blob: response.data,

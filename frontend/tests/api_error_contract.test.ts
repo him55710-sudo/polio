@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { AxiosError, AxiosHeaders } from 'axios';
 
+import { api } from '../src/lib/api';
 import { getApiErrorInfo } from '../src/lib/apiError';
 
 function buildAxiosError(data: unknown, status = 500, headers?: Record<string, string>): AxiosError {
@@ -96,4 +97,62 @@ test('frontend surfaces vercel function boot failures as backend startup errors'
   assert.equal(info.debugCode, 'BACKEND_STARTUP_FAILED');
   assert.match(info.debugDetail || '', /FUNCTION_INVOCATION_FAILED/);
   assert.equal(info.status, 500);
+});
+
+test('standard API retries generic 404s from a stale configured API host against same-origin API', async () => {
+  const previousWindow = (globalThis as any).window;
+  (globalThis as any).window = {
+    location: {
+      protocol: 'https:',
+      hostname: 'uni-foli.vercel.app',
+      origin: 'https://uni-foli.vercel.app',
+    },
+  };
+
+  const observedBaseUrls: Array<string | undefined> = [];
+  let callCount = 0;
+
+  try {
+    const result = await api.get<{ ok: boolean }>('/api/v1/runtime/capabilities', {
+      baseURL: 'https://uni-foli-api.vercel.app',
+      adapter: async (config) => {
+        callCount += 1;
+        observedBaseUrls.push(config.baseURL);
+
+        if (callCount === 1) {
+          throw new AxiosError(
+            'Request failed with status code 404',
+            'ERR_BAD_REQUEST',
+            config,
+            {},
+            {
+              data: 'Not Found',
+              status: 404,
+              statusText: 'Not Found',
+              headers: { 'content-type': 'text/plain; charset=utf-8' },
+              config,
+              request: {},
+            } as any,
+          );
+        }
+
+        return {
+          data: { ok: true },
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          config,
+          request: {},
+        } as any;
+      },
+    });
+
+    assert.deepEqual(result, { ok: true });
+    assert.deepEqual(observedBaseUrls, [
+      'https://uni-foli-api.vercel.app',
+      'https://uni-foli.vercel.app',
+    ]);
+  } finally {
+    (globalThis as any).window = previousWindow;
+  }
 });
