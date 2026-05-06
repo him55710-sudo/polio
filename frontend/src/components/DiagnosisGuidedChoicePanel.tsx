@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, FileText, Layers3, Loader2, Presentation, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, resolveApiBaseUrl } from '../lib/api';
@@ -76,6 +77,7 @@ export function DiagnosisGuidedChoicePanel({
   const directions = diagnosis.recommended_directions ?? [];
   const defaultAction = diagnosis.recommended_default_action ?? null;
   const initialSelection = useMemo(() => buildInitialGuidedSelection(diagnosis), [diagnosis]);
+  
   const [selectedDirectionId, setSelectedDirectionId] = useState<string | null>(initialSelection.directionId);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedPageCount, setSelectedPageCount] = useState<number | null>(null);
@@ -88,6 +90,10 @@ export function DiagnosisGuidedChoicePanel({
   const [lastRenderJob, setLastRenderJob] = useState<RenderJobRead | null>(null);
   const [includeProvenanceAppendix, setIncludeProvenanceAppendix] = useState(false);
   const [hideInternalProvenance, setHideInternalProvenance] = useState(true);
+
+  // 대화형 단계(Step) 컨트롤
+  const [currentStep, setCurrentStep] = useState<number>(1);
+
   const downloadRenderedArtifact = async (downloadUrl: string, formatHint?: string) => {
     const absoluteDownloadUrl = toAbsoluteDownloadUrl(downloadUrl);
     const fallbackName = `diagnosis_export.${formatHint || 'pdf'}`;
@@ -146,6 +152,7 @@ export function DiagnosisGuidedChoicePanel({
     setSelectedTemplateId(initialSelection.templateId);
     setOutline(null);
     setLastRenderJob(null);
+    setCurrentStep(1); // 초기 세팅 로딩 시 1단계로 강제 리셋
   }, [initialSelection.directionId, initialSelection.format, initialSelection.pageCount, initialSelection.templateId, initialSelection.topicId]);
 
   useEffect(() => {
@@ -232,7 +239,7 @@ export function DiagnosisGuidedChoicePanel({
         },
       );
       setOutline(response.outline);
-      toast.success('가이드 개요가 생성되었습니다.');
+      toast.success('가이드 개요가 생성되었습니다. 아래에서 미리보기를 확인하세요!');
     } catch (error) {
       console.error(error);
       toast.error('가이드 개요를 생성할 수 없습니다.');
@@ -288,271 +295,446 @@ export function DiagnosisGuidedChoicePanel({
     }
   };
 
+  // 단계별 다음으로 버튼 활성화 검증 가이드
+  const canGoNext = useMemo(() => {
+    if (currentStep === 1) return selectedDirectionId !== null;
+    if (currentStep === 2) return selectedTopicId !== null;
+    if (currentStep === 3) return selectedPageCount !== null && selectedFormat !== null;
+    if (currentStep === 4) return selectedTemplateId !== null;
+    return false;
+  }, [currentStep, selectedDirectionId, selectedTopicId, selectedPageCount, selectedFormat, selectedTemplateId]);
+
+  const stepLabels = [
+    { num: 1, label: '탐구 활동 방향' },
+    { num: 2, label: '세부 탐구 주제' },
+    { num: 3, label: '보고서 규격 설정' },
+    { num: 4, label: '템플릿 & 초안 발급' },
+  ];
+
   return (
-    <section data-testid="guided-choice-panel" className="space-y-8 rounded-[40px] border border-slate-200 bg-white p-8 shadow-xl">
-      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">진단 결과 요약</p>
-          <p className="mt-3 text-xl font-black text-slate-900">{diagnosis.diagnosis_summary?.overview ?? diagnosis.headline}</p>
-          <p className="mt-4 text-sm font-semibold leading-relaxed text-slate-600">
+    <section data-testid="guided-choice-panel" className="space-y-8 rounded-[40px] border border-slate-100 bg-white p-8 shadow-2xl relative overflow-hidden">
+      
+      {/* 고화질 장식성 배경 빔 */}
+      <div className="absolute top-0 right-0 h-96 w-96 rounded-full bg-gradient-to-br from-indigo-50/40 to-transparent blur-3xl pointer-events-none" />
+
+      {/* 진단 요약 및 위반 방지 헤더 */}
+      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] relative z-10">
+        <div className="rounded-[28px] border border-slate-100 bg-slate-50/40 p-6 backdrop-blur-sm">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">진단 결과 기반 분석 요약</p>
+          <p className="mt-3 text-lg font-black text-slate-900 leading-snug">{diagnosis.diagnosis_summary?.overview ?? diagnosis.headline}</p>
+          <p className="mt-3 text-xs font-bold leading-relaxed text-slate-500">
             {diagnosis.diagnosis_summary?.reasoning ?? diagnosis.recommended_focus}
           </p>
         </div>
-        <div className="rounded-[28px] border border-slate-200 bg-slate-900 p-6 text-white">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-300">작성 포인트 및 위반 방지</p>
-          <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-100">
+        <div className="rounded-[28px] border border-slate-100 bg-slate-900 p-6 text-white shadow-xl shadow-slate-950/10">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-300">중요 학생부 기재 위반 방지</p>
+          <p className="mt-3 text-xs font-bold leading-relaxed text-slate-300">
             {diagnosis.diagnosis_summary?.authenticity_note ??
-              '기록된 사실을 근거로 작성하며, 과도한 추측이나 없는 사실의 추가를 지양해야 합니다.'}
+              '생활기록부에 이미 증명된 사실만을 근거로 삼아야 합니다. 임의의 학업 성취 조작이나 사실 왜곡은 오작동 및 평가 무효 요인이 될 수 있습니다.'}
           </p>
         </div>
       </div>
 
-      {defaultAction && recommendedDirection ? (
-        <div data-testid="guided-default-action" className="rounded-[28px] border border-[#004aad]/10 bg-[#004aad]/5 p-6">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#004aad]">추천 작업 시작</p>
-          <h3 className="mt-3 text-xl font-black text-slate-900">{recommendedDirection.label}</h3>
-          <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-700">{defaultAction.rationale}</p>
-          <div className="mt-4 flex flex-wrap gap-2 text-xs font-black text-[#004aad]">
-            <span className="rounded-full bg-white px-3 py-2">{defaultAction.export_format.toUpperCase()}</span>
-            <span className="rounded-full bg-white px-3 py-2">{defaultAction.page_count} 페이지 분량</span>
-            <span className="rounded-full bg-white px-3 py-2">템플릿: {defaultAction.template_id}</span>
-          </div>
-        </div>
-      ) : null}
+      {/* 대화형 가이드 4단계 인디케이터 바 */}
+      <div className="relative z-10 border-y border-slate-100 py-6 my-2">
+        <div className="max-w-3xl mx-auto flex items-center justify-between relative">
+          
+          {/* 가로 선 */}
+          <div className="absolute left-0 right-0 top-1/2 h-[3px] bg-slate-100 -translate-y-1/2 z-0" />
+          <div 
+            className="absolute left-0 top-1/2 h-[3px] bg-indigo-600 -translate-y-1/2 z-0 transition-all duration-500" 
+            style={{ width: `${((currentStep - 1) / (stepLabels.length - 1)) * 100}%` }}
+          />
 
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-slate-900">
-          <Sparkles size={18} />
-          <h3 className="text-lg font-black">집중 보완 필요 영역</h3>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {(diagnosis.gap_axes ?? []).map((axis) => (
-            <div key={axis.key} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{axis.label}</p>
-              <p className="mt-3 text-2xl font-black text-slate-900">{axis.score}</p>
-              <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{axis.rationale}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-slate-900">
-          <Layers3 size={18} />
-          <h3 className="text-lg font-black">추천 활동 방향</h3>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {directions.map((direction) => (
-            <button
-              key={direction.id}
-              type="button"
-              data-testid={`guided-direction-${direction.id}`}
-              onClick={() => setSelectedDirectionId(direction.id)}
-              className={`rounded-[28px] border p-5 text-left transition-all ${tone(direction.id === selectedDirectionId)}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] opacity-70">{direction.complexity}</p>
-                  <h4 className="mt-2 text-lg font-black">{direction.label}</h4>
-                </div>
-                {direction.id === selectedDirectionId ? <CheckCircle2 size={18} /> : null}
+          {stepLabels.map((step) => {
+            const isCompleted = step.num < currentStep;
+            const isActive = step.num === currentStep;
+            return (
+              <div key={step.num} className="flex flex-col items-center relative z-10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // 이미 거쳐온 상위 수준 단계거나 바로 앞 단계까지만 터치 이동 허용
+                    if (step.num <= currentStep || (step.num === currentStep + 1 && canGoNext)) {
+                      setCurrentStep(step.num);
+                    }
+                  }}
+                  className={`flex h-10 w-10 items-center justify-center rounded-full font-black text-sm transition-all duration-300 border-2 ${
+                    isActive
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100 scale-110 ring-4 ring-indigo-50'
+                      : isCompleted
+                        ? 'bg-emerald-500 border-emerald-500 text-white'
+                        : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  {isCompleted ? '✓' : step.num}
+                </button>
+                <span className={`mt-2.5 text-[11px] font-black tracking-tight ${
+                  isActive ? 'text-indigo-600 font-black' : isCompleted ? 'text-emerald-600' : 'text-slate-400'
+                }`}>
+                  {step.label}
+                </span>
               </div>
-              <p className="mt-3 text-sm font-semibold leading-relaxed opacity-90">{direction.summary}</p>
-              <p className="mt-4 text-xs font-bold leading-relaxed opacity-70">{direction.why_now}</p>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {selectedDirection ? (
-        <div className="space-y-8">
-          <div className="grid gap-8 xl:grid-cols-2">
-            <div className="space-y-4">
-              <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">주제 선정</h4>
-              <div className="space-y-3">
+      {/* 단계별 대화 가이드 질문 및 콘텐츠 전환 뷰 */}
+      <div className="relative z-10 bg-slate-50/20 rounded-3xl border border-slate-100 p-6 min-h-[360px] flex flex-col justify-between">
+        <AnimatePresence mode="wait">
+          
+          {/* Step 1: 탐구 방향성 선택 */}
+          {currentStep === 1 && (
+            <motion.div
+              key="step-1"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="space-y-6 flex-1"
+            >
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-600">RESEARCH PATHWAY</span>
+                <h4 className="text-xl font-black text-slate-900">어떤 방향으로 탐구를 확장하고 보완하고 싶나요?</h4>
+                <p className="text-xs font-bold text-slate-400">학생부 진단 결과를 근거로 산출된 가장 적합한 방향 중 한 가지를 제안합니다.</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {directions.map((direction) => (
+                  <button
+                    key={direction.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDirectionId(direction.id);
+                      // 선택 시 자연스럽게 바로 다음단계 유도하기 위해 상태 활성화
+                    }}
+                    className={`rounded-2xl border p-5 text-left transition-all duration-200 relative overflow-hidden group ${
+                      direction.id === selectedDirectionId
+                        ? 'border-indigo-600 bg-indigo-50/20 text-slate-900 shadow-xl shadow-indigo-100/30'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                          direction.id === selectedDirectionId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                        }`}>{direction.complexity}</span>
+                        <h5 className="mt-2 text-base font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{direction.label}</h5>
+                      </div>
+                      {direction.id === selectedDirectionId && (
+                        <CheckCircle2 size={18} className="text-indigo-600 shrink-0" />
+                      )}
+                    </div>
+                    <p className="mt-3 text-xs font-bold leading-relaxed text-slate-500 opacity-90">{direction.summary}</p>
+                    <p className="mt-3 text-[11px] font-bold leading-relaxed text-indigo-500">{direction.why_now}</p>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 2: 세부 탐구 주제 선정 */}
+          {currentStep === 2 && (
+            <motion.div
+              key="step-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="space-y-6 flex-1"
+            >
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-600">SELECT TOPIC</span>
+                <h4 className="text-xl font-black text-slate-900">보고서로 작성할 구체적인 탐구 주제를 골라주세요.</h4>
+                <p className="text-xs font-bold text-slate-400">선택한 탐구 방향에 맞춰 Gemini AI가 정교하게 제안하는 맞춤형 추천 타이틀셋입니다.</p>
+              </div>
+
+              <div className="space-y-3 max-w-4xl">
                 {topicCandidates.map((topic) => (
                   <button
                     key={topic.id}
                     type="button"
-                    data-testid={`guided-topic-${topic.id}`}
                     onClick={() => setSelectedTopicId(topic.id)}
-                    className={`w-full rounded-[24px] border p-4 text-left transition-all ${tone(topic.id === selectedTopicId)}`}
+                    className={`w-full rounded-2xl border p-4 text-left transition-all duration-200 flex items-start gap-3 justify-between ${
+                      topic.id === selectedTopicId
+                        ? 'border-indigo-600 bg-indigo-50/20 shadow-md shadow-indigo-100/20'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
                   >
-                    <p className="text-base font-black">{topic.title}</p>
-                    <p className="mt-2 text-sm font-semibold opacity-90">{topic.summary}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm sm:text-base font-black text-slate-900">{topic.title}</p>
+                      <p className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-500">{topic.summary}</p>
+                    </div>
+                    {topic.id === selectedTopicId ? (
+                      <CheckCircle2 size={18} className="text-indigo-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <div className="h-5 w-5 rounded-full border border-slate-200 shrink-0 mt-0.5" />
+                    )}
                   </button>
                 ))}
+                {topicCandidates.length === 0 && (
+                  <p className="text-xs text-slate-400 italic">탐구 방향이 지정되지 않아 추천 주제가 없습니다. 1단계로 돌아가 방향을 선택해 주세요.</p>
+                )}
               </div>
-            </div>
+            </motion.div>
+          )}
 
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">권장 분량</h4>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {pageCountOptions.map((option: PageCountOption) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      data-testid={`guided-pages-${option.page_count}`}
-                      onClick={() => setSelectedPageCount(option.page_count)}
-                      className={`rounded-[20px] border p-4 text-left transition-all ${tone(option.page_count === selectedPageCount)}`}
-                    >
-                      <p className="text-lg font-black">{option.label}</p>
-                      <p className="mt-2 text-xs font-semibold opacity-80">{option.rationale}</p>
-                    </button>
-                  ))}
-                </div>
+          {/* Step 3: 보고서 규격 설정 (분량 및 포맷) */}
+          {currentStep === 3 && (
+            <motion.div
+              key="step-3"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="space-y-6 flex-1"
+            >
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-600">FORMAT & SIZE</span>
+                <h4 className="text-xl font-black text-slate-900">최종 출력할 탐구보고서의 분량과 파일 형식을 결정해 주세요.</h4>
+                <p className="text-xs font-bold text-slate-400">학문 깊이에 따른 권장 분량과 학교 제출 규격에 맞는 최적의 문서 형식을 지정합니다.</p>
               </div>
 
-              <div className="space-y-3">
-                <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">내보내기 형식</h4>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {formatRecommendations.map((item: FormatRecommendation) => (
-                    <button
-                      key={item.format}
-                      type="button"
-                      data-testid={`guided-format-${item.format}`}
-                      onClick={() => setSelectedFormat(item.format)}
-                      className={`rounded-[20px] border p-4 text-left transition-all ${tone(item.format === selectedFormat)}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {item.format === 'pptx' ? <Presentation size={16} /> : <FileText size={16} />}
-                        <p className="font-black uppercase">{item.format}</p>
-                      </div>
-                      <p className="mt-2 text-xs font-semibold opacity-80">{item.rationale}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <h4 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">디자인 템플릿 갤러리</h4>
-              <div className="flex flex-wrap gap-3 text-xs font-bold text-slate-500">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={includeProvenanceAppendix}
-                    onChange={(event) => setIncludeProvenanceAppendix(event.target.checked)}
-                  />
-                  분석 근거 부록 포함
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={hideInternalProvenance}
-                    onChange={(event) => setHideInternalProvenance(event.target.checked)}
-                  />
-                  내부 참조 ID 숨기기
-                </label>
-              </div>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-              {templateGallery.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  data-testid={`guided-template-${template.id}`}
-                  onClick={() => setSelectedTemplateId(template.id)}
-                  className={`rounded-[28px] border p-4 text-left transition-all ${tone(template.id === selectedTemplateId)}`}
-                >
-                  <div
-                    className="h-28 rounded-[20px] border border-white/20"
-                    style={{ background: `linear-gradient(135deg, ${template.preview.accent_color} 0%, #f8fafc 100%)` }}
-                  />
-                  <div className="mt-4 flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-base font-black">{template.label}</p>
-                      <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] opacity-70">{template.category}</p>
-                    </div>
-                    {recommendedTemplateIds.has(template.id) ? (
-                      <span className="rounded-full border border-current/20 px-2 py-1 text-[10px] font-black uppercase">
-                        AI 추천
-                      </span>
-                    ) : null}
+              <div className="grid gap-8 lg:grid-cols-2">
+                {/* 권장 분량 선택 */}
+                <div className="space-y-3">
+                  <h5 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400 flex items-center gap-1.5">
+                    <Layers3 size={14} /> 권장 분량 선택
+                  </h5>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {pageCountOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setSelectedPageCount(option.page_count)}
+                        className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+                          option.page_count === selectedPageCount
+                            ? 'border-indigo-600 bg-indigo-50/20 shadow-md shadow-indigo-100/20'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        <p className="text-base font-black text-slate-800">{option.label}</p>
+                        <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-slate-400">{option.rationale}</p>
+                      </button>
+                    ))}
                   </div>
-                  <p className="mt-3 text-sm font-semibold opacity-90">{template.description}</p>
-                  <p className="mt-3 text-xs font-bold opacity-70">
-                    {template.preview.preview_sections.join(' / ')}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
+                </div>
 
-          <div className="flex flex-wrap items-center gap-4">
+                {/* 내보내기 형식 선택 */}
+                <div className="space-y-3">
+                  <h5 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400 flex items-center gap-1.5">
+                    <FileText size={14} /> 내보내기 파일 형식
+                  </h5>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {formatRecommendations.map((item) => (
+                      <button
+                        key={item.format}
+                        type="button"
+                        onClick={() => setSelectedFormat(item.format)}
+                        className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+                          item.format === selectedFormat
+                            ? 'border-indigo-600 bg-indigo-50/20 shadow-md shadow-indigo-100/20'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-slate-800">
+                          {item.format === 'pptx' ? <Presentation size={15} /> : <FileText size={15} />}
+                          <p className="text-sm font-black uppercase">{item.format}</p>
+                        </div>
+                        <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-slate-400">{item.rationale}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 4: 템플릿 선택 및 개요 생성 */}
+          {currentStep === 4 && (
+            <motion.div
+              key="step-4"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="space-y-6 flex-1"
+            >
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-600">TEMPLATE GALLERY</span>
+                <h4 className="text-xl font-black text-slate-900">보고서의 세련됨을 높여줄 디자인 레이아웃을 입혀주세요.</h4>
+                <p className="text-xs font-bold text-slate-400">학업 수월성이 강조될 수 있도록 구성된 고품격 템플릿 테마를 입히는 단계입니다.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <h5 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">디자인 템플릿 갤러리</h5>
+                  <div className="flex flex-wrap gap-3 text-xs font-bold text-slate-400 bg-slate-100/60 p-1.5 rounded-xl">
+                    <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-700 px-2">
+                      <input
+                        type="checkbox"
+                        checked={includeProvenanceAppendix}
+                        onChange={(event) => setIncludeProvenanceAppendix(event.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      분석 근거 부록 포함
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-700 px-2">
+                      <input
+                        type="checkbox"
+                        checked={hideInternalProvenance}
+                        onChange={(event) => setHideInternalProvenance(event.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      내부 참조 ID 숨기기
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 max-h-[220px] overflow-y-auto p-1 border border-slate-100 rounded-2xl bg-white">
+                  {templateGallery.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => setSelectedTemplateId(template.id)}
+                      className={`rounded-xl border p-3.5 text-left transition-all duration-200 flex flex-col justify-between ${
+                        template.id === selectedTemplateId
+                          ? 'border-indigo-600 bg-indigo-50/15 shadow-md shadow-indigo-100/10'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 w-full">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-800 truncate">{template.label}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 mt-0.5">{template.category}</p>
+                        </div>
+                        {recommendedTemplateIds.has(template.id) && (
+                          <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-black text-indigo-600 uppercase border border-indigo-100">
+                            AI 추천
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs font-medium text-slate-500 leading-relaxed truncate-3-lines">{template.description}</p>
+                    </button>
+                  ))}
+                  {templateGallery.length === 0 && (
+                    <p className="text-xs text-slate-400 italic p-4">이 형식에 적용할 수 있는 템플릿이 없습니다. 이전 단계에서 문서 형식을 지정해 주세요.</p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
+
+        {/* 위저드 네비게이션 컨트롤 영역 */}
+        <div className="mt-8 pt-6 border-t border-slate-100/60 flex items-center justify-between w-full">
+          {currentStep > 1 ? (
             <button
               type="button"
-              data-testid="guided-build-outline"
-              onClick={buildPlan}
-              disabled={isGenerating}
-              className="rounded-[24px] bg-slate-900 px-7 py-4 text-sm font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => setCurrentStep((prev) => prev - 1)}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-all duration-200"
             >
-              {isGenerating ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 size={16} className="animate-spin" /> 개요 구성 중...
-                </span>
-              ) : (
-                '가이드 개요 생성하기'
-              )}
+              이전 단계
             </button>
-            {outline ? (
+          ) : (
+            <div />
+          )}
+
+          {currentStep < 4 ? (
+            <button
+              type="button"
+              disabled={!canGoNext}
+              onClick={() => {
+                if (canGoNext) setCurrentStep((prev) => prev + 1);
+              }}
+              className={`rounded-xl px-6 py-3 text-xs font-black transition-all duration-200 ${
+                canGoNext
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              다음 단계로
+            </button>
+          ) : (
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                data-testid="guided-export"
-                onClick={exportOutline}
-                disabled={isExporting}
-                className="rounded-[24px] border border-slate-900 px-7 py-4 text-sm font-black text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={buildPlan}
+                disabled={isGenerating || !canGoNext}
+                className="rounded-xl bg-slate-900 px-6 py-3 text-xs font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg shadow-slate-950/10 transition-all duration-200"
               >
-                {isExporting ? '파일 생성 중...' : '선택한 템플릿으로 내보내기'}
+                {isGenerating ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 size={14} className="animate-spin" /> 개요 빌딩 중...
+                  </span>
+                ) : (
+                  '가이드 개요 생성하기'
+                )}
               </button>
-            ) : null}
-          </div>
-
-          {outline ? (
-            <div data-testid="guided-outline-preview" className="rounded-[32px] border border-slate-200 bg-slate-50 p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">개요 미리보기</p>
-                  <h4 className="mt-2 text-2xl font-black text-slate-900">{outline.title}</h4>
-                  <p className="mt-2 text-sm font-semibold text-slate-600">{outline.summary}</p>
-                </div>
-                <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-right">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{outline.export_format}</p>
-                  <p className="mt-1 text-sm font-bold text-slate-700">{outline.template_label}</p>
-                </div>
-              </div>
-              <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                {outline.sections.map((section) => (
-                  <div key={section.id} className="rounded-[24px] border border-slate-200 bg-white p-4">
-                    <p className="text-sm font-black text-slate-900">{section.title}</p>
-                    <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{section.purpose}</p>
-                    <div className="mt-3 space-y-1 text-xs font-bold text-slate-500">
-                      {section.evidence_plan.map((item) => (
-                        <p key={item}>- {item}</p>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {lastRenderJob?.download_url ? (
+              {outline && (
                 <button
                   type="button"
-                  data-testid="guided-download-latest"
-                  onClick={() => {
-                    void downloadRenderedArtifact(lastRenderJob.download_url || '', lastRenderJob.render_format);
-                  }}
-                  className="mt-6 inline-flex rounded-[20px] bg-slate-900 px-5 py-3 text-sm font-black text-white"
+                  onClick={exportOutline}
+                  disabled={isExporting}
+                  className="rounded-xl border border-slate-900 bg-white px-6 py-3 text-xs font-black text-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200"
                 >
-                  최근 생성된 파일 다운로드
+                  {isExporting ? '초안 내보내는 중...' : '선택한 템플릿 내보내기'}
                 </button>
-              ) : null}
+              )}
             </div>
-          ) : null}
+          )}
         </div>
-      ) : null}
+
+      </div>
+
+      {/* 가이드 개요 생성 후 생성되는 실시간 아웃라인 미리보기 */}
+      {outline && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          data-testid="guided-outline-preview"
+          className="rounded-[32px] border border-slate-100 bg-slate-50/50 p-6 relative z-10"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-5 mb-5">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-indigo-500">생성된 개요 및 초안 미리보기</p>
+              <h4 className="mt-2 text-xl font-black text-slate-900">{outline.title}</h4>
+              <p className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-500">{outline.summary}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shrink-0 text-left sm:text-right shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-indigo-500">{outline.export_format}</p>
+              <p className="mt-0.5 text-xs font-black text-slate-700">{outline.template_label}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {outline.sections.map((section) => (
+              <div key={section.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <p className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
+                  {section.title}
+                </p>
+                <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">{section.purpose}</p>
+                <div className="mt-3.5 space-y-1.5 text-xs font-bold text-slate-400 bg-slate-50 p-2.5 rounded-xl border border-slate-100/60">
+                  <p className="text-[10px] font-black uppercase tracking-[0.05em] text-indigo-500 mb-1">근거 수집 계획</p>
+                  {section.evidence_plan.map((item) => (
+                    <p key={item} className="leading-relaxed">- {item}</p>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {lastRenderJob?.download_url && (
+            <button
+              type="button"
+              onClick={() => downloadRenderedArtifact(lastRenderJob.download_url || '', lastRenderJob.render_format)}
+              className="mt-6 inline-flex rounded-xl bg-indigo-600 px-5 py-3 text-xs font-black text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all duration-200"
+            >
+              방금 생성된 문서 파일 다운로드
+            </button>
+          )}
+        </motion.div>
+      )}
+
     </section>
   );
 }
