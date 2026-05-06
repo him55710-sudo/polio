@@ -39,7 +39,6 @@ import { useAsyncJob } from '../hooks/useAsyncJob';
 import { TERMINAL_STATUSES, SUCCESS_STATUSES, type DocumentStatus } from '../types/domain';
 import { DiagnosisUnifiedSetup } from '../components/diagnosis/DiagnosisUnifiedSetup';
 import { DiagnosisResultDisplay } from '../components/diagnosis/DiagnosisResultDisplay';
-import { DiagnosisReportPanel } from '../components/DiagnosisReportPanel';
 
 type DiagnosisStep = 'PROFILE' | 'GOALS' | 'UPLOAD' | 'ANALYSING' | 'RESULT' | 'FAILED';
 type TimingPhaseKey = 'upload' | 'parse' | 'diagnosis' | 'report';
@@ -141,7 +140,25 @@ function createInitialTimingPhases(): TimingPhaseMap {
     upload: { status: 'idle', startedAt: null, finishedAt: null, note: '업로드 준비 중' },
     parse: { status: 'idle', startedAt: null, finishedAt: null, note: '문서 분석 준비 중' },
     diagnosis: { status: 'idle', startedAt: null, finishedAt: null, note: '진단 준비 중' },
+    report: { status: 'idle', startedAt: null, finishedAt: null, note: '보고서 생성 준비 중' },
   };
+}
+
+function normalizeReportStatus(value: string | null | undefined): string | null {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized || null;
+}
+
+function isReportInProgressStatus(status: string | null): boolean {
+  return Boolean(status && REPORT_IN_PROGRESS_STATUSES.has(status));
+}
+
+function getReportTimingNote(status: string | null, errorMessage?: string | null): string {
+  if (status === 'READY') return '진단 보고서 PDF 준비 완료';
+  if (status === 'FAILED') return errorMessage || '보고서 생성 중 문제가 발생했습니다.';
+  if (status === 'SUCCEEDED') return '보고서 파일을 다운로드 가능 상태로 정리하고 있습니다.';
+  if (isReportInProgressStatus(status)) return '진단 보고서 PDF를 생성하고 있습니다.';
+  return '진단 보고서 PDF 생성 대기 중';
 }
 
 function toFlowDebugState(failure: ApiErrorInfo): FlowDebugState {
@@ -203,7 +220,7 @@ export function Diagnosis() {
 
   const step = diagnosisStep as DiagnosisStep;
   const setStep = setDiagnosisStep;
-  const useSynchronousApiJobs = shouldUseSynchronousApiJobs();
+  const useSynchronousApiJobs = false; // Vercel 및 클라우드 게이트웨이 504 타임아웃 방지를 위해 동기 모드를 원천 제거하고 100% 안전한 비동기 폴링 큐 모드로 고정합니다.
 
   const diagnosisProcessKickoffRef = useRef<Set<string>>(new Set());
   const parseProcessKickoffRef = useRef<Set<string>>(new Set());
@@ -211,6 +228,7 @@ export function Diagnosis() {
   const diagnosisAutoStartKeyRef = useRef<string | null>(null);
 
   const [isUploading, setIsUploading] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResultPayload | null>(null);
   const [diagnosisRun, setDiagnosisRun] = useState<DiagnosisRunResponse | null>(null);
   const [diagnosisJob, setDiagnosisJob] = useState<AsyncJobRead | null>(null);
@@ -219,6 +237,54 @@ export function Diagnosis() {
   const [flowError, setFlowError] = useState<string | null>(null);
   const [flowDebug, setFlowDebug] = useState<FlowDebugState | null>(null);
   const [timingPhases, setTimingPhases] = useState<TimingPhaseMap>(createInitialTimingPhases());
+
+  const handleStartWorkshop = useCallback(async () => {
+    if (projectId === 'demo') {
+      setIsCreatingProject(true);
+      const loadingId = toast.loading('정식 작성 세션을 준비하고 있습니다...');
+      try {
+        const mainGoal = goalList[0];
+        const title = mainGoal ? `${mainGoal.university} ${mainGoal.major} 진단 프로젝트` : '임시 세션 복구 프로젝트';
+        
+        // 정식 프로젝트 생성
+        const newProject = await api.post<{ id: string }>('/api/v1/projects', { title });
+        const realProjectId = newProject.id;
+        
+        setProjectId(realProjectId);
+        toast.success('임시 진단 정보가 안전하게 정식 워크숍 세션으로 이전되었습니다!', { id: loadingId });
+        navigate(`/app/workshop/${realProjectId}`, {
+          state: {
+            major: mainGoal?.major,
+            chatbotMode: 'diagnosis',
+            fromDiagnosis: true,
+            diagnosisRunId: diagnosisRun?.id ?? null,
+          },
+        });
+      } catch (err) {
+        toast.success('임시 작성 워크숍으로 진입합니다.', { id: loadingId });
+        navigate(`/app/workshop/demo`, {
+          state: {
+            major: goalList[0]?.major,
+            chatbotMode: 'diagnosis',
+            fromDiagnosis: true,
+            isTemporarySession: true,
+            tempDiagnosisResult: diagnosisResult,
+          },
+        });
+      } finally {
+        setIsCreatingProject(false);
+      }
+    } else {
+      navigate(`/app/workshop/${projectId}`, {
+        state: {
+          major: goalList[0]?.major,
+          chatbotMode: 'diagnosis',
+          fromDiagnosis: true,
+          diagnosisRunId: diagnosisRun?.id ?? null,
+        },
+      });
+    }
+  }, [projectId, goalList, setProjectId, navigate, diagnosisRun, diagnosisResult]);
 
   const queryProjectId = useMemo(() => {
     const value = searchParams.get('project_id');
@@ -315,6 +381,41 @@ export function Diagnosis() {
     });
   }, []);
 
+  const syncReportTimingPhase = useCallback((run: DiagnosisRunResponse | null) => {
+    const status =
+      normalizeReportStatus(run?.report_status) ??
+      normalizeReportStatus(run?.report_async_job_status);
+    const note = getReportTimingNote(status, run?.report_error_message);
+
+    if (status === 'READY') {
+      finishTimingPhase('report', 'done', note);
+      return;
+    }
+
+    if (status === 'FAILED') {
+      finishTimingPhase('report', 'failed', note);
+      return;
+    }
+
+    if (isReportInProgressStatus(status)) {
+      const now = Date.now();
+      setTimingPhase('report', (prev) => ({
+        ...prev,
+        status: 'running',
+        startedAt: prev.startedAt ?? now,
+        finishedAt: null,
+        note,
+      }));
+      return;
+    }
+
+    setTimingPhase('report', (prev) => ({
+      ...prev,
+      status: prev.status === 'done' || prev.status === 'failed' ? prev.status : 'idle',
+      note,
+    }));
+  }, [finishTimingPhase, setTimingPhase]);
+
   const resetTimingPhases = useCallback(() => {
     setTimingPhases(createInitialTimingPhases());
   }, []);
@@ -363,40 +464,14 @@ export function Diagnosis() {
   }, [finishTimingPhase, setDiagnosisRunId, setStep]);
 
   const triggerInlineDiagnosisProcessing = useCallback((jobId: string) => {
-    if (!jobId) return;
-    const kickoffCache = diagnosisProcessKickoffRef.current;
-    if (kickoffCache.has(jobId)) return;
-    kickoffCache.add(jobId);
-
-    void api.post<AsyncJobRead>(`/api/v1/jobs/${jobId}/process`)
-      .then((processed) => {
-        setDiagnosisJob((previous) => (previous && previous.id !== processed.id ? previous : processed));
-        if (isQueuedOrRetryingJob(processed.status)) {
-          window.setTimeout(() => {
-            kickoffCache.delete(jobId);
-          }, resolveInlineJobRetryDelayMs(processed));
-        }
-      })
-      .catch(() => {
-        kickoffCache.delete(jobId);
-      });
+    // 백엔드가 독자적인 백그라운드 스레드를 통해 작업을 소모하므로 브라우저 수동 킥오프는 완전 비활성화합니다.
+    return;
   }, []);
 
   const triggerInlineParseProcessing = useCallback(
     (document: Pick<DiagnosisProjectDocumentSummary, 'latest_async_job_id' | 'latest_async_job_status'> | null | undefined) => {
-      if (!document) return;
-      const jobId = document.latest_async_job_id;
-      const jobStatus = (document.latest_async_job_status || '').toLowerCase();
-      if (!jobId || (jobStatus !== 'queued' && jobStatus !== 'retrying')) return;
-
-      const kickoffCache = parseProcessKickoffRef.current;
-      if (kickoffCache.has(jobId)) return;
-      kickoffCache.add(jobId);
-
-      void api.post<AsyncJobRead>(`/api/v1/jobs/${jobId}/process`)
-        .catch(() => {
-          kickoffCache.delete(jobId);
-        });
+      // 브라우저의 생명주기에 기생하는 파싱 킥오프를 완전 비활성화합니다.
+      return;
     },
     [],
   );
@@ -412,6 +487,7 @@ export function Diagnosis() {
     }
 
     finishTimingPhase('diagnosis', 'done', '진단 생성 완료');
+    syncReportTimingPhase(run);
     setProjectId(run.project_id);
     setDiagnosisRun(run);
     setDiagnosisJob(null);
@@ -431,7 +507,7 @@ export function Diagnosis() {
     });
 
     return true;
-  }, [diagnosisGoals, finishTimingPhase, setDiagnosisRunId, setProjectId, setStep]);
+  }, [diagnosisGoals, finishTimingPhase, setDiagnosisRunId, setProjectId, setStep, syncReportTimingPhase]);
 
   const completeStatelessDiagnosis = useCallback((run: DiagnosisRunResponse) => {
     const payload = mergeDiagnosisPayload(run);
@@ -800,7 +876,7 @@ export function Diagnosis() {
   const { data: polledRun } = useAsyncJob<DiagnosisRunResponse>({
     url: diagnosisRunId ? `/api/v1/diagnosis/${diagnosisRunId}` : null,
     isTerminal: (run) => isDiagnosisComplete(run) || isDiagnosisFailed(run, null),
-    enabled: step === 'ANALYSING' && Boolean(diagnosisRunId),
+    enabled: step === 'ANALYSING' && Boolean(diagnosisRunId) && !Boolean(activeDocumentId), // 파싱 폴링 중일 때는 진단 폴링이 겹쳐 돌지 않도록 순차적(Exclusive)으로 활성화합니다.
   });
 
   useEffect(() => {
@@ -822,7 +898,14 @@ export function Diagnosis() {
         setTimingPhases(prev => ({
           ...prev,
           parse: { ...prev.parse, status: 'done' },
-          diagnosis: { ...prev.diagnosis, status: 'done', finishedAt: prev.diagnosis.finishedAt || Date.now() }
+          diagnosis: { ...prev.diagnosis, status: 'done', finishedAt: prev.diagnosis.finishedAt || Date.now() },
+          report: {
+            ...prev.report,
+            status: 'running',
+            startedAt: prev.report.startedAt || Date.now(),
+            finishedAt: null,
+            note: jobMsg || '진단 보고서 PDF를 생성하고 있습니다.',
+          },
         }));
       }
     }
@@ -843,7 +926,8 @@ export function Diagnosis() {
   useEffect(() => {
     if (!polledReportRun || !shouldApplyDiagnosisResource(polledReportRun.id, diagnosisRun?.id)) return;
     setDiagnosisRun(polledReportRun);
-  }, [diagnosisRun?.id, polledReportRun]);
+    syncReportTimingPhase(polledReportRun);
+  }, [diagnosisRun?.id, polledReportRun, syncReportTimingPhase]);
 
   const handleUpload = useCallback(async (file: File) => {
     if (!file) return;
@@ -1056,22 +1140,41 @@ export function Diagnosis() {
     }
   }, [step]);
 
+  const timingPhaseCards = useMemo(
+    () => (Object.entries(timingPhases) as Array<[TimingPhaseKey, TimingPhaseState]>).map(([key, phase]) => ({
+      id: key,
+      label: TIMING_PHASE_LABELS[key],
+      status: phase.status,
+      startedAt: phase.startedAt,
+      finishedAt: phase.finishedAt,
+      expectedSeconds: TIMING_PHASE_EXPECTED_SECONDS[key],
+      note: phase.note,
+    })),
+    [timingPhases],
+  );
+
+  const normalizedReportStatus =
+    normalizeReportStatus(diagnosisRun?.report_status) ??
+    normalizeReportStatus(diagnosisRun?.report_async_job_status);
+  const showTimingDashboard =
+    step === 'ANALYSING' ||
+    (step === 'UPLOAD' && isUploading) ||
+    (step === 'RESULT' && Boolean(diagnosisRun?.id) && normalizedReportStatus !== 'READY');
+  const timingStageMessage =
+    step === 'RESULT'
+      ? getReportTimingNote(normalizedReportStatus, diagnosisRun?.report_error_message)
+      : diagnosisRun?.status_message || diagnosisJob?.progress_message || null;
+
   return (
     <div className="mx-auto max-w-6xl space-y-8 py-8 animate-in fade-in duration-700">
 
-      {(step === 'ANALYSING' || (step === 'UPLOAD' && isUploading)) && (
+      {showTimingDashboard && (
         <ProcessTimingDashboard
-          phases={Object.entries(timingPhases).map(([key, phase]) => ({
-            id: key,
-            label: phase.note || '',
-            status: phase.status,
-            startedAt: phase.startedAt,
-            finishedAt: phase.finishedAt,
-          }))}
-          title="실시간 진단 현황"
-          description="업로드 · 파싱 · 진단 상태"
+          phases={timingPhaseCards}
+          title="실시간 진단 및 보고서 현황"
+          description="업로드부터 진단 보고서 PDF 생성까지 단계별 진행률을 표시합니다."
           preferStageMode
-          stageMessage={diagnosisRun?.status_message || diagnosisJob?.progress_message || null}
+          stageMessage={timingStageMessage}
         />
       )}
 
@@ -1122,17 +1225,9 @@ export function Diagnosis() {
               diagnosisRun={diagnosisRun} 
               projectId={projectId} 
               targetGoals={diagnosisGoals}
-              showReportPanel={false}
+              showReportPanel
+              onStartWorkshop={handleStartWorkshop}
             />
-            {diagnosisRun?.id ? (
-              <DiagnosisReportPanel
-                diagnosisRunId={diagnosisRun.id}
-                reportStatus={diagnosisRun.report_status}
-                reportAsyncJobStatus={diagnosisRun.report_async_job_status}
-                reportArtifactId={diagnosisRun.report_artifact_id}
-                reportErrorMessage={diagnosisRun.report_error_message}
-              />
-            ) : null}
             <div className="flex justify-center gap-2">
               <SecondaryButton
                 onClick={() => {
@@ -1143,18 +1238,19 @@ export function Diagnosis() {
                 진단 새로 시작
               </SecondaryButton>
               <PrimaryButton
-                onClick={() =>
-                  navigate(`/app/workshop/${projectId}`, {
-                    state: {
-                      major: diagnosisGoals[0]?.major,
-                      chatbotMode: 'diagnosis',
-                      fromDiagnosis: true,
-                      diagnosisRunId: diagnosisRun?.id ?? null,
-                    },
-                  })
-                }
+                onClick={handleStartWorkshop}
+                disabled={isCreatingProject}
               >
-                워크숍 시작하기 <ArrowRight size={16} />
+                {isCreatingProject ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/30 border-t-white animate-spin rounded-full" />
+                    워크숍 준비 중...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    워크숍 시작하기 <ArrowRight size={16} />
+                  </span>
+                )}
               </PrimaryButton>
             </div>
           </motion.div>

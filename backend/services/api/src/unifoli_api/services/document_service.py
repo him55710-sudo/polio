@@ -22,9 +22,26 @@ from unifoli_api.services.student_record_pipeline_service import StudentRecordPi
 from unifoli_api.schemas.pipeline_metadata import PipelineMetadata
 import pdfplumber
 import logging
-from unifoli_api.core.errors import UniFoliErrorCode, UniFoliError
+import re
 
 logger = logging.getLogger(__name__)
+
+def _clean_noisy_extracted_text(text: str | None) -> str:
+    if not text:
+        return ""
+    # 1. 3개 이상의 연속 개행 제거
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # 2. 문장 사이의 보이지 않는 제어 코드 제거
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+    # 3. 비정상 다중 가로 공백 및 탭 정규화
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    # 4. 각 줄의 양쪽 공백 정리
+    cleaned_lines = []
+    for line in text.splitlines():
+        line_stripped = line.strip()
+        if line_stripped:
+            cleaned_lines.append(line_stripped)
+    return "\n".join(cleaned_lines)
 from unifoli_domain.enums import (
     DocumentMaskingStatus,
     DocumentProcessingStatus,
@@ -428,8 +445,8 @@ def ingest_upload_asset(
         document.masking_status = parsed.masking_status
         document.page_count = parsed.page_count
         document.word_count = parsed.word_count
-        document.content_text = parsed.content_text
-        document.content_markdown = parsed.content_markdown
+        document.content_text = _clean_noisy_extracted_text(parsed.content_text)
+        document.content_markdown = _clean_noisy_extracted_text(parsed.content_markdown)
         document.parse_completed_at = utc_now()
         
         # Initialize metadata with base parse results

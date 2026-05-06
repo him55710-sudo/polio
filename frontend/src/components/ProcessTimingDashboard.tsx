@@ -161,7 +161,7 @@ export function ProcessTimingDashboard({
         <WorkflowNotice tone="loading" title="현재 단계 설명" description={stageMessage} className="mb-3" />
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {phases.map((phase) => {
           const progress = phaseProgressMap.get(phase.id) ?? 0;
           const phasePercent = Math.round(progress * 100);

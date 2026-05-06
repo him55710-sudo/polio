@@ -41,6 +41,7 @@ interface DiagnosisResultDisplayProps {
   projectId?: string;
   targetGoals?: DiagnosisTargetGoal[];
   showReportPanel?: boolean;
+  onStartWorkshop?: () => void;
 }
 
 const NEEDS_SUPPORT_PATTERN = /\bneeds?\s+support\b/gi;
@@ -95,6 +96,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
   projectId,
   targetGoals = [],
   showReportPanel = true,
+  onStartWorkshop,
 }) => {
   const navigate = useNavigate();
   const { profile, goalList, setGoalList, submitGoals, isLoading: isStoreLoading } = useOnboardingStore();
@@ -240,16 +242,17 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
           {sanitizeKoreanText(diagnosisResult.overview)}
         </p>
 
-        {showReportPanel && diagnosisRun && diagnosisRun.id && (
+        {showReportPanel && (
           <div className="pt-4 flex justify-center">
-            <div className="max-w-md w-full">
+            <div className="max-w-2xl w-full">
               <DiagnosisReportPanel
-                diagnosisRunId={diagnosisRun.id}
-                reportStatus={diagnosisRun.report_status}
-                reportAsyncJobStatus={diagnosisRun.report_async_job_status}
-                reportArtifactId={diagnosisRun.report_artifact_id}
-                reportErrorMessage={diagnosisRun.report_error_message}
+                diagnosisRunId={diagnosisRun?.id ?? 'stateless'}
+                reportStatus={diagnosisRun?.report_status}
+                reportAsyncJobStatus={diagnosisRun?.report_async_job_status}
+                reportArtifactId={diagnosisRun?.report_artifact_id}
+                reportErrorMessage={diagnosisRun?.report_error_message}
                 variant="minimal"
+                isStateless={projectId === 'demo' || !diagnosisRun || diagnosisRun.id === 'stateless'}
               />
             </div>
           </div>
@@ -632,7 +635,13 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
           </p>
         </div>
         <button 
-          onClick={() => navigate(`/app/workshop/${projectId}`)}
+          onClick={() => {
+            if (onStartWorkshop) {
+              onStartWorkshop();
+            } else {
+              navigate(`/app/workshop/${projectId}`);
+            }
+          }}
           className="relative z-10 bg-blue-500 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-400 transition-all shadow-lg flex items-center gap-3 shrink-0"
         >
            워크숍으로 이동

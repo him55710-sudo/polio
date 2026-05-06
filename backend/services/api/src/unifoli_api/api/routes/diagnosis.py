@@ -150,6 +150,26 @@ def _decode_text_bytes(data: bytes) -> str:
     return data.decode("utf-8", errors="ignore")
 
 
+import re
+
+def _clean_noisy_extracted_text(text: str) -> str:
+    if not text:
+        return ""
+    # 1. 3개 이상의 연속 개행 제거
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # 2. 문장 사이의 보이지 않는 제어 코드 제거
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+    # 3. 비정상 다중 가로 공백 및 탭 정규화
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    # 4. 각 줄의 양쪽 공백 정리
+    cleaned_lines = []
+    for line in text.splitlines():
+        line_stripped = line.strip()
+        if line_stripped:
+            cleaned_lines.append(line_stripped)
+    return "\n".join(cleaned_lines)
+
+
 def _extract_pdf_text(data: bytes) -> str:
     try:
         from pypdf import PdfReader
@@ -164,7 +184,8 @@ def _extract_pdf_text(data: bytes) -> str:
                     stage="diagnosis_stateless_extract",
                 ),
             )
-        return "\n\n".join((page.extract_text() or "").strip() for page in reader.pages)
+        raw_text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages)
+        return _clean_noisy_extracted_text(raw_text)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
