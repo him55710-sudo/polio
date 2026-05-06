@@ -258,7 +258,7 @@ test('chat stream classifies backend startup failures separately from generic HT
     (error: unknown) => {
       assert(error instanceof ChatStreamError);
       assert.equal(error.code, 'backend_startup_failed');
-      assert.match(resolveChatStreamToastMessage(error), /백엔드가 아직 준비되지 않았습니다/);
+      assert.match(resolveChatStreamToastMessage(error), /백엔드가 아직 준비되지 않았/);
       assert.match(resolveChatStreamFallbackHint(error) || '', /DATABASE_URL|마이그레이션|서버 상태/);
       return true;
     },

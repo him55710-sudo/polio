@@ -63,6 +63,13 @@ export function buildMajorChipLabels(params: {
     if (labels.length >= limit) return labels;
   }
 
+  // Fill remainder with default/fallback chips to ensure minimum selections
+  const defaultChips = ['건축', '경영', '컴퓨터공학', '바이오의공학', '사회과학'];
+  for (const fallback of defaultChips) {
+    if (labels.length >= limit) break;
+    pushUnique(labels, fallback, seen);
+  }
+
   return labels;
 }
 

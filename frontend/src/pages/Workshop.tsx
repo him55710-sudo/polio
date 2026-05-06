@@ -1,6 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
+  ArrowLeft,
+  ArrowRight,
   BookOpen,
   Bot,
   ChevronDown,
@@ -542,7 +544,7 @@ const QUALITY_META_MAP: Record<QualityLevel, { label: string; status: 'success' 
   high: { label: '심화 모드', status: 'warning' },
 };
 
-const GUIDED_CHAT_GREETING = '안녕하세요. 어떤 주제로 보고서를 작성해볼까요?';
+const GUIDED_CHAT_GREETING = '반가워요! 나만의 맞춤형 탐구보고서 작성을 도와드릴게요. 🚀';
 const DIAGNOSIS_RISK_LABEL_MAP: Record<string, string> = {
   safe: '근거 충분',
   warning: '보완 필요',
@@ -1546,174 +1548,390 @@ function WritingPlannerPanel({
   onStart,
   disabled,
 }: WritingPlannerPanelProps) {
+  const [activeStep, setActiveStep] = useState<number>(1);
   const activeArea = resolveRecordAreaOption(areaId);
   const selectedCandidate = aiAutoSelect ? candidates[0] : candidates.find((item) => item.id === selectedCandidateId) || candidates[0];
 
+  const isStepValid = (stepNum: number) => {
+    if (stepNum === 1) return !!areaId;
+    if (stepNum === 2) return !!gradeId;
+    if (stepNum === 3) return detail.trim().length >= 2;
+    if (stepNum === 4) return true;
+    if (stepNum === 5) return !!selectedCandidate;
+    return false;
+  };
+
+  const handleNext = () => {
+    if (activeStep < 5 && isStepValid(activeStep)) {
+      setActiveStep(activeStep + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (activeStep > 1) {
+      setActiveStep(activeStep - 1);
+    }
+  };
+
+  const STEPS = [
+    { number: 1, label: '탐구 영역' },
+    { number: 2, label: '반영 학년' },
+    { number: 3, label: '상세 내용' },
+    { number: 4, label: '요구 사항' },
+    { number: 5, label: '추천 후보' },
+  ];
+
   return (
-    <SurfaceCard className="border-slate-200 bg-white/95 p-4 shadow-sm">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <SurfaceCard className="border-indigo-100/85 bg-white/95 p-5 shadow-lg relative overflow-hidden backdrop-blur-md rounded-3xl">
+      <div className="absolute top-0 right-0 -mr-16 -mt-16 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-60 pointer-events-none" />
+      <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-32 h-32 bg-purple-50 rounded-full blur-3xl opacity-60 pointer-events-none" />
+
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
-            <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-indigo-600">
-              <Sparkles size={14} />
-              문서작성 설정
+            <p className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-indigo-600">
+              <Sparkles size={13} className="animate-pulse" />
+              탐구 보고서 기획 마법사
             </p>
-            <h3 className="mt-1 text-lg font-black text-slate-900">생기부 없이도 바로 방향을 잡습니다</h3>
-            <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
-              생기부를 첨부하면 실제 세특·창체·교과활동 근거를 반영해 더 효과적인 주제와 내용을 제안할 수 있어요.
-            </p>
+            <h3 className="mt-1 text-base font-black text-slate-900 tracking-tight">차근차근 원하는 활동을 설정해 보세요</h3>
           </div>
-          <button
-            type="button"
-            onClick={() => onAutoSelectChange(!aiAutoSelect)}
-            className={cn(
-              'inline-flex min-h-10 items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-black transition-all',
-              aiAutoSelect
-                ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700',
-            )}
-          >
-            <Wand2 size={15} />
-            AI 자동 선택 {aiAutoSelect ? 'ON' : 'OFF'}
-          </button>
+          {activeStep === 5 && (
+            <button
+              type="button"
+              onClick={() => onAutoSelectChange(!aiAutoSelect)}
+              className={cn(
+                'inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-black transition-all shadow-sm',
+                aiAutoSelect
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700',
+              )}
+            >
+              <Wand2 size={13} />
+              AI 자동 선택 {aiAutoSelect ? 'ON' : 'OFF'}
+            </button>
+          )}
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {RECORD_AREA_OPTIONS.map((option) => {
-                const selected = option.id === areaId;
-                return (
+        <div className="flex items-center justify-between px-2 bg-slate-50/60 rounded-2xl py-3 border border-slate-100/50">
+          {STEPS.map((step, idx) => {
+            const isCurrent = activeStep === step.number;
+            const isCompleted = activeStep > step.number;
+            return (
+              <React.Fragment key={step.number}>
+                <div className="flex flex-col items-center gap-1 flex-1 relative">
                   <button
-                    key={option.id}
                     type="button"
-                    onClick={() => onAreaChange(option.id)}
+                    onClick={() => {
+                      if (step.number < activeStep || isStepValid(step.number - 1)) {
+                        setActiveStep(step.number);
+                      }
+                    }}
+                    disabled={step.number > activeStep && !isStepValid(step.number - 1)}
                     className={cn(
-                      'min-h-[76px] rounded-2xl border p-3 text-left transition-all',
-                      selected
-                        ? 'border-indigo-400 bg-indigo-50 text-indigo-800 shadow-sm'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50',
+                      "flex h-7 w-7 items-center justify-center rounded-full text-xs font-black transition-all duration-300",
+                      isCurrent
+                        ? "bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110 shadow-sm"
+                        : isCompleted
+                          ? "bg-indigo-50 text-indigo-600 hover:bg-indigo-100/80"
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed"
                     )}
                   >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-black">{option.label}</span>
-                      {selected ? <CheckCircle2 size={16} className="text-indigo-600" /> : null}
-                    </span>
-                    <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">{option.description}</span>
+                    {isCompleted ? <CheckCircle2 size={13} className="text-indigo-600" /> : step.number}
                   </button>
-                );
-              })}
-            </div>
-
-            <input
-              value={detail}
-              onChange={(event) => onDetailChange(event.target.value)}
-              placeholder={activeArea.detailPlaceholder}
-              className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <p className="mb-2 flex items-center gap-2 text-xs font-black text-slate-600">
-                <GraduationCap size={15} className="text-indigo-500" />
-                학년 반영
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">추천 {inferredGrade}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {WRITING_GRADE_OPTIONS.map((option) => {
-                  const selected = option.id === gradeId;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      title={option.description}
-                      onClick={() => onGradeChange(option.id)}
-                      className={cn(
-                        'rounded-full border px-3 py-1.5 text-xs font-black transition-all',
-                        selected
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700',
-                      )}
-                    >
-                      {option.id === 'auto' ? `${option.label}(${gradeLabel})` : option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-xs font-black text-slate-600">
-                <MessageSquare size={15} className="text-indigo-500" />
-                학생 선호와 생각
-              </span>
-              <textarea
-                value={preference}
-                onChange={(event) => onPreferenceChange(event.target.value)}
-                placeholder="예: 너무 어려운 주제는 싫어요. 실험보다 자료 분석이 좋아요. 느낀 점은 진솔하게 쓰고 싶어요."
-                rows={4}
-                className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
-              />
-            </label>
-          </div>
+                  <span className={cn(
+                    "text-[10px] font-bold tracking-tight transition-colors duration-300 mt-1",
+                    isCurrent ? "text-indigo-600 font-extrabold" : isCompleted ? "text-slate-600" : "text-slate-400"
+                  )}>
+                    {step.label}
+                  </span>
+                </div>
+                {idx < STEPS.length - 1 && (
+                  <div className={cn(
+                    "h-[2px] flex-1 mx-1 -mt-4 transition-all duration-500",
+                    activeStep > step.number ? "bg-indigo-200" : "bg-slate-100"
+                  )} />
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2 text-xs font-black text-slate-600">
-              <Target size={15} className="text-indigo-500" />
-              추천 후보
-            </p>
-            <span className="text-[11px] font-bold text-slate-400">선택 후보: {selectedCandidate?.title || '없음'}</span>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-3">
-            {candidates.map((candidate) => {
-              const selected = aiAutoSelect ? candidate.id === candidates[0]?.id : candidate.id === selectedCandidate?.id;
-              return (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  onClick={() => {
-                    onAutoSelectChange(false);
-                    onCandidateSelect(candidate.id);
-                  }}
-                  className={cn(
-                    'min-h-[188px] rounded-2xl border p-4 text-left transition-all',
-                    selected
-                      ? 'border-indigo-400 bg-indigo-50 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50',
+        <div className="min-h-[160px] py-2 flex flex-col justify-center">
+          <AnimatePresence mode="wait">
+            {activeStep === 1 && (
+              <motion.div
+                key="step1"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-600">Q1</span>
+                    어떤 학생부 활동을 기반으로 탐구를 고도화할까요?
+                  </label>
+                  <p className="text-[11px] font-semibold text-slate-400 ml-6 mt-0.5">보고서의 출발점이 될 활동 영역을 선택하세요.</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                  {RECORD_AREA_OPTIONS.map((option) => {
+                    const selected = option.id === areaId;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          onAreaChange(option.id);
+                          setTimeout(() => {
+                            setActiveStep(2);
+                          }, 250);
+                        }}
+                        className={cn(
+                          'flex flex-col justify-between min-h-[72px] rounded-2xl border p-3 text-left transition-all duration-200',
+                          selected
+                            ? 'border-indigo-400 bg-indigo-50/60 text-indigo-900 shadow-sm ring-1 ring-indigo-400/30'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50/50',
+                        )}
+                      >
+                        <span className="flex items-center justify-between gap-2 w-full">
+                          <span className="text-xs font-black">{option.label}</span>
+                          {selected ? <CheckCircle2 size={14} className="text-indigo-600" /> : null}
+                        </span>
+                        <span className="mt-1 block text-[10px] font-semibold leading-relaxed text-slate-500">{option.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {activeStep === 2 && (
+              <motion.div
+                key="step2"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-600">Q2</span>
+                    작성할 보고서에 반영할 학생 학년은 언제인가요?
+                  </label>
+                  <p className="text-[11px] font-semibold text-slate-400 ml-6 mt-0.5">학년별 특성에 알맞은 탐구 수준과 키워드를 제안합니다.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                    {WRITING_GRADE_OPTIONS.map((option) => {
+                      const selected = option.id === gradeId;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            onGradeChange(option.id);
+                            setTimeout(() => {
+                              setActiveStep(3);
+                            }, 250);
+                          }}
+                          className={cn(
+                            'flex flex-col justify-between min-h-[64px] rounded-2xl border p-3 text-left transition-all duration-200',
+                            selected
+                              ? 'border-indigo-400 bg-indigo-50/60 text-indigo-900 shadow-sm ring-1 ring-indigo-400/30'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50/50',
+                          )}
+                        >
+                          <span className="flex items-center justify-between gap-2 w-full">
+                            <span className="text-xs font-black">
+                              {option.id === 'auto' ? `${option.label} (${gradeLabel})` : option.label}
+                            </span>
+                            {selected ? <CheckCircle2 size={14} className="text-indigo-600" /> : null}
+                          </span>
+                          <span className="mt-1 block text-[10px] font-semibold leading-relaxed text-slate-500">{option.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {inferredGrade && (
+                    <div className="mt-1 inline-flex items-center gap-1.5 self-start rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-bold text-slate-500 border border-slate-100">
+                      <GraduationCap size={12} className="text-indigo-500" />
+                      생기부 기반 추천 학년: <span className="text-indigo-600 font-extrabold">{inferredGrade}</span>
+                    </div>
                   )}
-                >
-                  <span className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-black leading-5 text-slate-900">{candidate.title}</span>
-                    {selected ? <CheckCircle2 size={17} className="shrink-0 text-indigo-600" /> : null}
+                </div>
+              </motion.div>
+            )}
+
+            {activeStep === 3 && (
+              <motion.div
+                key="step3"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-600">Q3</span>
+                    구체적으로 어떤 관심 분야나 수업 속 이야기를 녹여낼까요?
+                  </label>
+                  <p className="text-[11px] font-semibold text-slate-400 ml-6 mt-0.5">키워드, 과목 단원명, 탐구 소재 등을 입력해 주세요.</p>
+                </div>
+                <div className="relative">
+                  <input
+                    value={detail}
+                    onChange={(event) => onDetailChange(event.target.value)}
+                    placeholder={activeArea.detailPlaceholder}
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
+                  />
+                  {detail.trim().length > 0 && detail.trim().length < 2 && (
+                    <p className="mt-1 ml-1 text-[10px] font-bold text-rose-500">두 글자 이상 입력해 주세요.</p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {activeStep === 4 && (
+              <motion.div
+                key="step4"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-600">Q4</span>
+                    작성 스타일이나 반영하고 싶은 요구사항이 있나요?
+                  </label>
+                  <p className="text-[11px] font-semibold text-slate-400 ml-6 mt-0.5">(선택) 특별히 지시하고 싶은 내용이나 선호를 적으세요.</p>
+                </div>
+                <textarea
+                  value={preference}
+                  onChange={(event) => onPreferenceChange(event.target.value)}
+                  placeholder="예: 실생활 적용 사례 위주로 구성해 주세요. 통계 분석 내용이 포함되면 좋겠어요."
+                  rows={3}
+                  className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold leading-relaxed text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-50"
+                />
+              </motion.div>
+            )}
+
+            {activeStep === 5 && (
+              <motion.div
+                key="step5"
+                initial={{ opacity: 0, x: 15 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -15 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <label className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-600">Q5</span>
+                      AI가 제안하는 탐구 주제 후보 중 마음에 드는 주제를 골라주세요.
+                    </label>
+                    <p className="text-[11px] font-semibold text-slate-400 ml-6 mt-0.5">선택한 후보 주제를 기초로 서론이 시작됩니다.</p>
+                  </div>
+                  <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-600 border border-indigo-100 shrink-0">
+                    선택: {selectedCandidate?.title || '없음'}
                   </span>
-                  <span className="mt-2 block text-xs font-bold text-indigo-700">{candidate.areaLabel}</span>
-                  <span className="mt-2 block text-xs font-semibold leading-5 text-slate-600">{candidate.reason}</span>
-                  <span className="mt-3 block rounded-xl bg-white/80 px-3 py-2 text-[11px] font-semibold leading-5 text-slate-500">
-                    {candidate.source}: {candidate.evidence}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+
+                {candidates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-6 text-center border border-dashed border-indigo-100 rounded-2xl bg-indigo-50/10">
+                    <Loader2 size={24} className="animate-spin text-indigo-500 mb-2" />
+                    <p className="text-xs font-bold text-slate-500">기획 설정에 맞는 추천 탐구 주제 후보를 생성 중입니다...</p>
+                    <p className="text-[10px] text-slate-400 mt-1">상단의 세부 정보들을 토대로 실시간으로 최적의 후보군을 작성하고 있습니다.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 max-h-[280px] overflow-y-auto pr-1">
+                    {candidates.map((candidate) => {
+                      const selected = aiAutoSelect ? candidate.id === candidates[0]?.id : candidate.id === selectedCandidate?.id;
+                      return (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          onClick={() => {
+                            onAutoSelectChange(false);
+                            onCandidateSelect(candidate.id);
+                          }}
+                          className={cn(
+                            'flex flex-col h-full rounded-2xl border p-3.5 text-left transition-all duration-200 relative',
+                            selected
+                              ? 'border-indigo-500 bg-indigo-50/50 shadow-sm ring-1 ring-indigo-500/30'
+                              : 'border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50/50',
+                          )}
+                        >
+                          <span className="flex items-start justify-between gap-2 w-full">
+                            <span className="text-xs font-black leading-tight text-slate-900 line-clamp-2">{candidate.title}</span>
+                            {selected ? <CheckCircle2 size={14} className="shrink-0 text-indigo-600 mt-0.5" /> : null}
+                          </span>
+                          <span className="mt-1.5 block text-[10px] font-bold text-indigo-600">{candidate.areaLabel}</span>
+                          <span className="mt-1 block text-[10px] font-semibold leading-relaxed text-slate-500 line-clamp-3">{candidate.reason}</span>
+                          <span className="mt-auto pt-2 block text-[9px] font-semibold leading-relaxed text-slate-400 border-t border-slate-100/60 mt-2">
+                            {candidate.source}: <span className="text-slate-500 font-bold">{candidate.evidence}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs font-semibold leading-5 text-slate-600">
-            {selectedCandidate?.gradeFit || '학년 정보를 반영해 후보를 정리합니다.'}
-          </p>
-          <PrimaryButton
-            type="button"
-            size="sm"
-            onClick={onStart}
-            disabled={disabled || !selectedCandidate}
-            className="min-h-10 shrink-0 rounded-2xl px-4 text-xs font-black"
-          >
-            <PenSquare size={15} className="mr-1.5" />
-            이 후보로 서론 시작
-          </PrimaryButton>
+        <div className="flex items-center justify-between border-t border-slate-100 pt-3.5 mt-1">
+          {activeStep > 1 ? (
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="inline-flex h-9 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-900"
+            >
+              <ArrowLeft size={13} />
+              이전 단계
+            </button>
+          ) : (
+            <div className="w-10" />
+          )}
+
+          {activeStep < 5 ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={!isStepValid(activeStep)}
+              className={cn(
+                "inline-flex h-9 items-center gap-1 rounded-xl px-4 text-xs font-black transition-all shadow-sm",
+                isStepValid(activeStep)
+                  ? "bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95"
+                  : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/50"
+              )}
+            >
+              다음 단계
+              <ArrowRight size={13} />
+            </button>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 w-full sm:w-auto sm:justify-end flex-1 pl-4">
+              <p className="text-[10px] font-semibold leading-relaxed text-slate-500 line-clamp-1 max-w-[240px] hidden sm:block">
+                {selectedCandidate?.gradeFit || '학년 정보와 요구사항을 최종 반영합니다.'}
+              </p>
+              <PrimaryButton
+                type="button"
+                size="sm"
+                onClick={onStart}
+                disabled={disabled || !selectedCandidate}
+                className="h-9 shrink-0 rounded-xl px-4 text-xs font-black bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 shadow-md shadow-indigo-100 flex items-center justify-center"
+              >
+                <PenSquare size={13} className="mr-1.5" />
+                이 주제로 서론 시작
+              </PrimaryButton>
+            </div>
+          )}
         </div>
       </div>
     </SurfaceCard>
@@ -4269,11 +4487,12 @@ export function Workshop() {
   }, [chatbotMode, diagnosisHeadline, guidedSetupComplete, isProjectBacked]);
 
   return (
-    <div className={cn("mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col overflow-hidden px-0 sm:px-4 sm:py-4", advancedMode && "rounded-none sm:rounded-[48px] bg-[linear-gradient(145deg,rgba(124,58,237,0.06)_0%,rgba(6,182,212,0.05)_100%)] shadow-[inset_0_0_100px_rgba(124,58,237,0.06)]")}>
+    <div className={cn("mx-auto flex h-full min-h-0 w-full max-w-[1920px] flex-col overflow-hidden px-0 sm:px-6 sm:py-6", advancedMode && "bg-[linear-gradient(145deg,rgba(124,58,237,0.03)_0%,rgba(6,182,212,0.02)_100%)]")}>
       <motion.div
-        className="flex min-h-0 flex-1 flex-col"
-        animate={advancedMode ? { y: [0, -2, 0] } : {}}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        className="flex min-h-0 flex-1 flex-col rounded-none sm:rounded-[40px] overflow-hidden bg-white shadow-[0_32px_64px_-16px_rgba(15,23,42,0.12)] border border-slate-200/60"
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6 }}
       >
 
 
@@ -4282,8 +4501,8 @@ export function Workshop() {
           <WorkshopMobileToggle value={mobileView} onChange={setMobileView} />
         </div>
 
-        <div className="relative mt-2 flex min-h-0 flex-1 justify-center overflow-hidden">
-          <div className="hidden w-72 shrink-0 pr-3 xl:flex">
+        <div className="relative flex min-h-0 flex-1 justify-center overflow-hidden bg-[radial-gradient(#f1f5f9_1.5px,transparent_1.5px)] [bg-size:32px_32px]">
+          <div className="hidden w-72 shrink-0 border-r border-slate-100/60 bg-white/40 backdrop-blur-md xl:flex">
             <ConversationHistoryPanel
               items={archivedConversations}
               activeId={activeArchiveId}
@@ -4292,66 +4511,73 @@ export function Workshop() {
               onResume={(item) => void handleResumeArchivedConversation(item)}
             />
           </div>
-          <div className={cn("flex flex-col min-h-0 flex-1 transition-all duration-500 items-center w-full", isEditorOpen ? "lg:mr-[400px] xl:mr-[500px]" : "")}>
-            <div className="w-full max-w-4xl flex-1 flex flex-col relative">
-              <div className="absolute top-2 right-4 z-20 hidden lg:flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleToggleDeepResearchMode()}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2 border rounded-full text-sm font-bold shadow-sm transition-all",
-                    advancedMode
-                      ? "bg-slate-900 border-slate-900 text-white hover:bg-slate-800"
-                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-indigo-600",
-                  )}
-                >
-                  <BookOpen size={16} />
-                  웹/논문 리서치 {advancedMode ? 'ON' : 'OFF'}
-                </button>
-                <select
-                  value={reportTemplateId}
-                  onChange={(event) => setReportTemplateId(event.target.value as UniFoliDocumentTemplateId)}
-                  className="h-10 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none focus:border-indigo-300"
-                  aria-label="보고서 양식 선택"
-                >
-                  <option value="basic">기본형</option>
-                  <option value="academic">논문형</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => void handleGenerateDraft()}
-                  disabled={isRendering || !workshopState}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 border border-indigo-600 rounded-full text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:bg-slate-200 disabled:border-slate-200 disabled:text-slate-500 transition-all"
-                >
-                  {isRendering ? <Loader2 size={16} className="animate-spin" /> : <Presentation size={16} />}
-                  대화 종료·보고서 생성
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadReport}
-                  disabled={!reportDownloadContent}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition-all"
-                >
-                  <Download size={16} />
-                  보고서 다운로드
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenProfessionalEditor()}
-                  disabled={!(documentContent || structuredDraftToMarkdown(structuredDraft)).trim()}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition-all"
-                >
-                  <PenSquare size={16} />
-                  전문 편집기로 열기
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditorOpen(!isEditorOpen)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-all"
-                >
-                  <FileText size={16} className={isEditorOpen ? "text-indigo-600" : ""} />
-                  {isEditorOpen ? '문서 닫기' : '작성한 문서 보기'}
-                </button>
+          <div className={cn("flex flex-col min-h-0 flex-1 transition-all duration-700 items-center w-full", isEditorOpen ? "lg:mr-[450px] xl:mr-[600px]" : "")}>
+            <div className="w-full max-w-4xl flex-1 flex flex-col relative px-4 sm:px-8">
+              <div className="w-full mb-4 hidden lg:flex items-center justify-between gap-3 bg-white/70 backdrop-blur-md p-2.5 rounded-[20px] border border-slate-200/50 shadow-sm z-20">
+                {/* Left side: Options and parameters */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleDeepResearchMode()}
+                    className={cn(
+                      "flex items-center gap-2 px-3.5 py-2 border rounded-full text-xs font-black shadow-sm transition-all shrink-0",
+                      advancedMode
+                        ? "bg-slate-900 border-slate-900 text-white hover:bg-slate-800"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-indigo-600",
+                    )}
+                  >
+                    <BookOpen size={14} />
+                    웹/논문 리서치 {advancedMode ? 'ON' : 'OFF'}
+                  </button>
+                  <select
+                    value={reportTemplateId}
+                    onChange={(event) => setReportTemplateId(event.target.value as UniFoliDocumentTemplateId)}
+                    className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm outline-none focus:border-indigo-300 transition-all shrink-0"
+                    aria-label="보고서 양식 선택"
+                  >
+                    <option value="basic">기본형</option>
+                    <option value="academic">논문형</option>
+                  </select>
+                </div>
+
+                {/* Right side: Key actions and buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateDraft()}
+                    disabled={isRendering || !workshopState}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 border border-indigo-600 rounded-full text-xs font-black text-white shadow-sm hover:bg-indigo-700 disabled:bg-slate-100 disabled:border-slate-100 disabled:text-slate-400 transition-all shrink-0"
+                  >
+                    {isRendering ? <Loader2 size={14} className="animate-spin" /> : <Presentation size={14} />}
+                    대화 종료·보고서 생성
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadReport}
+                    disabled={!reportDownloadContent}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 rounded-full text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition-all shrink-0"
+                  >
+                    <Download size={14} />
+                    보고서 다운로드
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenProfessionalEditor()}
+                    disabled={!(documentContent || structuredDraftToMarkdown(structuredDraft)).trim()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 rounded-full text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-50 transition-all shrink-0"
+                  >
+                    <PenSquare size={14} />
+                    전문 편집기로 열기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditorOpen(!isEditorOpen)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 rounded-full text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-all shrink-0"
+                  >
+                    <FileText size={14} className={isEditorOpen ? "text-indigo-600" : ""} />
+                    {isEditorOpen ? '문서 닫기' : '작성한 문서 보기'}
+                  </button>
+                </div>
               </div>
                             <SectionCard
                 className={cn(
@@ -4360,7 +4586,7 @@ export function Workshop() {
                 )}
                 bodyClassName="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0 bg-transparent"
               >
-                <div className="flex flex-col h-full bg-slate-50/10 backdrop-blur-md overflow-hidden">
+                <div className="flex flex-col h-full bg-transparent overflow-hidden">
                   {/* Chat Header Section */}
                   <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-200/50 bg-white/60 backdrop-blur-xl z-10">
                     <div className="flex items-center gap-3 overflow-hidden">
@@ -4620,7 +4846,7 @@ export function Workshop() {
 
           <div
             className={cn(
-              'flex min-h-0 flex-col h-full bg-white lg:border-l border-slate-200 lg:shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.05)] transition-all duration-500 absolute right-0 top-0 bottom-0 z-10 w-full lg:w-[400px] xl:w-[500px]',
+              'flex min-h-0 flex-col h-full bg-slate-50/30 backdrop-blur-sm lg:border-l border-slate-200 transition-all duration-700 absolute right-0 top-0 bottom-0 z-10 w-full lg:w-[450px] xl:w-[600px]',
               mobileView !== 'draft' && 'hidden lg:flex',
               !isEditorOpen && 'lg:translate-x-full lg:opacity-0 lg:invisible',
               isEditorOpen && 'lg:translate-x-0 lg:opacity-100 lg:visible'
@@ -4669,7 +4895,7 @@ export function Workshop() {
                 />
               )}
 
-              <div className="flex-1 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/50 transition-all focus-within:ring-indigo-500/30">
+              <div className="flex-1 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-slate-200/50 transition-all focus-within:ring-indigo-500/30">
                 <TiptapEditor
                   ref={editorRef}
                   initialContent={documentContent}

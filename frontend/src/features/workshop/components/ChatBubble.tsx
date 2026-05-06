@@ -66,7 +66,7 @@ const MarkdownContent = memo(function MarkdownContent({
           p: ({ children, ...props }) => (
             <p
               {...props}
-              className={cn('text-[15px] font-medium leading-7', isUserMessage ? 'whitespace-pre-wrap text-white' : 'text-slate-800')}
+              className={cn('text-[15px] font-medium leading-7 tracking-tight', isUserMessage ? 'whitespace-pre-wrap text-indigo-50' : 'text-slate-700')}
             >
               {children}
             </p>
@@ -144,15 +144,15 @@ export const ChatBubble = memo(function ChatBubble({
     >
       <div
         className={cn(
-          'max-w-[92%] rounded-2xl border px-4 py-3 shadow-sm',
+          'max-w-[88%] rounded-[28px] px-6 py-5 shadow-xl transition-all duration-300',
           isUser
-            ? 'border-indigo-600 bg-indigo-600 text-white shadow-indigo-200/40'
-            : 'border-slate-100 bg-white text-slate-900',
+            ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-indigo-200/50'
+            : 'border border-slate-200/60 bg-white text-slate-900 shadow-slate-200/30',
         )}
       >
-        <div className={cn('mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-wider', isUser ? 'text-indigo-100' : 'text-indigo-600')}>
-          {isUser ? <User size={12} /> : <Bot size={12} />}
-          <span>{isUser ? 'ME' : 'UNIFOLI'}</span>
+        <div className={cn('mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em]', isUser ? 'text-indigo-100/80' : 'text-indigo-600/80')}>
+          {isUser ? <User size={12} className="opacity-70" /> : <Bot size={12} className="opacity-70" />}
+          <span>{isUser ? 'Personal Assistant' : 'Foli AI Expert'}</span>
         </div>
 
         {isStreaming ? (

@@ -28,7 +28,7 @@ from unifoli_api.services.prompt_registry import get_prompt_registry
 from unifoli_api.services.research_topic_scoring import score_topic_candidate
 from unifoli_api.services.topic_recommendation_prompt import build_topic_recommendation_prompt
 
-GUIDED_CHAT_GREETING = "안녕하세요! 어떤 흥미로운 주제로 보고서를 시작해볼까요? 😊"
+GUIDED_CHAT_GREETING = "반가워요! 나만의 맞춤형 탐구보고서 작성을 도와드릴게요. 🚀"
 LIMITED_CONTEXT_NOTE = (
     "생기부 없이도 바로 문서작성을 시작할 수 있어요. 다만 생기부 PDF를 첨부하면 실제 세특·창체·교과활동 근거를 "
     "바탕으로 더 효과적인 주제와 내용을 넣을 수 있습니다."
@@ -150,10 +150,9 @@ async def generate_topic_suggestions(
         else ""
     )
     assistant_message = (
-        f"좋아요. '{normalized_subject}'를 바탕으로 {context_label}을 섞어 "
-        f"탐구 주제 {len(normalized)}개를 준비했어요.\n"
-        "처음 12개는 하이라이트로 먼저 보여드리고, 아래 카드 목록에서 전체 후보를 골라 시작할 수 있습니다."
-        f"{record_upgrade_note}"
+        f"좋아요. 입력하신 '{normalized_subject}'를 바탕으로 {context_label}에 어울리는 "
+        f"탐구 주제 {len(normalized)}개를 준비했습니다. ✨\n"
+        "아래 추천 카드 중에서 가장 마음에 드는 주제를 하나 선택해 주세요."
     )
     
     choice_groups = [
@@ -294,14 +293,14 @@ def select_topic(
         context=context,
     )
 
-    guidance_parts = [f"좋아요. 선택한 주제는 '{selected.title}'예요."]
+    guidance_parts = [f"선택하신 주제는 '{selected.title}'입니다."]
     if context.known_target_info.get("target_major"):
         guidance_parts.append(
-            f"목표 전공 '{context.known_target_info['target_major']}'과 연결되는 흐름으로 구조화했습니다."
+            f"목표 전공인 '{context.known_target_info['target_major']}'과 긴밀하게 연결되도록 구성했습니다."
         )
     if context.evidence_gaps:
-        guidance_parts.append("근거가 부족한 지점은 '추가 확인 필요'로 표시해 안전하게 확장하세요.")
-    guidance_parts.append("먼저 보고서 분량을 정하면 바로 개요를 고정해드릴게요.")
+        guidance_parts.append("기록 근거가 보완이 필요한 영역은 안전하게 완성하실 수 있도록 가이드해 드릴게요.")
+    guidance_parts.append("다음으로 보고서의 목표 분량을 선택해 주세요.")
     guidance_message = " ".join(guidance_parts)
 
     summary = _build_state_summary(
@@ -335,7 +334,7 @@ def select_topic(
 
     response = TopicSelectionResponse(
         phase="page_range_selection",
-        assistant_message="좋아요. 이제 분량을 정해볼게요. 원하는 분량 카드를 눌러주세요.",
+        assistant_message=f"'{selected.title}' 주제를 선택하셨네요! 훌륭한 탐구 주제입니다. 💡\n이 주제로 작성할 보고서의 분량을 선택해 주세요.",
         selected_topic_id=selected.id,
         selected_title=selected.title,
         recommended_page_ranges=page_ranges,
@@ -426,8 +425,8 @@ def select_page_range(
     response = PageRangeSelectionResponse(
         phase="structure_selection",
         assistant_message=(
-            f"좋아요. 분량은 '{selected.min_pages}~{selected.max_pages}쪽'으로 진행할게요. "
-            "이제 구성 스타일을 선택하면 바로 개요와 초안 방향을 고정해드릴게요."
+            f"목표 분량을 '{selected.min_pages}~{selected.max_pages}쪽'으로 설정했습니다. 📄\n"
+            "이제 마지막 단계로 보고서의 전체 구성 스타일을 하나 선택해 주세요."
         ),
         selected_page_range_label=selected.label,
         selected_page_range_note=selected.why_this_length,
@@ -516,8 +515,8 @@ def select_structure(
     response = StructureSelectionResponse(
         phase="drafting_next_step",
         assistant_message=(
-            f"좋아요. '{selected.label}' 스타일로 진행할게요. "
-            "아래에서 다음 작업을 눌러 바로 이어가세요."
+            f"'{selected.label}' 구성으로 개요와 초안 방향을 완성했습니다! 🎉\n"
+            "아래에서 원하는 다음 작업을 눌러 바로 보고서 작성을 시작해 보세요."
         ),
         selected_structure_id=selected.id,
         selected_structure_label=selected.label,
@@ -584,15 +583,15 @@ def _build_start_prompt(
         choice_groups.append(
             GuidedChoiceGroup(
                 id="subject-quick-picks",
-                title="자주 선택하는 과목",
+                title="추천 과목",
                 style="chips",
                 options=DEFAULT_SUBJECT_OPTIONS,
             )
         )
         return (
-            "안녕하세요. 어떤 과목의 탐구보고서를 준비하고 계신가요?\n"
-            "예를 들어 수학, 수2, 화학, 생명과학처럼 편하게 적어주세요.\n"
-            "생기부는 필수가 아니지만, 첨부하면 실제 기록에 맞는 주제와 문장을 훨씬 정밀하게 잡을 수 있습니다.",
+            "안녕하세요! 반가워요. 😊\n"
+            "어떤 과목의 탐구보고서를 작성하고 싶으신가요? "
+            "아래 추천 과목 중 하나를 고르거나 직접 입력해 주세요.",
             choice_groups,
         )
 
@@ -600,28 +599,27 @@ def _build_start_prompt(
         choice_groups.append(
             GuidedChoiceGroup(
                 id="specific-topic-check",
-                title="특별히 생각해둔 주제가 있나요?",
+                title="특별히 생각해둔 주제가 있으신가요?",
                 style="buttons",
                 options=[
                     GuidedChoiceOption(
                         id="specific-yes",
-                        label="주제가 있어요",
-                        description="생각해둔 주제를 바로 입력할게요.",
-                        value="주제가 있어요",
+                        label="💡 네, 생각해둔 주제가 있어요",
+                        description="염두에 둔 주제를 바로 입력하겠습니다.",
+                        value="네, 생각해둔 주제가 있어요",
                     ),
                     GuidedChoiceOption(
                         id="specific-no-recommend",
-                        label="추천 300개 받아보기",
-                        description="생기부가 없으면 관심사와 목표 기준으로, 있으면 기록 근거까지 반영해 추천받을게요.",
-                        value="추천 300개 받아보기",
+                        label="🔍 아니요, 주제를 추천해 주세요",
+                        description="맞춤형 추천 주제 후보들을 받아보겠습니다.",
+                        value="아니요, 주제를 추천해 주세요",
                     ),
                 ],
             )
         )
         return (
-            f"좋아요. {subject or '해당 과목'}로 진행해볼게요.\n"
-            "특별히 생각해 둔 주제가 있을까요? 아직 없다면 현재 정보만으로도 300개 이상 추천해드릴게요.\n"
-            "생기부를 첨부하면 세특·창체·교과활동과 더 자연스럽게 연결된 후보를 고를 수 있습니다.",
+            f"좋아요! '{subject}' 과목으로 탐구보고서를 시작해 볼게요. ✍️\n"
+            "혹시 미리 생각해 두신 구체적인 주제가 있으신가요?",
             choice_groups,
         )
 
@@ -650,7 +648,7 @@ def _build_start_prompt(
                 )
             )
         return (
-            "이 중에서 어떤 방향이 가장 마음에 드시나요?\n바로 시작할 수 있게 개요와 초안도 잡아드릴까요?",
+            "추천해 드린 주제 중에서 가장 흥미로운 탐구 방향을 선택해 주세요! ✨",
             choice_groups,
         )
 
@@ -675,8 +673,7 @@ def _build_start_prompt(
                 )
             )
         return (
-            f"좋아요. '{selected_topic or '선택한 주제'}'로 진행할게요.\n"
-            "보고서 분량은 어느 정도를 원하시나요?",
+            f"'{selected_topic or '선택한 주제'}'에 맞는 보고서 분량을 선택해 주세요. 📄",
             choice_groups,
         )
 
@@ -700,7 +697,7 @@ def _build_start_prompt(
                     ],
                 )
             )
-        return ("구성 방식도 골라주시면 바로 개요를 잡아드릴게요.", choice_groups)
+        return ("마지막으로 보고서 전체의 구성 및 목차 스타일을 선택해 주세요. 🛠️", choice_groups)
 
     if phase == "drafting_next_step":
         raw_next_actions = state_summary.get("next_action_options")
@@ -722,7 +719,7 @@ def _build_start_prompt(
                     ],
                 )
             )
-        return ("다음으로 무엇을 할까요? 아래 옵션을 누르면 바로 이어서 도와드릴게요.", choice_groups)
+        return ("개요와 구성 작성이 모두 완료되었습니다! 이제 다음 단계를 선택해 주세요. 🚀", choice_groups)
 
     if context.evidence_gaps:
         return ("근거가 부족한 부분을 먼저 보완하면서 안전하게 진행해볼게요.", choice_groups)

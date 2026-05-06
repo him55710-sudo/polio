@@ -59,7 +59,7 @@ interface OnboardingState {
   clearActiveProjectContext: () => void;
 
   submitProfile: () => Promise<boolean>;
-  submitGoals: (directData?: GoalsData) => Promise<boolean>;
+  submitGoals: (directData?: GoalsData, options?: { skipStepChange?: boolean }) => Promise<boolean>;
   syncWithUser: (user: any) => void;
   initializeFromProject: (projectId: string) => Promise<boolean>;
   resetOnboarding: () => void;
@@ -172,7 +172,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     }
   },
 
-  submitGoals: async (directData?: GoalsData) => {
+  submitGoals: async (directData?: GoalsData, options?: { skipStepChange?: boolean }) => {
     set({ isLoading: true, error: null });
     try {
       let goals = directData;
@@ -199,21 +199,30 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (isGuestSessionActive()) {
         const updatedUser = updateGuestTargets(payload, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ diagnosisStep: 'UPLOAD', isLoading: false });
+        if (!options?.skipStepChange) {
+          set({ diagnosisStep: 'UPLOAD' });
+        }
+        set({ isLoading: false });
         return true;
       }
 
       const updatedUser = await api.post<OnboardingGoalsUpdateResponse>('/api/v1/users/onboarding/goals', payload);
       useAuthStore.getState().setUser(updatedUser);
       void syncUserProfileToFirestore(updatedUser);
-      set({ diagnosisStep: 'UPLOAD', isLoading: false });
+      if (!options?.skipStepChange) {
+        set({ diagnosisStep: 'UPLOAD' });
+      }
+      set({ isLoading: false });
       return true;
     } catch (err: any) {
       const goals = directData || get().goals;
       if (isGuestSessionActive()) {
         const updatedUser = updateGuestTargets(goals, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ diagnosisStep: 'UPLOAD', isLoading: false });
+        if (!options?.skipStepChange) {
+          set({ diagnosisStep: 'UPLOAD' });
+        }
+        set({ isLoading: false });
         return true;
       }
 
@@ -221,7 +230,10 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (currentAuthUser) {
         const updatedUser = updateLocalAuthTargets(goals, currentAuthUser, useAuthStore.getState().user);
         useAuthStore.getState().setUser(updatedUser);
-        set({ diagnosisStep: 'UPLOAD', isLoading: false, hasInitialized: true });
+        if (!options?.skipStepChange) {
+          set({ diagnosisStep: 'UPLOAD', hasInitialized: true });
+        }
+        set({ isLoading: false });
         return true;
       }
 

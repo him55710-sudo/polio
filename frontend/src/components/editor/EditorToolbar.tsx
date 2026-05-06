@@ -91,8 +91,8 @@ function ToolbarButton({
       disabled={disabled}
       title={title}
       className={cn(
-        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-white hover:text-slate-900 hover:shadow-sm disabled:pointer-events-none disabled:opacity-30',
-        active && 'bg-blue-50 text-blue-600 ring-1 ring-blue-100 hover:bg-blue-100',
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-all duration-200 hover:bg-slate-200/50 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-20',
+        active && 'bg-indigo-50 text-indigo-600 shadow-[inset_0_1px_2px_rgba(79,70,229,0.1)] hover:bg-indigo-100/70',
         className,
       )}
     >
@@ -102,7 +102,7 @@ function ToolbarButton({
 }
 
 function ToolbarDivider() {
-  return <div className="mx-1 h-5 w-px shrink-0 bg-slate-200" />;
+  return <div className="mx-1.5 h-4 w-[1px] shrink-0 bg-slate-200/60" />;
 }
 
 function ColorPicker({
@@ -125,10 +125,10 @@ function ColorPicker({
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => setIsOpen((value) => !value)}
         title={title}
-        className="flex h-9 w-9 flex-col items-center justify-center rounded-lg text-slate-600 transition hover:bg-white hover:shadow-sm"
+        className="flex h-8 w-8 flex-col items-center justify-center rounded-md text-slate-500 transition-all hover:bg-slate-200/50"
       >
         {icon}
-        <span className="mt-0.5 h-[3px] w-4 rounded-full" style={{ backgroundColor: currentColor || '#000000' }} />
+        <span className="mt-0.5 h-[2.5px] w-3.5 rounded-full" style={{ backgroundColor: currentColor || '#000000' }} />
       </button>
       {isOpen ? (
         <>
@@ -239,7 +239,7 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
   const currentHighlight = editor.getAttributes('highlight').color || '#fdd663';
 
   return (
-    <div className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/90 px-2 py-2 backdrop-blur-md sm:px-4">
+    <div className="sticky top-0 z-30 border-b border-slate-200/60 bg-white/80 px-2 py-2 backdrop-blur-xl sm:px-4">
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
 
       <div className="flex items-center gap-1 overflow-x-auto pb-1 [&::-webkit-scrollbar]:h-0">
@@ -251,10 +251,10 @@ export function EditorToolbar({ editor, onInsertTemplate }: EditorToolbarProps) 
         </ToolbarButton>
         <ToolbarDivider />
 
-        <select className="h-9 min-w-[120px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-semibold text-slate-700 shadow-sm outline-none" value={currentFontFamily} onChange={(event) => editor.chain().focus().setFontFamily(event.target.value).run()} onMouseDown={(event) => event.stopPropagation()}>
+        <select className="h-8 min-w-[110px] rounded-md border border-slate-200/60 bg-white px-2 text-[11px] font-bold text-slate-600 shadow-sm outline-none hover:border-slate-300 transition-colors" value={currentFontFamily} onChange={(event) => editor.chain().focus().setFontFamily(event.target.value).run()} onMouseDown={(event) => event.stopPropagation()}>
           {FONT_FAMILIES.map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}
         </select>
-        <select className="h-9 w-16 rounded-lg border border-slate-200 bg-white px-1 text-[12px] font-semibold text-slate-700 shadow-sm outline-none" value={currentFontSize} onChange={(event) => editor.chain().focus().setFontSize(event.target.value).run()} onMouseDown={(event) => event.stopPropagation()}>
+        <select className="h-8 w-14 rounded-md border border-slate-200/60 bg-white px-1 text-[11px] font-bold text-slate-600 shadow-sm outline-none hover:border-slate-300 transition-colors" value={currentFontSize} onChange={(event) => editor.chain().focus().setFontSize(event.target.value).run()} onMouseDown={(event) => event.stopPropagation()}>
           {FONT_SIZES.map((size) => <option key={size} value={size}>{size.replace('px', '')}</option>)}
         </select>
         <ToolbarDivider />

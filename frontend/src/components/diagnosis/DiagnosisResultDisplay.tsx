@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { 
   CheckCircle2, 
@@ -16,8 +15,14 @@ import {
   ArrowRight,
   BarChart3,
   Award,
-  FileText
+  FileText,
+  Settings2,
+  ChevronUp,
+  ChevronDown,
+  Save,
+  X
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Timeline } from './Timeline';
 import { DiagnosisRelationalGraph } from './DiagnosisRelationalGraph';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -85,7 +90,54 @@ function completionStateLabel(value: unknown): string | null {
 
 export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ diagnosisResult, diagnosisRun, projectId, targetGoals = [] }) => {
   const navigate = useNavigate();
-  const { profile } = useOnboardingStore();
+  const { profile, goalList, setGoalList, submitGoals, isLoading: isStoreLoading } = useOnboardingStore();
+
+  const [isReordering, setIsReordering] = React.useState(false);
+  const [localGoals, setLocalGoals] = React.useState(targetGoals);
+
+  // Update local goals when targetGoals prop changes, but only if not currently reordering
+  React.useEffect(() => {
+    if (!isReordering) {
+      setLocalGoals(targetGoals);
+    }
+  }, [targetGoals, isReordering]);
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    const newGoals = [...localGoals];
+    const temp = newGoals[index];
+    newGoals[index] = newGoals[index - 1];
+    newGoals[index - 1] = temp;
+    setLocalGoals(newGoals);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === localGoals.length - 1) return;
+    const newGoals = [...localGoals];
+    const temp = newGoals[index];
+    newGoals[index] = newGoals[index + 1];
+    newGoals[index + 1] = temp;
+    setLocalGoals(newGoals);
+  };
+
+  const handleSaveOrder = async () => {
+    // We need to map GoalItem to the store's expected format
+    // In store, goalList items have id, university, major
+    // But targetGoals prop might have different structure.
+    // Let's ensure we match the store's GoalItem interface.
+    const updatedGoalList = localGoals.map((goal, idx) => ({
+      id: (goal as any).id || `goal-${idx}-${Date.now()}`,
+      university: goal.university,
+      major: goal.major || ''
+    }));
+
+    setGoalList(updatedGoalList);
+    const success = await submitGoals(undefined, { skipStepChange: true });
+    if (success) {
+      setIsReordering(false);
+    }
+  };
+
   const summaryJson = asRecord(diagnosisResult?.diagnosis_summary_json);
   const visibleTargetGoals = targetGoals
     .map((goal) => ({
@@ -197,36 +249,120 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({ 
       </section>
 
       {/* 2. Target Goals */}
-      {visibleTargetGoals.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-              <Target className="text-blue-600" size={22} />
-              목표 대학 및 학과
-            </h2>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
-              {visibleTargetGoals.length}개 목표
-            </span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {visibleTargetGoals.map((goal, index) => (
-              <div
-                key={`${goal.university}-${goal.major}-${index}`}
-                className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-sm font-black text-blue-700 shadow-sm">
-                  {index + 1}
-                </span>
-                <UniversityLogo
-                  universityName={goal.university}
-                  className="h-10 w-10 shrink-0 rounded-xl bg-white object-contain p-1.5 shadow-sm"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
-                  <p className="truncate text-xs font-bold text-slate-500">{goal.major || '학과 미정'}</p>
-                </div>
+      {localGoals.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm overflow-hidden relative">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-50 rounded-xl">
+                <Target className="text-blue-600" size={24} />
               </div>
-            ))}
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">목표 대학 및 학과</h2>
+                <p className="text-xs font-bold text-slate-500 mt-0.5">순위가 높을수록 진단 가중치가 높게 반영됩니다.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              {!isReordering ? (
+                <button
+                  onClick={() => setIsReordering(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 text-slate-600 font-bold text-sm hover:bg-slate-100 transition-all border border-slate-200 shadow-sm"
+                >
+                  <Settings2 size={16} />
+                  순위 조정
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setIsReordering(false);
+                      setLocalGoals(targetGoals);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white text-slate-500 font-bold text-sm hover:bg-slate-50 transition-all border border-slate-200"
+                  >
+                    <X size={16} />
+                    취소
+                  </button>
+                  <button
+                    onClick={handleSaveOrder}
+                    disabled={isStoreLoading}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                  >
+                    {isStoreLoading ? (
+                      <span className="h-4 w-4 border-2 border-white/30 border-t-white animate-spin rounded-full" />
+                    ) : (
+                      <Save size={16} />
+                    )}
+                    순위 저장
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <AnimatePresence initial={false} mode="popLayout">
+              {localGoals.map((goal, index) => (
+                <motion.div
+                  key={`${goal.university}-${goal.major}-${index}`}
+                  layout
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30, mass: 1 }}
+                  className={`relative group flex min-w-0 items-center gap-3 rounded-2xl border p-4 transition-all ${
+                    isReordering
+                      ? 'border-blue-200 bg-blue-50/30 ring-1 ring-blue-100'
+                      : 'border-slate-100 bg-slate-50/80 hover:bg-white hover:shadow-md hover:border-slate-200'
+                  }`}
+                >
+                  {/* Rank Badge */}
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black shadow-sm transition-colors ${
+                    index === 0 ? 'bg-blue-600 text-white' : 'bg-white text-blue-700'
+                  }`}>
+                    {index + 1}
+                  </div>
+
+                  <UniversityLogo
+                    universityName={goal.university}
+                    className="h-10 w-10 shrink-0 rounded-xl bg-white object-contain p-1.5 shadow-sm"
+                  />
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-black text-slate-900">{goal.university}</p>
+                      {index === 0 && !isReordering && (
+                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-black rounded-md uppercase tracking-tight">Main</span>
+                      )}
+                    </div>
+                    <p className="truncate text-xs font-bold text-slate-500">{goal.major || '학과 미정'}</p>
+                  </div>
+
+                  {/* Reordering Controls */}
+                  {isReordering && (
+                    <div className="flex flex-col gap-1 ml-2">
+                      <button
+                        onClick={() => handleMoveUp(index)}
+                        disabled={index === 0}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          index === 0 ? 'text-slate-200 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-100'
+                        }`}
+                      >
+                        <ChevronUp size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleMoveDown(index)}
+                        disabled={index === localGoals.length - 1}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          index === localGoals.length - 1 ? 'text-slate-200 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-100'
+                        }`}
+                      >
+                        <ChevronDown size={18} />
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </section>
       )}

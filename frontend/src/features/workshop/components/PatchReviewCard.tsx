@@ -51,32 +51,42 @@ export function PatchReviewCard({
   return (
     <section
       className={cn(
-        'rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm',
-        validationSummary.hasErrors && 'border-red-200 bg-red-50/30',
+        'group relative rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)]',
+        validationSummary.hasErrors && 'border-red-200 bg-red-50/20',
         className,
       )}
       aria-label="문서 반영 제안"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="mb-2 inline-flex items-center gap-2 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
-            <ShieldCheck size={14} />
-            승인 후 반영
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-indigo-700 ring-1 ring-indigo-200/50">
+              <Sparkles size={12} />
+              AI 제안
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
+              <FileText size={12} />
+              {targetLabel}
+            </div>
           </div>
-          <h3 className="text-sm font-black text-slate-900">
-            이 내용을 ‘{targetLabel}’에 반영할까요?
+          <h3 className="text-[15px] font-black leading-snug text-slate-900">
+            문서의 내용을 최신 분석 결과로 업데이트할까요?
           </h3>
-          <p className="mt-1 text-xs font-bold text-slate-500">수정 방식: {actionLabel}</p>
         </div>
-        <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase text-slate-600">
-          {normalizedPatch.status}
-        </span>
       </div>
 
       {preview ? (
-        <div className="mt-3 max-h-44 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-3">
-          <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">미리보기</p>
-          <pre className="whitespace-pre-wrap font-sans text-xs leading-5 text-slate-700">{preview}</pre>
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/50">
+          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">변경 내용 미리보기</span>
+            <div className="flex gap-1">
+              <div className="h-1.5 w-1.5 rounded-full bg-slate-200" />
+              <div className="h-1.5 w-1.5 rounded-full bg-slate-200" />
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto p-4">
+            <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 text-slate-600">{preview}</pre>
+          </div>
         </div>
       ) : null}
 
@@ -122,38 +132,50 @@ export function PatchReviewCard({
         ))}
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <Button size="sm" variant="primary" onClick={() => onApply(patch)} disabled={applyDisabled}>
-          <Check size={14} />
-          문서에 반영
+      <div className="mt-5 flex flex-col gap-2">
+        <Button
+          size="lg"
+          variant="primary"
+          onClick={() => onApply(patch)}
+          disabled={applyDisabled}
+          className="w-full bg-indigo-600 py-6 text-sm font-black shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 hover:scale-[1.01] active:scale-95"
+        >
+          <Check size={18} className="mr-2" />
+          변경 사항 승인 및 적용
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => onRequestRewrite?.(patch, 'simpler')} disabled={disabled}>
-          <RotateCcw size={14} />
-          더 쉽게
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => onRequestRewrite?.(patch, 'professional')} disabled={disabled}>
-          <Sparkles size={14} />
-          더 전문적으로
-        </Button>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button size="sm" variant="secondary" onClick={() => onRequestRewrite?.(patch, 'simpler')} disabled={disabled} className="h-10 border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-50">
+            <RotateCcw size={14} className="mr-2" />
+            더 쉽게
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => onRequestRewrite?.(patch, 'professional')} disabled={disabled} className="h-10 border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-50">
+            <Sparkles size={14} className="mr-2" />
+            더 전문적으로
+          </Button>
+        </div>
+
         <Button
           size="sm"
-          variant="secondary"
+          variant="ghost"
           onClick={() => (onEditBeforeApply ? onEditBeforeApply(patch) : onRequestRewrite?.(patch, 'custom'))}
           disabled={disabled}
+          className="h-10 font-bold text-slate-500 hover:text-indigo-600"
         >
-          <Edit3 size={14} />
-          수정해서 반영
+          <Edit3 size={14} className="mr-2" />
+          직접 수정해서 반영하기
         </Button>
-        {onOpenProfessionalEditor ? (
-          <Button className="sm:col-span-2" size="sm" variant="secondary" onClick={() => onOpenProfessionalEditor(patch)} disabled={disabled}>
-            <FileText size={14} />
-            전문 편집기로 열기
-          </Button>
-        ) : null}
-        <Button className="sm:col-span-2" size="sm" variant="ghost" onClick={() => onReject(patch)} disabled={disabled}>
-          <X size={14} />
-          거절
-        </Button>
+
+        <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-3">
+          <button onClick={() => onReject(patch)} disabled={disabled} className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">
+            거절하기
+          </button>
+          {onOpenProfessionalEditor && (
+            <button onClick={() => onOpenProfessionalEditor(patch)} disabled={disabled} className="text-xs font-bold text-indigo-600 hover:underline">
+              전문 에디터에서 열기
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 flex items-center gap-2 text-[11px] font-medium text-slate-500">
