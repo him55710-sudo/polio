@@ -107,6 +107,11 @@ test('standard API retries generic 404s from a stale configured API host against
       hostname: 'uni-foli.vercel.app',
       origin: 'https://uni-foli.vercel.app',
     },
+    localStorage: {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
   };
 
   const observedBaseUrls: Array<string | undefined> = [];

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload, load_only
 
 from unifoli_api.core.config import get_settings
 from unifoli_api.core.database import SessionLocal, utc_now
+from unifoli_api.core.errors import UniFoliErrorCode
 from unifoli_api.core.security import sanitize_public_error
 from unifoli_api.db.models.document_chunk import DocumentChunk
 from unifoli_api.db.models.draft import Draft
