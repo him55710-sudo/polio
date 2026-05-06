@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import inspect
@@ -78,6 +79,16 @@ _DEFAULT_TEMPLATE_BY_MODE: dict[str, str] = {
     "premium_10p": "consultant_diagnosis_premium",
 }
 _REPORT_FAILURE_FALLBACK = "진단 보고서 생성에 실패했습니다. 프로젝트 근거를 확인한 뒤 다시 시도해 주세요."
+
+
+def _resolve_report_narrative_timeout_seconds() -> float:
+    settings = get_settings()
+    raw = getattr(settings, "diagnosis_report_narrative_timeout_seconds", 60.0)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 60.0
+    return value if value > 0 else 60.0
 
 
 _REPORT_MODE_SPECS: dict[str, dict[str, Any]] = {
@@ -4069,11 +4080,14 @@ async def _generate_narratives(
             message="Generating consultant narrative.",
             progress=54.0,
         )
-        response = await llm.generate_json(
-            prompt=prompt,
-            response_model=_ConsultantNarrativePayload,
-            system_instruction=system_instruction,
-            temperature=get_llm_temperature(profile="render", concern="render", resolution=resolution),
+        response = await asyncio.wait_for(
+            llm.generate_json(
+                prompt=prompt,
+                response_model=_ConsultantNarrativePayload,
+                system_instruction=system_instruction,
+                temperature=get_llm_temperature(profile="render", concern="render", resolution=resolution),
+            ),
+            timeout=_resolve_report_narrative_timeout_seconds(),
         )
         await _emit_report_heartbeat(
             heartbeat_callback,
@@ -4123,6 +4137,9 @@ async def _generate_narratives(
                 "fallback_reason": fallback_reason,
             },
         )
+    except asyncio.TimeoutError:
+        logger.warning("Consultant narrative generation timed out. Fallback applied.")
+        fallback_execution["fallback_reason"] = "render_narrative_timeout"
     except (LLMRequestError, RuntimeError, ValueError) as exc:
         logger.warning("Consultant narrative fallback applied: %s", exc)
         fallback_execution["fallback_reason"] = getattr(exc, "limited_reason", None) or sanitize_public_error(

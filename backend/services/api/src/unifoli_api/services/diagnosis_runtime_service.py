@@ -628,6 +628,8 @@ def _resolve_diagnosis_generation_timeout_seconds() -> float:
         value = DIAGNOSIS_GENERATION_TIMEOUT_SECONDS
     if value <= 0:
         return DIAGNOSIS_GENERATION_TIMEOUT_SECONDS
+    if getattr(settings, "serverless_runtime", False):
+        return min(value, 180.0)
     return value
 
 

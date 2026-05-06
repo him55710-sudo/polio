@@ -351,6 +351,46 @@ def test_report_heartbeat_accepts_worker_style_callback() -> None:
     ]
 
 
+def test_report_narrative_timeout_uses_fallback(monkeypatch) -> None:
+    class _SlowClient:
+        async def generate_json(self, **kwargs):  # noqa: ANN003, ARG002
+            await asyncio.sleep(0.05)
+            raise AssertionError("timeout guard should cancel before completion")
+
+    class _PromptRegistry:
+        def compose_prompt(self, _key: str) -> str:
+            return "prompt"
+
+    monkeypatch.setattr(
+        report_service,
+        "resolve_llm_runtime",
+        lambda **kwargs: SimpleNamespace(  # noqa: ARG005
+            attempted_provider="gemini",
+            attempted_model="gemini-2.5-flash-lite",
+            actual_provider="gemini",
+            actual_model="gemini-2.5-flash-lite",
+            fallback_used=False,
+            fallback_reason=None,
+            client=_SlowClient(),
+        ),
+    )
+    monkeypatch.setattr(report_service, "get_prompt_registry", lambda: _PromptRegistry())
+    monkeypatch.setattr(report_service, "_resolve_report_narrative_timeout_seconds", lambda: 0.001)
+
+    result = asyncio.run(
+        report_service._generate_narratives(
+            project=SimpleNamespace(title="생기부 진단", target_university="서울대", target_major="컴퓨터공학과"),
+            result=_result_payload(),
+            document_structure=_document_structure(),
+            uncertainty_notes=[],
+        )
+    )
+
+    assert result.execution_metadata["fallback_used"] is True
+    assert result.execution_metadata["fallback_reason"] == "render_narrative_timeout"
+    assert result.narrative.executive_summary
+
+
 def test_topic_recommendation_block_is_grounded_and_conservative() -> None:
     intelligence = report_service._build_diagnosis_intelligence(
         result=_result_payload(),

@@ -224,6 +224,7 @@ class Settings(BaseSettings):
     ollama_render_timeout_seconds: float | None = None
     workshop_chat_timeout_seconds: float = 60.0
     diagnosis_generation_timeout_seconds: float = 240.0
+    diagnosis_report_narrative_timeout_seconds: float = 60.0
     pdf_analysis_llm_enabled: bool = True
     pdf_analysis_llm_provider: str = "gemini"
     pdf_analysis_gemini_api_key: str | None = Field(
@@ -543,6 +544,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} must be greater than or equal to zero when set.")
         if self.workshop_chat_timeout_seconds <= 0:
             raise ValueError("WORKSHOP_CHAT_TIMEOUT_SECONDS must be greater than zero.")
+        if self.diagnosis_generation_timeout_seconds <= 0:
+            raise ValueError("DIAGNOSIS_GENERATION_TIMEOUT_SECONDS must be greater than zero.")
+        if self.diagnosis_report_narrative_timeout_seconds <= 0:
+            raise ValueError("DIAGNOSIS_REPORT_NARRATIVE_TIMEOUT_SECONDS must be greater than zero.")
 
         pdf_ollama_base_url = self.pdf_analysis_ollama_base_url or self.ollama_base_url
         if not _is_valid_http_url(pdf_ollama_base_url):
