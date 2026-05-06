@@ -2451,6 +2451,8 @@ export function Workshop() {
   const [activeAccumulationStepId, setActiveAccumulationStepId] = useState<string>(ACCUMULATION_STEPS[0].id);
   const [completedAccumulationStepId, setCompletedAccumulationStepId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef<boolean>(true);
   const editorRef = useRef<TiptapEditorHandle | null>(null);
   const standaloneBootstrapPromiseRef = useRef<Promise<WorkshopProjectResponse> | null>(null);
   const reportDocumentState = useMemo(() => structuredDraftToReportDocumentState(structuredDraft), [structuredDraft]);
@@ -3049,8 +3051,19 @@ export function Workshop() {
     }
   }, [archiveResumeId, initialMajor, isProjectBacked, initWorkshop, questStart, shouldBootstrapStandaloneProject, shouldRedirectToStoredProject]);
 
+  const handleChatScroll = useCallback(() => {
+    if (!chatScrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatScrollRef.current;
+    // 하단 여백 판정 거리를 120px로 다소 여유 있게 보장
+    const atBottom = scrollHeight - scrollTop - clientHeight < 120;
+    isAtBottomRef.current = atBottom;
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const lastMessageIsUser = messages[messages.length - 1]?.role === 'user';
+    if (isAtBottomRef.current || lastMessageIsUser) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const saveDraftWithSync = useCallback(
@@ -4855,7 +4868,11 @@ export function Workshop() {
                   </div>
 
                   {/* Messages Area */}
-                  <div className="flex-1 overflow-y-auto custom-scrollbar scroll-smooth bg-transparent px-4 sm:px-6">
+                  <div
+                    ref={chatScrollRef}
+                    onScroll={handleChatScroll}
+                    className="flex-1 overflow-y-auto custom-scrollbar scroll-smooth bg-transparent px-4 sm:px-6"
+                  >
                     <div className="max-w-4xl mx-auto w-full flex flex-col min-h-full py-10">
                       {messages.length === 0 && !isSessionLoading ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in slide-in-from-bottom-8 duration-1000 my-auto">

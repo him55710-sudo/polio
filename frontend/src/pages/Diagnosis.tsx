@@ -42,9 +42,22 @@ import { DiagnosisResultDisplay } from '../components/diagnosis/DiagnosisResultD
 import { DiagnosisReportPanel } from '../components/DiagnosisReportPanel';
 
 type DiagnosisStep = 'PROFILE' | 'GOALS' | 'UPLOAD' | 'ANALYSING' | 'RESULT' | 'FAILED';
-type TimingPhaseKey = 'upload' | 'parse' | 'diagnosis';
+type TimingPhaseKey = 'upload' | 'parse' | 'diagnosis' | 'report';
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const REPORT_IN_PROGRESS_STATUSES = new Set(['AUTO_STARTING', 'QUEUED', 'RUNNING', 'RETRYING', 'SUCCEEDED']);
+const TIMING_PHASE_LABELS: Record<TimingPhaseKey, string> = {
+  upload: '파일 업로드',
+  parse: '생기부 분석',
+  diagnosis: 'AI 진단',
+  report: '보고서 PDF 생성',
+};
+const TIMING_PHASE_EXPECTED_SECONDS: Record<TimingPhaseKey, number> = {
+  upload: 15,
+  parse: 60,
+  diagnosis: 90,
+  report: 45,
+};
 const INVALID_PROJECT_MESSAGE = '기존 프로젝트 연결이 유효하지 않아 다시 업로드가 필요합니다.';
 const INVALID_STUDENT_RECORD_MESSAGE =
   '학교생활기록부 원본 PDF만 진단할 수 있습니다. 진단서, 입시 자료, 논문, 일반 PDF가 아니라 나이스/정부24에서 내려받은 학생부 PDF를 업로드해 주세요.';
