@@ -381,6 +381,112 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
         </div>
 
       </div>
+
+      {/* 생활기록부 PDF 발급 안내 가이드 */}
+      <div className="mt-8 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+        <div className="mb-6">
+          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 text-xs font-black">?</span>
+            학교생활기록부 PDF 발급 방법을 모르시겠나요?
+          </h3>
+          <p className="text-xs font-bold text-slate-400 mt-1">
+            아래의 국가 공식 발급처 및 모바일 간편 전자문서 지갑을 통해 1분 만에 생활기록부를 조회하고 PDF 파일로 즉시 다운로드하실 수 있습니다.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 정부 24 카드 */}
+          <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/50 p-5 transition-all duration-300 hover:border-blue-200 hover:bg-blue-50/10 hover:shadow-xl hover:shadow-blue-100/20">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#003580] text-white shadow-md shadow-blue-100 group-hover:scale-105 transition-transform duration-300">
+                  <svg viewBox="0 0 100 100" className="h-7 w-7" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="#003580" />
+                    <path d="M 50 18 A 32 32 0 0 1 50 82 A 16 16 0 0 1 50 50 A 16 16 0 0 0 50 18" fill="#C60C30" />
+                    <path d="M 50 18 A 32 32 0 0 1 50 82 A 16 16 0 0 0 50 50 A 16 16 0 0 1 50 18" fill="#FFFFFF" />
+                    <circle cx="50" cy="50" r="8" fill="#003580" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-base font-black text-slate-800">정부24 웹사이트 발급</h4>
+                  <p className="text-[11px] font-bold text-slate-400">PC 및 웹브라우저를 통해 고화질 다운로드</p>
+                </div>
+              </div>
+              <a
+                href="https://www.gov.kr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center gap-1 rounded-xl bg-blue-600 px-3.5 text-xs font-black text-white shadow-md shadow-blue-200 hover:bg-blue-700 transition-colors duration-200"
+              >
+                정부24 바로가기
+              </a>
+            </div>
+
+            <div className="mt-5 space-y-3 border-t border-slate-100/60 pt-4">
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-blue-700">1</span>
+                <span className="leading-5"><strong className="text-slate-800">정부24</strong> 공식 포털 접속 후 간편/공동인증 로그인</span>
+              </div>
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-blue-700">2</span>
+                <span className="leading-5">통합검색에 <strong className="text-slate-800">'학교생활기록부(초중고)'</strong> 입력 및 신청</span>
+              </div>
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-blue-700">3</span>
+                <span className="leading-5">수령방법을 <strong className="text-indigo-600">'온라인발급'</strong>으로 선택해 최종 문서 생성</span>
+              </div>
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-blue-700">4</span>
+                <span className="leading-5">출력 화면에서 인쇄 대상을 <strong className="text-indigo-600">'PDF로 저장'</strong>으로 선택해 저장</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 카카오 지갑 카드 */}
+          <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/50 p-5 transition-all duration-300 hover:border-amber-200 hover:bg-amber-50/10 hover:shadow-xl hover:shadow-amber-100/20">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#FEE500] shadow-md shadow-amber-100 group-hover:scale-105 transition-transform duration-300">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6 fill-[#3C1E1E]" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 3c-5.523 0-10 3.582-10 8 0 2.946 1.984 5.53 4.968 6.91-.32 1.155-1.156 4.172-1.325 4.814-.21.802.28.791.583.589.237-.158 3.738-2.54 5.223-3.551.183.023.368.038.551.038 5.523 0 10-3.582 10-8s-4.477-8-10-8z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-base font-black text-slate-800">카카오톡 지갑 발급</h4>
+                  <p className="text-[11px] font-bold text-slate-400">모바일 앱에서 간편 발급 및 즉시 파일 전송</p>
+                </div>
+              </div>
+              <a
+                href="https://wallet.kakao.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center gap-1 rounded-xl bg-[#FEE500] px-3.5 text-xs font-black text-[#191919] shadow-md shadow-amber-100 hover:bg-[#FDE200] transition-colors duration-200"
+              >
+                카카오 지갑 바로가기
+              </a>
+            </div>
+
+            <div className="mt-5 space-y-3 border-t border-slate-100/60 pt-4">
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-800">1</span>
+                <span className="leading-5">카카오톡 실행 후 우측 하단 <strong className="text-slate-800">'더보기(...)'</strong> 탭 클릭</span>
+              </div>
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-800">2</span>
+                <span className="leading-5">프로필 하단 <strong className="text-slate-800">'지갑'</strong> 혹은 <strong className="text-slate-800">'전자문서'</strong> 버튼 터치</span>
+              </div>
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-800">3</span>
+                <span className="leading-5">신규 신청 리스트 중 <strong className="text-slate-800">'학교생활기록부'</strong> 선택 후 인증</span>
+              </div>
+              <div className="flex gap-2 text-xs font-bold text-slate-600">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-800">4</span>
+                <span className="leading-5">생성된 전자문서를 확인하고 우측 상단 메뉴를 통해 <strong className="text-amber-800">'저장'</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </motion.div>
   );
 };
