@@ -14,6 +14,8 @@ import {
   Layers,
   Loader2,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   PenSquare,
   Plus,
@@ -954,6 +956,48 @@ function buildWritingPlanPrompt(options: {
     '3. 생기부나 사용자가 확인해주지 않은 활동, 수상, 실험 결과, 수치, 논문명은 만들지 마세요.',
     '4. 작성 가능하면 [DRAFT_PATCH] JSON [/DRAFT_PATCH]를 정확히 1개만 포함하고 block_id는 introduction_background로 하세요.',
     '5. 서론에는 동기, 문제의식, 탐구 질문, 확인 가능한 근거의 연결만 담고 본론/결론은 다음 단계로 남겨두세요.',
+  ].join('\n');
+}
+
+function buildLocalWritingIntroPatch(options: {
+  area: RecordAreaOption;
+  detail: string;
+  gradeLabel: string;
+  targetMajor: string;
+  candidate: WritingCandidate;
+  preference: string;
+}): WorkshopDraftPatchProposal {
+  const detail = options.detail.trim() || options.area.promptLabel;
+  const targetMajor = options.targetMajor.trim() || '목표 전공';
+  const preference = options.preference.trim();
+  const evidence = clipWritingText(options.candidate.evidence, 180);
+  const content = [
+    `# ${options.candidate.title}`,
+    '',
+    '## 서론 / 문제의식',
+    `${options.gradeLabel} 수준의 탐구 보고서로서 이 주제는 ${detail}에서 출발해 ${targetMajor} 관점으로 확장할 수 있다. 아직 서버 AI 세션이 연결되지 않았기 때문에, 확인되지 않은 실험 결과나 수치 대신 현재 입력된 활동 영역과 추천 근거만 바탕으로 보수적인 서론 초안을 먼저 잡는다.`,
+    '',
+    `현재 확인 가능한 출발 근거는 ${options.candidate.source}의 "${evidence}"이다. 이 근거는 단순한 관심 소개에 머물기보다, 왜 이 문제가 중요하고 어떤 질문으로 좁혀 볼 수 있는지를 설명하는 발판으로 사용할 수 있다.`,
+    '',
+    `따라서 본 탐구의 첫 질문은 "${options.candidate.title}"로 설정하고, 이후 본론에서는 개념 조사, 자료 수집 방법, 한계와 보완 방향을 순서대로 확인한다. ${preference ? `작성 시에는 "${clipWritingText(preference, 120)}" 요구도 함께 반영한다.` : '학생의 실제 경험과 생각이 추가되면 문장의 구체성과 설득력을 더 높일 수 있다.'}`,
+  ].join('\n');
+
+  return {
+    mode: 'section_drafting',
+    block_id: 'introduction_background',
+    heading: '서론 / 문제의식',
+    content_markdown: content,
+    rationale: `${options.candidate.reason} 서버 세션 없이도 바로 검토 가능한 서론 초안을 만들었습니다.`,
+    evidence_boundary_note: '로컬 초안 모드에서는 사용자가 입력했거나 진단 요약에서 확인된 근거만 반영했습니다. 실제 활동 결과, 수치, 출처는 확인 후 보강해 주세요.',
+    requires_approval: true,
+  };
+}
+
+function buildLocalWritingIntroMessage(candidate: WritingCandidate) {
+  return [
+    `**${candidate.title}** 주제로 서론 초안을 먼저 만들었어요.`,
+    '',
+    '현재 서버 워크숍 세션이 없어 로컬 초안 모드로 진행합니다. 아래 제안 카드를 검토한 뒤 문서에 반영하거나, 활동 세부 내용을 더 알려주면 이어서 다듬을 수 있어요.',
   ].join('\n');
 }
 
@@ -2397,6 +2441,7 @@ export function Workshop() {
   const [chatMeta, setChatMeta] = useState<ChatStreamMetaPayload | null>(null);
   const [mobileView, setMobileView] = useState<'chat' | 'draft'>('chat');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [writingAreaId, setWritingAreaId] = useState<RecordAreaId>('subject_specialty');
   const [writingDetail, setWritingDetail] = useState('');
   const [writingGradeId, setWritingGradeId] = useState<WritingGradeId>('auto');
@@ -4040,6 +4085,36 @@ export function Workshop() {
     setWorkshopMode('section_drafting');
     setActiveAccumulationStepId('intro');
     setCompletedAccumulationStepId(null);
+
+    if (!workshopState?.session.id) {
+      const localPatch = buildLocalWritingIntroPatch({
+        area: candidate.areaId === writingAreaId ? writingAreaOption : resolveRecordAreaOption(candidate.areaId),
+        detail: writingDetail,
+        gradeLabel: resolvedWritingGradeLabel,
+        targetMajor: targetMajorForWriting,
+        candidate,
+        preference: writingPreference,
+      });
+      documentPatch.receivePatch(localPatch);
+      setPendingDraftPatch(localPatch);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: `${candidate.title} 후보로 서론부터 시작`,
+        },
+        {
+          id: crypto.randomUUID(),
+          role: 'foli',
+          content: buildLocalWritingIntroMessage(candidate),
+          draftPatch: localPatch,
+        },
+      ]);
+      toast.success('로컬 초안 제안을 만들었어요.');
+      return;
+    }
+
     const prompt = buildWritingPlanPrompt({
       area: candidate.areaId === writingAreaId ? writingAreaOption : resolveRecordAreaOption(candidate.areaId),
       detail: writingDetail,
@@ -4056,10 +4131,12 @@ export function Workshop() {
     });
   }, [
     aiAutoSelectWriting,
+    documentPatch,
     handleSend,
     resolvedWritingGradeLabel,
     selectedWritingCandidate,
     targetMajorForWriting,
+    workshopState?.session.id,
     writingAreaId,
     writingAreaOption,
     writingCandidates,
@@ -4636,9 +4713,9 @@ export function Workshop() {
   }, [chatbotMode, diagnosisHeadline, guidedSetupComplete, isProjectBacked]);
 
   return (
-    <div className={cn("mx-auto flex h-full min-h-0 w-full max-w-[1920px] flex-col overflow-hidden px-0 sm:px-6 sm:py-6", advancedMode && "bg-[linear-gradient(145deg,rgba(124,58,237,0.03)_0%,rgba(6,182,212,0.02)_100%)]")}>
+    <div className={cn("mx-auto flex h-screen sm:h-[100dvh] min-h-0 w-full max-w-[1920px] flex-col overflow-hidden px-0 sm:p-3", advancedMode && "bg-[linear-gradient(145deg,rgba(124,58,237,0.03)_0%,rgba(6,182,212,0.02)_100%)]")}>
       <motion.div
-        className="flex min-h-0 flex-1 flex-col rounded-none sm:rounded-[40px] overflow-hidden bg-white shadow-[0_32px_64px_-16px_rgba(15,23,42,0.12)] border border-slate-200/60"
+        className="flex min-h-0 flex-1 flex-col rounded-none sm:rounded-3xl overflow-hidden bg-white shadow-[0_32px_64px_-16px_rgba(15,23,42,0.12)] border border-slate-200/60"
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6 }}
@@ -4651,7 +4728,10 @@ export function Workshop() {
         </div>
 
         <div className="relative flex min-h-0 flex-1 justify-center overflow-hidden bg-[radial-gradient(#f1f5f9_1.5px,transparent_1.5px)] [bg-size:32px_32px]">
-          <div className="hidden w-72 shrink-0 border-r border-slate-100/60 bg-white/40 backdrop-blur-md xl:flex">
+          <div className={cn(
+            "hidden shrink-0 border-slate-100/60 bg-white/40 backdrop-blur-md xl:flex flex-col transition-all duration-300 ease-in-out overflow-hidden border-r",
+            isSidebarOpen ? "w-72 opacity-100" : "w-0 opacity-0 border-r-0 pointer-events-none"
+          )}>
             <ConversationHistoryPanel
               items={archivedConversations}
               activeId={activeArchiveId}
@@ -4739,13 +4819,21 @@ export function Workshop() {
               >
                 <div className="flex flex-col h-full bg-transparent overflow-hidden">
                   {/* Chat Header Section */}
-                  <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-200/50 bg-white/60 backdrop-blur-xl z-10">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shadow-sm border border-indigo-100/50">
-                        <MessageSquare size={18} className="text-indigo-600" />
+                  <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-200/50 bg-white/60 backdrop-blur-xl z-10">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        className="hidden xl:inline-flex items-center justify-center w-8 h-8 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
+                        title={isSidebarOpen ? "대화 목록 숨기기" : "대화 목록 열기"}
+                      >
+                        {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+                      </button>
+                      <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center shadow-sm border border-indigo-100/50">
+                        <MessageSquare size={16} className="text-indigo-600" />
                       </div>
                       <div className="flex flex-col overflow-hidden">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500/80 mb-0.5">탐구 워크숍</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500/80 mb-0.5">탐구 워크숍</p>
                         <h3 className="text-sm font-black text-slate-800 truncate max-w-[200px] sm:max-w-[400px]">
                           {(() => {
                             const titleBlock = structuredDraft.blocks.find(b => b.block_id === 'title');
@@ -4848,7 +4936,7 @@ export function Workshop() {
                                 aiAutoSelect={aiAutoSelectWriting}
                                 onAutoSelectChange={setAiAutoSelectWriting}
                                 onStart={() => void handleStartWritingPlan()}
-                                disabled={isTyping || isGuidedActionLoading || !!isSelectingGuidedTopicId || !workshopState?.session.id}
+                                disabled={isTyping || isGuidedActionLoading || !!isSelectingGuidedTopicId}
                               />
                               <DraftAccumulationPanel
                                 steps={ACCUMULATION_STEPS}
@@ -5003,9 +5091,9 @@ export function Workshop() {
               isEditorOpen && 'lg:translate-x-0 lg:opacity-100 lg:visible'
             )}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80 backdrop-blur">
-              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                <FileText size={16} className="text-indigo-600"/>
+            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50/80 backdrop-blur">
+              <h2 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <FileText size={14} className="text-indigo-600"/>
                 문서 편집기
               </h2>
               {lastLocalSnapshotAt && (
@@ -5036,17 +5124,17 @@ export function Workshop() {
               </div>
             </div>
             
-            <div className="flex flex-1 flex-col overflow-hidden p-2 sm:p-4 pt-4 sm:pt-4">
+            <div className="flex flex-1 flex-col overflow-hidden p-1 sm:p-2">
               {isDraftOutOfSync && (
                 <WorkflowNotice
                   tone="warning"
                   title="동기화 알림"
                   description="다른 기기에서 수정된 내용이 병합되었습니다."
-                  className="mb-4"
+                  className="mb-2"
                 />
               )}
 
-              <div className="flex-1 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-slate-200/50 transition-all focus-within:ring-indigo-500/30">
+              <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-inner ring-1 ring-slate-200/50 transition-all focus-within:ring-indigo-500/20">
                 <TiptapEditor
                   ref={editorRef}
                   initialContent={documentContent}
