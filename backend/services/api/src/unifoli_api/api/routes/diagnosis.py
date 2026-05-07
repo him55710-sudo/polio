@@ -83,7 +83,7 @@ from unifoli_shared.paths import get_export_root, resolve_project_path, resolve_
 
 router = APIRouter()
 logger = logging.getLogger("unifoli.api.diagnosis")
-INTERNAL_REPORT_MODE = "premium"
+INTERNAL_REPORT_MODE = "basic"
 stateless_security = HTTPBearer(auto_error=False)
 STATELESS_DIAGNOSIS_TIMEOUT_SECONDS = 240.0
 
@@ -91,9 +91,9 @@ STATELESS_DIAGNOSIS_TIMEOUT_SECONDS = 240.0
 def _normalize_report_mode(value: str | None) -> str:
     # 보고??는 ???? ???? ??플???구조(??리미엄 10???로만 ??성??다.
     normalized = str(value or "").strip().lower()
-    if normalized in {"compact", "basic"}:
+    if normalized in {"compact", "basic", ""}:
         return "basic"
-    if normalized in {"premium_10p", "premium", ""}:
+    if normalized in {"premium_10p", "premium"}:
         return "premium"
     if normalized == "consultant":
         return "consultant"

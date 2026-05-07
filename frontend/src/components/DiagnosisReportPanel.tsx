@@ -23,7 +23,7 @@ interface DiagnosisReportPanelProps {
   isStateless?: boolean;
 }
 
-const FIXED_REPORT_MODE: DiagnosisReportMode = 'premium';
+const FIXED_REPORT_MODE: DiagnosisReportMode = 'basic';
 const REPORT_IN_PROGRESS_STATUS = new Set(['AUTO_STARTING', 'QUEUED', 'RUNNING', 'RETRYING', 'SUCCEEDED']);
 const REPORT_SYNC_MAX_RETRIES = 24;
 const REPORT_POLL_INTERVAL_MS = 2500;

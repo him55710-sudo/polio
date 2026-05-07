@@ -25,7 +25,7 @@ class DiagnosisReportArtifact(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     diagnosis_run_id = Column(String(36), ForeignKey("diagnosis_runs.id", ondelete="CASCADE"), nullable=False, index=True)
     project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
-    report_mode = Column(String(32), nullable=False, default="premium_10p")
+    report_mode = Column(String(32), nullable=False, default="basic")
     template_id = Column(String(80), nullable=True)
     export_format = Column(String(16), nullable=False, default="pdf")
     include_appendix = Column(Boolean, nullable=False, default=True)

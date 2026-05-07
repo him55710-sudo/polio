@@ -32,9 +32,9 @@ This document provides a comprehensive mapping of environment variables and conf
 
 ## 3. Common Failure Signatures & Recovery
 
-### "Guest appears logged in but upload fails"
-- **Cause**: Frontend has a local guest session, but backend has `ALLOW_GUEST_MODE=false`.
-- **Fix**: Align `ALLOW_GUEST_MODE` in backend with `VITE_ALLOW_GUEST_MODE` in frontend.
+### "Database connects to the wrong provider"
+- **Cause**: Vercel or local env still contains an old provider-specific database URL.
+- **Fix**: Set the Neon connection string as `DATABASE_URL` or `NEON_DATABASE_URL`, then remove stale DB URL variables.
 
 ### "Diagnosis stalls at 8-15%"
 - **Cause**: Sync timeout or LLM connection failure during Stage 2-5 of parsing.

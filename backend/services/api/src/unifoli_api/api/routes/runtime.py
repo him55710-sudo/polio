@@ -30,5 +30,5 @@ async def get_runtime_capabilities(settings: Settings = Depends(get_settings)):
         serverless_runtime=is_serverless,
         recommended_document_parse_mode="sync" if settings.allow_inline_job_processing and not is_serverless else "async",
         recommended_diagnosis_mode="async",
-        requires_explicit_process_kicking=not settings.async_jobs_inline_dispatch
+        requires_explicit_process_kicking=is_serverless or not settings.async_jobs_inline_dispatch
     )

@@ -278,11 +278,11 @@ _REPORT_MAJOR_TRACK_LABELS: dict[str, str] = {
 }
 
 
-def _canonical_report_mode(report_mode: str | None) -> str:
-    normalized = str(report_mode or "").strip().lower()
-    if not normalized:
-        return "premium"
-    return _MODE_ALIASES.get(normalized, normalized if normalized in _REPORT_MODE_SPECS else "premium")
+def _canonical_report_mode(report_mode: str | None) -> str:
+    normalized = str(report_mode or "").strip().lower()
+    if not normalized:
+        return "basic"
+    return _MODE_ALIASES.get(normalized, normalized if normalized in _REPORT_MODE_SPECS else "basic")
 
 
 def _mode_spec(report_mode: str | None) -> dict[str, Any]:

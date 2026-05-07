@@ -345,16 +345,17 @@ def test_snapshot_settings_from_env_accepts_gemini_key_alias(monkeypatch) -> Non
     assert settings.pdf_analysis_gemini_api_key == "test-gemini-key"
 
 
-def test_snapshot_settings_from_env_accepts_supabase_database_url_alias(monkeypatch) -> None:
+def test_snapshot_settings_from_env_accepts_neon_database_url_alias(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
     monkeypatch.delenv("POSTGRES_URL", raising=False)
     monkeypatch.delenv("POSTGRES_URL_NON_POOLING", raising=False)
     monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
-    monkeypatch.setenv("SUPABASE_DATABASE_URL", "postgresql://user:password@db.example.com/unifoli")
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://user:password@ep-example.aws.neon.tech/unifoli")
 
     settings = snapshot_settings_from_env()
 
-    assert settings.database_url == "postgresql://user:password@db.example.com/unifoli"
+    assert settings.database_url == "postgresql://user:password@ep-example.aws.neon.tech/unifoli"
 
 
 def test_startup_failure_classifies_database_quota_errors() -> None:

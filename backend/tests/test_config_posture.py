@@ -85,12 +85,13 @@ def test_postgresql_url_uses_psycopg_driver() -> None:
     assert settings.database_url.startswith("postgresql+psycopg://")
 
 
-def test_supabase_database_url_alias_uses_psycopg_driver(monkeypatch) -> None:
+def test_neon_database_url_alias_uses_psycopg_driver(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
     monkeypatch.delenv("POSTGRES_URL", raising=False)
     monkeypatch.delenv("POSTGRES_URL_NON_POOLING", raising=False)
     monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
-    monkeypatch.setenv("SUPABASE_DATABASE_URL", "postgresql://user:password@db.example.com/unifoli")
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://user:password@ep-example.aws.neon.tech/unifoli")
 
     settings = Settings(
         _env_file=None,
@@ -101,6 +102,23 @@ def test_supabase_database_url_alias_uses_psycopg_driver(monkeypatch) -> None:
     )
 
     assert settings.database_url.startswith("postgresql+psycopg://")
+
+
+def test_neon_database_url_keeps_priority_over_generic_postgres_alias(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://neon:password@ep-example.aws.neon.tech/unifoli")
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://generic:password@postgres.example.com/unifoli")
+
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        app_debug=False,
+        auth_allow_local_dev_bypass=False,
+        llm_provider="gemini",
+    )
+
+    assert "ep-example.aws.neon.tech" in settings.database_url
+    assert "postgres.example.com" not in settings.database_url
 
 
 def test_serverless_runtime_infers_vercel_blob_when_token_is_configured(monkeypatch) -> None:

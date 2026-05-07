@@ -32,14 +32,13 @@ These values are required before upload, parse, and diagnosis can work in produc
 If the database provider gives a provider-specific environment variable instead
 of `DATABASE_URL`, the backend also accepts these aliases:
 
-- `SUPABASE_DATABASE_URL`
+- `NEON_DATABASE_URL`
 - `POSTGRES_URL`
 - `POSTGRES_URL_NON_POOLING`
 - `POSTGRES_PRISMA_URL`
 
-`DATABASE_URL` has priority when more than one of these values is set. When
-moving to Supabase, replace or remove the old provider `DATABASE_URL` instead
-of leaving it alongside a new alias.
+`DATABASE_URL` has priority when more than one of these values is set, followed
+by `NEON_DATABASE_URL`, then the generic Vercel Postgres aliases.
 
 Recommended for shared Vercel serverless runtime:
 
@@ -143,8 +142,8 @@ Common failure signals:
 
 ## 7. Required manual steps outside the repo
 
-1. Provision a managed Postgres database (recommended: Supabase Postgres; AWS RDS is also compatible).
-2. Set `DATABASE_URL` in the Vercel project settings, or set one of the supported aliases such as `SUPABASE_DATABASE_URL`.
+1. Provision a managed Postgres database (recommended: Neon Postgres; AWS RDS is also compatible).
+2. Set the Neon connection string as `DATABASE_URL` in the Vercel project settings, or set `NEON_DATABASE_URL`.
 3. Run Alembic migrations against that database:
    - 로컬에서 운영 DB URL을 임시로 `DATABASE_URL`로 설정한 후 `alembic upgrade head` 실행
    - 또는 CI/CD 파이프라인에서 실행
@@ -156,20 +155,20 @@ Common failure signals:
    - Firebase Authorized Domains
 8. Set Gemini credentials if you want Gemini-backed diagnosis enrichment.
 
-### 7.1 Moving to Supabase without rewriting the app
+### 7.1 Moving back to Neon without rewriting the app
 
 The backend data model is SQLAlchemy plus Alembic. Use another managed
-Postgres service when the current database quota is exhausted. Supabase
-Postgres is the lowest-risk replacement because it preserves SQL migrations,
-relationships, and the existing query code. Firebase Auth and Firebase Storage
-can still be used alongside Postgres.
+Postgres service when the current database quota is exhausted. Neon Postgres
+is the preferred runtime target for this project because it preserves SQL
+migrations, relationships, and the existing query code. Firebase Auth and
+Firebase Storage can still be used alongside Postgres.
 
-Recommended Supabase path:
+Recommended Neon path:
 
-1. Create a Supabase project.
-2. Copy the Supabase pooled Postgres connection string for app runtime.
-3. Set it as `SUPABASE_DATABASE_URL` or `DATABASE_URL` in Vercel.
-4. Remove or replace any old provider `DATABASE_URL` so it does not take priority.
+1. Restore or create the Neon project.
+2. Copy the Neon pooled Postgres connection string for app runtime.
+3. Set it as `DATABASE_URL` or `NEON_DATABASE_URL` in Vercel.
+4. Remove any old database-provider-specific value from local and Vercel environments.
 5. Keep `POSTGRES_ENABLE_PGVECTOR=false` unless the target database has the
    vector extension enabled.
 6. Run migrations once against the same database.

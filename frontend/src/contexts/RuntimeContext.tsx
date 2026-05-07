@@ -30,7 +30,7 @@ export const RuntimeProvider: React.FC<{ children: React.ReactNode }> = ({ child
           serverless_runtime: false,
           recommended_document_parse_mode: 'sync',
           recommended_diagnosis_mode: 'async',
-          requires_explicit_process_kicking: false
+          requires_explicit_process_kicking: true
         });
       } finally {
         setIsLoading(false);

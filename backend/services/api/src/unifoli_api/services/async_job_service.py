@@ -40,13 +40,13 @@ _PROGRESS_HISTORY_LIMIT = 20
 
 def _normalize_report_mode(value: str | None) -> str:
     normalized = str(value or "").strip().lower()
-    if normalized in {"compact", "basic"}:
+    if normalized in {"compact", "basic", ""}:
         return "basic"
-    if normalized in {"premium_10p", "premium", ""}:
+    if normalized in {"premium_10p", "premium"}:
         return "premium"
     if normalized == "consultant":
         return "consultant"
-    return "premium"
+    return "basic"
 
 
 def _progress_defaults_for_job(job_type: str) -> tuple[str, str, str | None]:
@@ -586,7 +586,7 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
                     owner_user_id=_opt_str(payload.get("owner_user_id")),
                     fallback_target_university=_opt_str(payload.get("fallback_target_university")),
                     fallback_target_major=_opt_str(payload.get("fallback_target_major")),
-                    report_mode=_opt_str(payload.get("auto_report_mode")) or "premium",
+                    report_mode=_opt_str(payload.get("auto_report_mode")) or "basic",
                     include_appendix=bool(payload.get("auto_report_include_appendix", True)),
                     include_citations=bool(payload.get("auto_report_include_citations", True)),
                 )
@@ -604,7 +604,7 @@ def _dispatch_job(db: Session, job: AsyncJob) -> None:
         return
     if job.job_type == AsyncJobType.DIAGNOSIS_REPORT.value:
         run_id = str(payload.get("run_id") or job.resource_id)
-        report_mode = _normalize_report_mode(str(payload.get("report_mode") or "premium"))
+        report_mode = _normalize_report_mode(str(payload.get("report_mode") or "basic"))
         job_id = job.id
         _release_session_connection_for_worker(db)
         artifact_id, artifact_status, artifact_project_id = _run_async_callable(
@@ -649,7 +649,7 @@ def ensure_default_diagnosis_report_job(
     owner_user_id: str | None,
     fallback_target_university: str | None,
     fallback_target_major: str | None,
-    report_mode: str = "premium_10p",
+    report_mode: str = "basic",
     include_appendix: bool = True,
     include_citations: bool = True,
 ) -> str:
@@ -679,7 +679,7 @@ def _queue_auto_diagnosis_report_job(
     if run.status != "COMPLETED" or not run.result_payload:
         return "diagnosis_not_ready"
 
-    requested_report_mode = str(report_mode or "premium_10p").strip() or "premium_10p"
+    requested_report_mode = str(report_mode or "basic").strip() or "basic"
     report_mode = _normalize_report_mode(requested_report_mode)
     payload_report_mode = (
         requested_report_mode

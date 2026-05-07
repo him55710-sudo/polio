@@ -6,9 +6,10 @@ import toast from 'react-hot-toast';
 
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
-import { api, shouldUseSynchronousApiJobs } from '../lib/api';
+import { api } from '../lib/api';
 import { type ApiErrorInfo, getApiErrorInfo, getApiErrorMessage } from '../lib/apiError';
 import { buildRankedGoals } from '../lib/rankedGoals';
+import { useRuntime } from '../contexts/RuntimeContext';
 import { ProcessTimingDashboard, type TimingPhaseStatus } from '../components/ProcessTimingDashboard';
 import type { AsyncJobRead, DiagnosisResultPayload, DiagnosisRunResponse } from '../types/api';
 import {
@@ -222,8 +223,13 @@ export function Diagnosis() {
   const setStep = setDiagnosisStep;
   const useSynchronousApiJobs = false; // Vercel 및 클라우드 게이트웨이 504 타임아웃 방지를 위해 동기 모드를 원천 제거하고 100% 안전한 비동기 폴링 큐 모드로 고정합니다.
 
+  const { capabilities } = useRuntime();
+  const canRequestInlineJobProcessing =
+    capabilities?.allow_inline_job_processing !== false &&
+    (!capabilities || capabilities.requires_explicit_process_kicking || capabilities.serverless_runtime);
   const diagnosisProcessKickoffRef = useRef<Set<string>>(new Set());
   const parseProcessKickoffRef = useRef<Set<string>>(new Set());
+  const reportProcessKickoffRef = useRef<Set<string>>(new Set());
   const hydratedProjectKeyRef = useRef<string | null>(null);
   const diagnosisAutoStartKeyRef = useRef<string | null>(null);
 
@@ -463,18 +469,40 @@ export function Diagnosis() {
     setIsUploading(false);
   }, [finishTimingPhase, setDiagnosisRunId, setStep]);
 
+  const processInlineJob = useCallback(
+    async (jobId: string, kickoffRef: React.MutableRefObject<Set<string>>, label: string) => {
+      if (!jobId || !canRequestInlineJobProcessing || kickoffRef.current.has(jobId)) return;
+
+      kickoffRef.current.add(jobId);
+      try {
+        await api.post<AsyncJobRead>(`/api/v1/jobs/${jobId}/process`);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 403 || status === 404) return;
+
+        kickoffRef.current.delete(jobId);
+        console.warn(`Failed to process ${label} job inline:`, error);
+      }
+    },
+    [canRequestInlineJobProcessing],
+  );
+
   const triggerInlineDiagnosisProcessing = useCallback((jobId: string) => {
-    // 백엔드가 독자적인 백그라운드 스레드를 통해 작업을 소모하므로 브라우저 수동 킥오프는 완전 비활성화합니다.
-    return;
-  }, []);
+    void processInlineJob(jobId, diagnosisProcessKickoffRef, 'diagnosis');
+  }, [processInlineJob]);
 
   const triggerInlineParseProcessing = useCallback(
     (document: Pick<DiagnosisProjectDocumentSummary, 'latest_async_job_id' | 'latest_async_job_status'> | null | undefined) => {
-      // 브라우저의 생명주기에 기생하는 파싱 킥오프를 완전 비활성화합니다.
-      return;
+      if (!document?.latest_async_job_id || !isQueuedOrRetryingJob(document.latest_async_job_status)) return;
+      void processInlineJob(document.latest_async_job_id, parseProcessKickoffRef, 'document parse');
     },
-    [],
+    [processInlineJob],
   );
+
+  const triggerInlineReportProcessing = useCallback((jobId: string | null | undefined) => {
+    if (!jobId) return;
+    void processInlineJob(jobId, reportProcessKickoffRef, 'diagnosis report');
+  }, [processInlineJob]);
 
   const hasDocumentContent = useCallback((document: DiagnosisDocumentStatus) => Boolean(document.content_text?.trim()), []);
 
@@ -484,6 +512,9 @@ export function Diagnosis() {
 
     if (run.async_job_id) {
       diagnosisProcessKickoffRef.current.delete(run.async_job_id);
+    }
+    if (run.report_async_job_id && isQueuedOrRetryingJob(run.report_async_job_status)) {
+      triggerInlineReportProcessing(run.report_async_job_id);
     }
 
     finishTimingPhase('diagnosis', 'done', '진단 생성 완료');
@@ -507,7 +538,7 @@ export function Diagnosis() {
     });
 
     return true;
-  }, [diagnosisGoals, finishTimingPhase, setDiagnosisRunId, setProjectId, setStep, syncReportTimingPhase]);
+  }, [diagnosisGoals, finishTimingPhase, setDiagnosisRunId, setProjectId, setStep, syncReportTimingPhase, triggerInlineReportProcessing]);
 
   const completeStatelessDiagnosis = useCallback((run: DiagnosisRunResponse) => {
     const payload = mergeDiagnosisPayload(run);
@@ -927,7 +958,13 @@ export function Diagnosis() {
     if (!polledReportRun || !shouldApplyDiagnosisResource(polledReportRun.id, diagnosisRun?.id)) return;
     setDiagnosisRun(polledReportRun);
     syncReportTimingPhase(polledReportRun);
-  }, [diagnosisRun?.id, polledReportRun, syncReportTimingPhase]);
+    if (polledReportRun.report_async_job_id && isQueuedOrRetryingJob(polledReportRun.report_async_job_status)) {
+      triggerInlineReportProcessing(polledReportRun.report_async_job_id);
+    }
+    if (polledReportRun.report_async_job_id && normalizeReportStatus(polledReportRun.report_status) === 'READY') {
+      reportProcessKickoffRef.current.delete(polledReportRun.report_async_job_id);
+    }
+  }, [diagnosisRun?.id, polledReportRun, syncReportTimingPhase, triggerInlineReportProcessing]);
 
   const handleUpload = useCallback(async (file: File) => {
     if (!file) return;

@@ -356,7 +356,9 @@ export function Auth() {
                 disabled={isSigningIn !== null || !allRequiredAgreed}
                 className="group relative flex w-full items-center justify-center gap-3 rounded-2xl border-none bg-[#03C75A] px-5 py-3.5 text-sm font-black text-white shadow-[0_10px_20px_rgba(3,119,90,0.18)] transition-all hover:bg-[#02b351] hover:shadow-[0_14px_24px_rgba(3,119,90,0.24)] disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-4 sm:text-base"
               >
-                <img src="https://upload.wikimedia.org/wikipedia/commons/2/21/Naver_favicon_%282021%29.svg" alt="" className="h-5 w-5" />
+                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white shrink-0" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M16.273 12.845 7.376 0H0v24h7.726V11.156L16.624 24H24V0h-7.727v12.845Z" />
+                </svg>
                 {isSigningIn === 'naver' ? '로그인 중...' : '네이버로 계속하기'}
               </button>
 

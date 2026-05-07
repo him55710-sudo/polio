@@ -399,13 +399,12 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
           <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/50 p-5 transition-all duration-300 hover:border-blue-200 hover:bg-blue-50/10 hover:shadow-xl hover:shadow-blue-100/20">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#003580] text-white shadow-md shadow-blue-100 group-hover:scale-105 transition-transform duration-300">
-                  <svg viewBox="0 0 100 100" className="h-7 w-7" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="50" cy="50" r="45" fill="#003580" />
-                    <path d="M 50 18 A 32 32 0 0 1 50 82 A 16 16 0 0 1 50 50 A 16 16 0 0 0 50 18" fill="#C60C30" />
-                    <path d="M 50 18 A 32 32 0 0 1 50 82 A 16 16 0 0 0 50 50 A 16 16 0 0 1 50 18" fill="#FFFFFF" />
-                    <circle cx="50" cy="50" r="8" fill="#003580" />
-                  </svg>
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-100 shadow-md group-hover:scale-105 transition-transform duration-300">
+                  <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Emblem_of_the_Government_of_the_Republic_of_Korea.svg"
+                    alt="대한민국 정부 상징"
+                    className="h-8 w-8 object-contain"
+                  />
                 </div>
                 <div>
                   <h4 className="text-base font-black text-slate-800">정부24 웹사이트 발급</h4>
@@ -447,9 +446,11 @@ export const DiagnosisUnifiedSetup: React.FC<DiagnosisUnifiedSetupProps> = ({
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#FEE500] shadow-md shadow-amber-100 group-hover:scale-105 transition-transform duration-300">
-                  <svg viewBox="0 0 24 24" className="h-6 w-6 fill-[#3C1E1E]" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 3c-5.523 0-10 3.582-10 8 0 2.946 1.984 5.53 4.968 6.91-.32 1.155-1.156 4.172-1.325 4.814-.21.802.28.791.583.589.237-.158 3.738-2.54 5.223-3.551.183.023.368.038.551.038 5.523 0 10-3.582 10-8s-4.477-8-10-8z" />
-                  </svg>
+                  <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg"
+                    alt="카카오톡 지갑"
+                    className="h-6 w-6 object-contain"
+                  />
                 </div>
                 <div>
                   <h4 className="text-base font-black text-slate-800">카카오톡 지갑 발급</h4>

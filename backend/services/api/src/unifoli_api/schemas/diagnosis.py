@@ -255,7 +255,7 @@ class ConsultantDiagnosisReport(BaseModel):
 
 
 class DiagnosisReportCreateRequest(BaseModel):
-    report_mode: DiagnosisReportMode = "premium"
+    report_mode: DiagnosisReportMode = "basic"
     template_id: str | None = Field(default=None, min_length=1, max_length=80)
     include_appendix: bool = True
     include_citations: bool = True

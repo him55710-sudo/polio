@@ -43,7 +43,7 @@ def test_ensure_default_report_job_queues_when_missing(monkeypatch) -> None:
     assert decision == "queued"
     assert created_payload["resource_type"] == "diagnosis_report"
     assert created_payload["resource_id"] == "run-1"
-    assert created_payload["payload"]["report_mode"] == "premium_10p"
+    assert created_payload["payload"]["report_mode"] == "basic"
     assert created_payload["payload"]["trigger"] == "diagnosis_auto"
     assert dispatched == ["report-job-1"]
 

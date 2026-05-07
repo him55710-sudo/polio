@@ -259,7 +259,7 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
                 reportArtifactId={diagnosisRun?.report_artifact_id}
                 reportErrorMessage={diagnosisRun?.report_error_message}
                 variant="minimal"
-                isStateless={projectId === 'demo' || !diagnosisRun || diagnosisRun.id === 'stateless'}
+                isStateless={!hasPersistentDiagnosisRun}
               />
             </div>
           </div>
