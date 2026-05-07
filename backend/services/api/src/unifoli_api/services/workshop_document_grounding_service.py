@@ -1,312 +1,332 @@
-from __future__ import annotations
-
-import logging
-import re
-from typing import Any, Literal
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload, load_only
-
-from unifoli_api.db.models.document_chunk import DocumentChunk
-from unifoli_api.db.models.parsed_document import ParsedDocument
-from unifoli_api.db.models.project import Project
-from unifoli_api.db.models.upload_asset import UploadAsset
-from unifoli_domain.enums import DocumentProcessingStatus
-
-GroundingProfile = Literal["fast", "standard", "render"]
-logger = logging.getLogger("unifoli.api.workshop_grounding")
-
-_TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
-_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "did",
-    "do",
-    "does",
-    "for",
-    "from",
-    "have",
-    "has",
-    "how",
-    "in",
-    "is",
-    "it",
-    "of",
-    "on",
-    "or",
-    "that",
-    "the",
-    "this",
-    "to",
-    "what",
-    "when",
-    "where",
-    "which",
-    "who",
-    "why",
-    "with",
-    "기록",
-    "문서",
-    "근거",
-    "학생",
-    "보고서",
-}
-
-_PROFILE_LIMITS: dict[GroundingProfile, tuple[int, int]] = {
-    "fast": (1, 2),
-    "standard": (2, 4),
-    "render": (3, 6),
-}
-
-
-def build_workshop_document_grounding_context(
-    *,
-    db: Session,
-    project: Project | None,
-    user_message: str,
-    max_documents: int | None = None,
-    max_chunks: int | None = None,
-    profile: GroundingProfile = "standard",
-) -> str:
-    profile_limits = _PROFILE_LIMITS.get(profile, _PROFILE_LIMITS["standard"])
-    resolved_docs = max_documents if max_documents is not None else profile_limits[0]
-    resolved_chunks = max_chunks if max_chunks is not None else profile_limits[1]
-
-    if project is None:
-        return (
-            "[업로드 문서 근거]\n"
-            "연결된 프로젝트가 없어 문서 근거를 불러오지 못했습니다.\n\n"
-            "[문서 근거 사용 원칙]\n"
-            "- 확인 가능한 근거가 없으면 모른다고 답합니다.\n"
-            "- 추측으로 학생 활동을 만들지 않습니다."
-        )
-
-    try:
-        documents = _load_recent_documents(db=db, project_id=project.id, limit=resolved_docs)
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to load workshop grounding documents. project_id=%s", project.id)
-        db.rollback()
-        documents = []
-    document_block = _format_document_analysis_block(documents)
-
-    try:
-        chunks = _load_recent_chunks(db=db, project_id=project.id, limit=120)
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to load workshop grounding chunks. project_id=%s", project.id)
-        db.rollback()
-        chunks = []
-    lexical_chunks = _select_lexical_chunks(chunks=chunks, query=user_message, limit=resolved_chunks)
-    evidence_block = _format_chunk_evidence_block(lexical_chunks)
-
-    return (
-        f"{document_block}\n\n"
-        f"{evidence_block}\n\n"
-        "[문서 근거 사용 원칙]\n"
-        "- 문서 근거 범위를 벗어나는 사실은 단정하지 않습니다.\n"
-        "- 부족한 정보는 '추가 확인 필요'라고 안내합니다.\n"
-        "- 과장 또는 합격 보장 표현은 금지합니다."
-    )
-
-
-def _load_recent_documents(*, db: Session, project_id: str, limit: int) -> list[ParsedDocument]:
-    valid_statuses = [
-        DocumentProcessingStatus.PARSED.value,
-        DocumentProcessingStatus.PARTIAL.value,
-    ]
-    return list(
-        db.execute(
-            select(ParsedDocument)
-            .where(
-                ParsedDocument.project_id == project_id,
-                ParsedDocument.status.in_(valid_statuses),
-            )
-            .order_by(ParsedDocument.updated_at.desc())
-            .limit(limit)
-        ).scalars()
-    )
-
-
-def _load_recent_chunks(*, db: Session, project_id: str, limit: int) -> list[DocumentChunk]:
-    return list(
-        db.execute(
-            select(DocumentChunk)
-            .options(
-                load_only(
-                    DocumentChunk.id,
-                    DocumentChunk.document_id,
-                    DocumentChunk.project_id,
-                    DocumentChunk.chunk_index,
-                    DocumentChunk.page_number,
-                    DocumentChunk.content_text,
-                    DocumentChunk.created_at,
-                ),
-                joinedload(DocumentChunk.document)
-                .load_only(ParsedDocument.id, ParsedDocument.upload_asset_id)
-                .joinedload(ParsedDocument.upload_asset)
-                .load_only(UploadAsset.original_filename),
-            )
-            .where(DocumentChunk.project_id == project_id)
-            .order_by(DocumentChunk.created_at.desc(), DocumentChunk.chunk_index.desc())
-            .limit(limit)
-        ).scalars()
-    )
-
-
-def _format_document_analysis_block(documents: list[ParsedDocument]) -> str:
-    if not documents:
-        return "[업로드 문서 분석 요약]\n분석 가능한 문서가 아직 없습니다."
-
-    lines = ["[업로드 문서 분석 요약]"]
-    for index, document in enumerate(documents, start=1):
-        filename = _clip(document.original_filename or "업로드 문서", limit=72)
-        lines.append(
-            f"{index}. 파일: {filename} / 페이지: {document.page_count} / 단어: {document.word_count} / 상태: {document.status}"
-        )
-
-        canonical = _extract_student_record_canonical(document.parse_metadata)
-        if canonical:
-            confidence = canonical.get("document_confidence")
-            if isinstance(confidence, (int, float)):
-                lines.append(f"   - 구조 신뢰도: {round(float(confidence), 3)}")
-            timeline = _normalize_canonical_list(canonical.get("timeline_signals"), key="signal", limit=2, item_limit=140)
-            for signal in timeline:
-                lines.append(f"   - 학기/연도 신호: {signal}")
-            alignment = _normalize_canonical_list(canonical.get("major_alignment_hints"), key="hint", limit=2, item_limit=160)
-            for hint in alignment:
-                lines.append(f"   - 전공 연계 힌트: {hint}")
-            weak_sections = _normalize_canonical_list(canonical.get("weak_or_missing_sections"), key="section", limit=2, item_limit=120)
-            for section in weak_sections:
-                lines.append(f"   - 보강 필요 섹션: {section}")
-            uncertainties = _normalize_canonical_list(canonical.get("uncertainties"), key="message", limit=1, item_limit=180)
-            for uncertainty in uncertainties:
-                lines.append(f"   - 불확실성: {uncertainty}")
-
-        pdf_analysis = _extract_pdf_analysis(document.parse_metadata)
-        if pdf_analysis:
-            summary = _clip(pdf_analysis.get("summary"), limit=260)
-            if summary:
-                lines.append(f"   - 분석 요약: {summary}")
-            key_points = _normalize_list(pdf_analysis.get("key_points"), limit=2, item_limit=160)
-            for point in key_points:
-                lines.append(f"   - 핵심 포인트: {point}")
-            evidence_gaps = _normalize_list(pdf_analysis.get("evidence_gaps"), limit=1, item_limit=160)
-            for gap in evidence_gaps:
-                lines.append(f"   - 근거 공백: {gap}")
-
-        fallback_excerpt = _clip(document.content_markdown or document.content_text, limit=220)
-        if fallback_excerpt:
-            lines.append(f"   - 본문 발췌: {fallback_excerpt}")
-    return "\n".join(lines)
-
-
-def _format_chunk_evidence_block(chunks: list[DocumentChunk]) -> str:
-    if not chunks:
-        return "[질문 관련 문서 발췌]\n현재 질문과 직접 연결되는 문서 발췌를 찾지 못했습니다."
-
-    lines = ["[질문 관련 문서 발췌]"]
-    for index, chunk in enumerate(chunks, start=1):
-        doc_name = "업로드 문서"
-        if chunk.document is not None:
-            doc_name = _clip(chunk.document.original_filename or "업로드 문서", limit=56)
-        page_hint = f"p.{chunk.page_number}" if chunk.page_number else "p.?"
-        excerpt = _clip(chunk.content_text, limit=180)
-        lines.append(f"{index}. {doc_name} ({page_hint})")
-        lines.append(f"   - {excerpt}")
-    return "\n".join(lines)
-
-
-def _select_lexical_chunks(*, chunks: list[DocumentChunk], query: str, limit: int) -> list[DocumentChunk]:
-    query_terms = _meaningful_terms(query)
-    if not query_terms:
-        return chunks[:limit]
-
-    scored: list[tuple[float, int, DocumentChunk]] = []
-    for chunk in chunks:
-        content_terms = _meaningful_terms(chunk.content_text)
-        if not content_terms:
-            continue
-        overlap = len(query_terms & content_terms)
-        if overlap <= 0:
-            continue
-
-        overlap_ratio = overlap / max(1, len(query_terms))
-        length_penalty = min(0.18, max(0.0, (len((chunk.content_text or "")) - 900) / 6000))
-        recency_bonus = 0.06 if (chunk.chunk_index or 0) > 0 else 0.0
-        score = overlap_ratio + recency_bonus - length_penalty
-        scored.append((score, chunk.chunk_index or 0, chunk))
-
-    if not scored:
-        return chunks[:limit]
-
-    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    ordered: list[DocumentChunk] = []
-    seen_ids: set[str] = set()
-    for _, _, chunk in scored:
-        if chunk.id in seen_ids:
-            continue
-        seen_ids.add(chunk.id)
-        ordered.append(chunk)
-        if len(ordered) >= limit:
-            break
-    return ordered
-
-
-def _extract_pdf_analysis(metadata: Any) -> dict[str, Any] | None:
-    if not isinstance(metadata, dict):
-        return None
-    candidate = metadata.get("pdf_analysis")
-    if isinstance(candidate, dict):
-        return candidate
-    return None
-
-
-def _extract_student_record_canonical(metadata: Any) -> dict[str, Any] | None:
-    if not isinstance(metadata, dict):
-        return None
-    candidate = metadata.get("student_record_canonical")
-    if isinstance(candidate, dict):
-        return candidate
-    return None
-
-
-def _normalize_list(value: Any, *, limit: int, item_limit: int) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    normalized = [_clip(str(item), limit=item_limit) for item in value if str(item).strip()]
-    return normalized[:limit]
-
-
-def _normalize_canonical_list(value: Any, *, key: str, limit: int, item_limit: int) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    normalized: list[str] = []
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        text = _clip(str(item.get(key) or ""), limit=item_limit)
-        if text:
-            normalized.append(text)
-        if len(normalized) >= limit:
-            break
-    return normalized
-
-
-def _meaningful_terms(text: str) -> set[str]:
-    return {
-        token.lower()
-        for token in _TOKEN_PATTERN.findall(text or "")
-        if token and token.lower() not in _STOPWORDS
-    }
-
-
-def _clip(value: str | None, *, limit: int) -> str:
-    normalized = " ".join((value or "").split()).strip()
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[: limit - 3].rstrip()}..."
+from __future__ import annotations
+
+import logging
+import re
+from typing import Any, Literal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload, load_only
+
+from unifoli_api.db.models.document_chunk import DocumentChunk
+from unifoli_api.db.models.parsed_document import ParsedDocument
+from unifoli_api.db.models.project import Project
+from unifoli_api.db.models.upload_asset import UploadAsset
+from unifoli_domain.enums import DocumentProcessingStatus
+
+GroundingProfile = Literal["fast", "standard", "render"]
+logger = logging.getLogger("unifoli.api.workshop_grounding")
+
+_TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
+_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "did",
+    "do",
+    "does",
+    "for",
+    "from",
+    "have",
+    "has",
+    "how",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "기록",
+    "문서",
+    "근거",
+    "학생",
+    "보고서",
+}
+
+_PROFILE_LIMITS: dict[GroundingProfile, tuple[int, int]] = {
+    "fast": (1, 2),
+    "standard": (2, 4),
+    "render": (3, 6),
+}
+
+
+def build_workshop_document_grounding_context(
+    *,
+    db: Session,
+    project: Project | None,
+    user_message: str,
+    max_documents: int | None = None,
+    max_chunks: int | None = None,
+    profile: GroundingProfile = "standard",
+) -> str:
+    profile_limits = _PROFILE_LIMITS.get(profile, _PROFILE_LIMITS["standard"])
+    resolved_docs = max_documents if max_documents is not None else profile_limits[0]
+    resolved_chunks = max_chunks if max_chunks is not None else profile_limits[1]
+
+    if project is None:
+        return (
+            "[업로드 문서 근거]\n"
+            "연결된 프로젝트가 없어 문서 근거를 불러오지 못했습니다.\n\n"
+            "[문서 근거 사용 원칙]\n"
+            "- 확인 가능한 근거가 없으면 모른다고 답합니다.\n"
+            "- 추측으로 학생 활동을 만들지 않습니다."
+        )
+
+    try:
+        documents = _load_recent_documents(db=db, project_id=project.id, limit=resolved_docs)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to load workshop grounding documents. project_id=%s", project.id)
+        db.rollback()
+        documents = []
+    document_block = _format_document_analysis_block(documents)
+
+    try:
+        chunks = _load_recent_chunks(db=db, project_id=project.id, limit=120)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to load workshop grounding chunks. project_id=%s", project.id)
+        db.rollback()
+        chunks = []
+    lexical_chunks = _select_lexical_chunks(chunks=chunks, query=user_message, limit=resolved_chunks)
+    evidence_block = _format_chunk_evidence_block(lexical_chunks)
+
+    return (
+        f"{document_block}\n\n"
+        f"{evidence_block}\n\n"
+        "[문서 근거 사용 원칙]\n"
+        "- 문서 근거 범위를 벗어나는 사실은 단정하지 않습니다.\n"
+        "- 부족한 정보는 '추가 확인 필요'라고 안내합니다.\n"
+        "- 과장 또는 합격 보장 표현은 금지합니다."
+    )
+
+
+def _load_recent_documents(*, db: Session, project_id: str, limit: int) -> list[ParsedDocument]:
+    valid_statuses = [
+        DocumentProcessingStatus.PARSED.value,
+        DocumentProcessingStatus.PARTIAL.value,
+    ]
+    return list(
+        db.execute(
+            select(ParsedDocument)
+            .where(
+                ParsedDocument.project_id == project_id,
+                ParsedDocument.status.in_(valid_statuses),
+            )
+            .order_by(ParsedDocument.updated_at.desc())
+            .limit(limit)
+        ).scalars()
+    )
+
+
+def _load_recent_chunks(*, db: Session, project_id: str, limit: int) -> list[DocumentChunk]:
+    return list(
+        db.execute(
+            select(DocumentChunk)
+            .options(
+                load_only(
+                    DocumentChunk.id,
+                    DocumentChunk.document_id,
+                    DocumentChunk.project_id,
+                    DocumentChunk.chunk_index,
+                    DocumentChunk.page_number,
+                    DocumentChunk.content_text,
+                    DocumentChunk.created_at,
+                ),
+                joinedload(DocumentChunk.document)
+                .load_only(ParsedDocument.id, ParsedDocument.upload_asset_id)
+                .joinedload(ParsedDocument.upload_asset)
+                .load_only(UploadAsset.original_filename),
+            )
+            .where(DocumentChunk.project_id == project_id)
+            .order_by(DocumentChunk.created_at.desc(), DocumentChunk.chunk_index.desc())
+            .limit(limit)
+        ).scalars()
+    )
+
+
+def _format_document_analysis_block(documents: list[ParsedDocument]) -> str:
+    if not documents:
+        return "[업로드 문서 분석 요약]\n분석 가능한 문서가 아직 없습니다."
+
+    lines = ["[업로드 문서 분석 요약]"]
+    for index, document in enumerate(documents, start=1):
+        filename = _clip(document.original_filename or "업로드 문서", limit=72)
+        lines.append(
+            f"{index}. 파일: {filename} / 페이지: {document.page_count} / 단어: {document.word_count} / 상태: {document.status}"
+        )
+
+        canonical = _extract_student_record_canonical(document.parse_metadata)
+        if canonical:
+            confidence = canonical.get("document_confidence")
+            if isinstance(confidence, (int, float)):
+                lines.append(f"   - 구조 신뢰도: {round(float(confidence), 3)}")
+            timeline = _normalize_canonical_list(canonical.get("timeline_signals"), key="signal", limit=2, item_limit=140)
+            for signal in timeline:
+                lines.append(f"   - 학기/연도 신호: {signal}")
+            alignment = _normalize_canonical_list(canonical.get("major_alignment_hints"), key="hint", limit=2, item_limit=160)
+            for hint in alignment:
+                lines.append(f"   - 전공 연계 힌트: {hint}")
+            weak_sections = _normalize_canonical_list(canonical.get("weak_or_missing_sections"), key="section", limit=2, item_limit=120)
+            for section in weak_sections:
+                lines.append(f"   - 보강 필요 섹션: {section}")
+            uncertainties = _normalize_canonical_list(canonical.get("uncertainties"), key="message", limit=1, item_limit=180)
+            for uncertainty in uncertainties:
+                lines.append(f"   - 불확실성: {uncertainty}")
+
+        pdf_analysis = _extract_pdf_analysis(document.parse_metadata)
+        if pdf_analysis:
+            summary = _clip(pdf_analysis.get("summary"), limit=260)
+            if summary:
+                lines.append(f"   - 분석 요약: {summary}")
+            key_points = _normalize_list(pdf_analysis.get("key_points"), limit=2, item_limit=160)
+            for point in key_points:
+                lines.append(f"   - 핵심 포인트: {point}")
+            evidence_gaps = _normalize_list(pdf_analysis.get("evidence_gaps"), limit=1, item_limit=160)
+            for gap in evidence_gaps:
+                lines.append(f"   - 근거 공백: {gap}")
+
+        fallback_excerpt = _clip(document.content_markdown or document.content_text, limit=220)
+        if fallback_excerpt:
+            lines.append(f"   - 본문 발췌: {fallback_excerpt}")
+    return "\n".join(lines)
+
+
+def _format_chunk_evidence_block(chunks: list[DocumentChunk]) -> str:
+    if not chunks:
+        return "[질문 관련 문서 발췌]\n현재 질문과 직접 연결되는 문서 발췌를 찾지 못했습니다."
+
+    lines = ["[질문 관련 문서 발췌]"]
+    for index, chunk in enumerate(chunks, start=1):
+        doc_name = "업로드 문서"
+        if chunk.document is not None:
+            doc_name = _clip(chunk.document.original_filename or "업로드 문서", limit=56)
+        page_hint = f"p.{chunk.page_number}" if chunk.page_number else "p.?"
+        excerpt = _clip(chunk.content_text, limit=180)
+        lines.append(f"{index}. {doc_name} ({page_hint})")
+        lines.append(f"   - {excerpt}")
+    return "\n".join(lines)
+
+
+_SYNONYM_GROUPS: list[set[str]] = [
+    {"학업", "학습", "공부", "성적", "내신", "교과", "이론", "개념"},
+    {"탐구", "실험", "분석", "보고서", "주제", "연구", "프로젝트", "소논문", "발표", "조사"},
+    {"역량", "능력", "강점", "우수성", "기량", "자질", "재능", "특기"},
+    {"진로", "전공", "관심", "지망", "희망", "학과", "목표"},
+    {"협업", "소통", "리더십", "공동체", "나눔", "배려", "협동", "봉사", "행동특성"},
+]
+
+def _select_lexical_chunks(*, chunks: list[DocumentChunk], query: str, limit: int) -> list[DocumentChunk]:
+    query_terms = _meaningful_terms(query)
+    if not query_terms:
+        return chunks[:limit]
+
+    scored: list[tuple[float, int, DocumentChunk]] = []
+    for chunk in chunks:
+        content_terms = _meaningful_terms(chunk.content_text)
+        if not content_terms:
+            continue
+        
+        # 1. Exact overlap
+        exact_overlap = len(query_terms & content_terms)
+        
+        # 2. Synonym soft overlap
+        synonym_overlap = 0.0
+        for group in _SYNONYM_GROUPS:
+            query_intersect = query_terms & group
+            content_intersect = content_terms & group
+            if query_intersect and content_intersect:
+                synonym_overlap += min(0.35, len(query_intersect) * 0.12)
+
+        total_overlap = exact_overlap + synonym_overlap
+        if total_overlap <= 0:
+            continue
+
+        overlap_ratio = total_overlap / max(1, len(query_terms))
+        length_penalty = min(0.18, max(0.0, (len((chunk.content_text or "")) - 900) / 6000))
+        recency_bonus = 0.06 if (chunk.chunk_index or 0) > 0 else 0.0
+        score = overlap_ratio + recency_bonus - length_penalty
+        scored.append((score, chunk.chunk_index or 0, chunk))
+
+    if not scored:
+        return chunks[:limit]
+
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    ordered: list[DocumentChunk] = []
+    seen_ids: set[str] = set()
+    for _, _, chunk in scored:
+        if chunk.id in seen_ids:
+            continue
+        seen_ids.add(chunk.id)
+        ordered.append(chunk)
+        if len(ordered) >= limit:
+            break
+    return ordered
+
+
+def _extract_pdf_analysis(metadata: Any) -> dict[str, Any] | None:
+    if not isinstance(metadata, dict):
+        return None
+    candidate = metadata.get("pdf_analysis")
+    if isinstance(candidate, dict):
+        return candidate
+    return None
+
+
+def _extract_student_record_canonical(metadata: Any) -> dict[str, Any] | None:
+    if not isinstance(metadata, dict):
+        return None
+    candidate = metadata.get("student_record_canonical")
+    if isinstance(candidate, dict):
+        return candidate
+    return None
+
+
+def _normalize_list(value: Any, *, limit: int, item_limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    normalized = [_clip(str(item), limit=item_limit) for item in value if str(item).strip()]
+    return normalized[:limit]
+
+
+def _normalize_canonical_list(value: Any, *, key: str, limit: int, item_limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        text = _clip(str(item.get(key) or ""), limit=item_limit)
+        if text:
+            normalized.append(text)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
+def _meaningful_terms(text: str) -> set[str]:
+    return {
+        token.lower()
+        for token in _TOKEN_PATTERN.findall(text or "")
+        if token and token.lower() not in _STOPWORDS
+    }
+
+
+def _clip(value: str | None, *, limit: int) -> str:
+    normalized = " ".join((value or "").split()).strip()
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3].rstrip()}..."

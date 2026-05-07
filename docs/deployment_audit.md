@@ -19,7 +19,7 @@ This document provides a comprehensive mapping of environment variables and conf
 | :--- | :--- | :--- | :--- |
 | `VITE_API_URL` | `http://127.0.0.1:8000` | `https://api.unifoli.com` | Backend API endpoint |
 | `VITE_SYNC_API_JOBS` | `true` | `false` | If true, frontend waits for task completion in one request |
-| `VITE_ALLOW_GUEST_MODE`| `true` | `false` | Enable/Disable guest login (unauthenticated upload) |
+| `VITE_ALLOW_GUEST_MODE`| `true` | `true` | Enable/Disable guest login; set `false` to disable |
 
 ### Backend (`backend/.env`)
 

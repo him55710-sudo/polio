@@ -144,6 +144,54 @@ def test_evaluate_student_record_success_path_returns_guided_contract(monkeypatc
     _assert_default_action_references_existing_payload_ids(result)
 
 
+def test_evaluate_student_record_bypass_cache_does_not_touch_database(monkeypatch) -> None:
+    class _SuccessfulDiagnosisLLM:
+        async def generate_json(self, **kwargs):  # noqa: ANN003
+            response_model = kwargs["response_model"]
+            grounded = build_grounded_diagnosis_result(
+                project_title="Stateless bypass cache check",
+                target_major="Computer Science",
+                target_university="Example University",
+                career_direction="AI engineering",
+                document_count=1,
+                full_text=kwargs.get("prompt", ""),
+            )
+            return response_model.model_validate(grounded.model_dump())
+
+    def _fail_database_session():
+        raise AssertionError("bypass_cache=True must not create a database session")
+
+    def _fail_cache_call(*_args, **_kwargs):
+        raise AssertionError("bypass_cache=True must not read or write the LLM cache")
+
+    monkeypatch.setattr("unifoli_api.core.database.SessionLocal", _fail_database_session)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_service.fetch_cached_response", _fail_cache_call)
+    monkeypatch.setattr("unifoli_api.services.diagnosis_service.store_cached_response", _fail_cache_call)
+
+    result = asyncio.run(
+        evaluate_student_record(
+            user_major="Computer Science",
+            masked_text=(
+                "Built a robotics notebook and measured drift before and after calibration. "
+                "Compared outcomes and documented method limits."
+            ),
+            target_university="Example University",
+            target_major="Computer Science",
+            career_direction="AI engineering",
+            project_title="Stateless bypass cache check",
+            scope_key=f"stateless-bypass:{uuid4()}",
+            evidence_keys=["uploaded-file"],
+            bypass_cache=True,
+            raise_on_llm_failure=True,
+            llm_client=_SuccessfulDiagnosisLLM(),
+        )
+    )
+
+    assert result.headline
+    assert len(result.gap_axes) == len(POSITIVE_AXIS_KEYS)
+    _assert_default_action_references_existing_payload_ids(result)
+
+
 def test_evaluate_student_record_local_evidence_path_returns_guided_contract(monkeypatch) -> None:
     class _FailingDiagnosisLLM:
         async def generate_json(self, **kwargs):  # noqa: ANN003

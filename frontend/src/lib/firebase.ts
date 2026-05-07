@@ -15,8 +15,9 @@ const firebaseConfig: FirebaseOptions = {
 };
 
 export const firestoreDatabaseId = viteEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
-// Guest mode is now restricted and should not mimic real authenticated state for protected routes.
-export const isGuestModeAllowed = String(viteEnv.VITE_ALLOW_GUEST_MODE).toLowerCase() === 'true';
+// Guest mode is available for the website unless explicitly disabled.
+const guestModeFlag = String(viteEnv.VITE_ALLOW_GUEST_MODE ?? 'true').trim().toLowerCase();
+export const isGuestModeAllowed = guestModeFlag !== 'false';
 
 const requiredFirebaseKeys = [
   'VITE_FIREBASE_API_KEY',
@@ -55,7 +56,7 @@ if (isFirebaseConfigured) {
 } else {
   console.warn(
     isGuestModeAllowed
-      ? 'Firebase config is missing. Guest mode is allowed for local development.'
+      ? 'Firebase config is missing. Guest mode is allowed for this environment.'
       : 'Firebase config is missing. Guest mode is disabled in this environment.',
   );
 }

@@ -213,6 +213,13 @@ export const DiagnosisResultDisplay: React.FC<DiagnosisResultDisplayProps> = ({
   const improvements = sanitizeList(summaryJson?.improvement_directions || gaps, '보완 방향을 도출 중입니다.');
   const interviewUtility = sanitizeKoreanText(summaryJson?.interview_utility || '', '면접 활용 포인트를 분석 중입니다.');
 
+  const hasPersistentDiagnosisRun = Boolean(
+    diagnosisRun?.id &&
+    diagnosisRun.id !== 'stateless' &&
+    !diagnosisRun.id.startsWith('stateless-') &&
+    projectId !== 'demo',
+  );
+
   return (
     <motion.div
       data-testid="diagnosis-result-panel"

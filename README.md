@@ -180,8 +180,8 @@ If PDF analysis Ollama is unavailable, upload parsing still succeeds and falls b
 ```
 
 The frontend defaults to `http://localhost:8000`.
-Guest mode is intended for local development and only stays enabled automatically in `npm run dev`.
-To force guest mode in a non-dev environment, set `VITE_ALLOW_GUEST_MODE=true` explicitly.
+Guest mode is available by default, including deployed website builds.
+To disable guest mode in an environment, set `VITE_ALLOW_GUEST_MODE=false`.
 
 If you prefer to run it manually:
 

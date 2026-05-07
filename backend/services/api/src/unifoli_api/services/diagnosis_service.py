@@ -1389,13 +1389,14 @@ async def evaluate_student_record(
         if llm_resolution is not None
         else _current_model_name()
     )
+    cache_enabled = bool(settings.llm_cache_enabled and not bypass_cache)
     cache_request = CacheRequest(
         feature_name="diagnosis.evaluate_student_record",
         model_name=model_name,
         scope_key=scope_key,
         config_version=settings.llm_cache_version,
-        ttl_seconds=settings.llm_cache_ttl_seconds if settings.llm_cache_enabled else 0,
-        bypass=bypass_cache or not settings.llm_cache_enabled,
+        ttl_seconds=settings.llm_cache_ttl_seconds if cache_enabled else 0,
+        bypass=not cache_enabled,
         response_format="json",
         evidence_keys=evidence_keys or [],
         payload={
@@ -1413,21 +1414,22 @@ async def evaluate_student_record(
     last_exc = None
 
     try:
-        from unifoli_api.core.database import SessionLocal
+        if cache_enabled:
+            from unifoli_api.core.database import SessionLocal
 
-        with SessionLocal() as cache_db:
-            cached = fetch_cached_response(cache_db, cache_request)
-        if cached:
-            cached_result = DiagnosisResult.model_validate_json(cached)
-            return _hydrate_guided_fields(
-                result=cached_result,
-                project_title=project_title or "학생 기록부",
-                target_major=explicit_target_major,
-                target_university=target_university,
-                interest_universities=interest_universities,
-                career_direction=career_direction,
-                full_text=masked_text,
-            )
+            with SessionLocal() as cache_db:
+                cached = fetch_cached_response(cache_db, cache_request)
+            if cached:
+                cached_result = DiagnosisResult.model_validate_json(cached)
+                return _hydrate_guided_fields(
+                    result=cached_result,
+                    project_title=project_title or "학생 기록부",
+                    target_major=explicit_target_major,
+                    target_university=target_university,
+                    interest_universities=interest_universities,
+                    career_direction=career_direction,
+                    full_text=masked_text,
+                )
 
         for attempt in range(max_retries + 1):
             try:
@@ -1463,8 +1465,9 @@ async def evaluate_student_record(
                     career_direction=career_direction,
                     full_text=masked_text,
                 )
-                with SessionLocal() as cache_db:
-                    store_cached_response(cache_db, cache_request, response_payload=result.model_dump_json())
+                if cache_enabled:
+                    with SessionLocal() as cache_db:
+                        store_cached_response(cache_db, cache_request, response_payload=result.model_dump_json())
                 return result
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc

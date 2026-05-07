@@ -152,8 +152,8 @@ def snapshot_settings_from_env(api_prefix: str | None = None) -> Any:
         auth_jwt_secret=(os.getenv("AUTH_JWT_SECRET") or "").strip() or None,
         auth_jwt_public_key=(os.getenv("AUTH_JWT_PUBLIC_KEY") or "").strip() or None,
         database_url=_read_first_env(
-            "DATABASE_URL",
             "SUPABASE_DATABASE_URL",
+            "DATABASE_URL",
             "POSTGRES_URL",
             "POSTGRES_URL_NON_POOLING",
             "POSTGRES_PRISMA_URL",

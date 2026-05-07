@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="sqlite:///./storage/runtime/unifoli.db?check_same_thread=False&timeout=30",
         validation_alias=AliasChoices(
-            "DATABASE_URL",
             "SUPABASE_DATABASE_URL",
+            "DATABASE_URL",
             "POSTGRES_URL",
             "POSTGRES_URL_NON_POOLING",
             "POSTGRES_PRISMA_URL",

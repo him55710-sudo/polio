@@ -23,8 +23,8 @@ npm run build
 - `VITE_API_URL` should point to the backend API, usually `http://localhost:8000`.
 - Set `VITE_SYNC_API_JOBS=true` when the backend is deployed on a serverless runtime without a separate background worker.
 - Firebase variables are optional for local development.
-- Local guest mode is auto-enabled only during local development.
-- In a non-dev environment, guest mode stays off unless `VITE_ALLOW_GUEST_MODE=true` is set explicitly.
+- Guest mode is available by default, including deployed website builds.
+- To disable guest mode in an environment, set `VITE_ALLOW_GUEST_MODE=false`.
 
 ## Vercel
 
